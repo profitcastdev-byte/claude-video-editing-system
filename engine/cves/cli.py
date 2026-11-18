@@ -140,7 +140,11 @@ def main(argv=None):
     elif a.cmd == "plan":
         from . import templates as T
         E = pr.edit
-        if not any(k in E for k in ("cutaways", "roto", "chest", "end_card")):      # first run: skeleton to fill in
+        from . import spines as SP
+        if SP.spine_of(E) != "aroll" and not any(k in E for k in ("cutaways", "broll", "end_card")):   # voiceover / music / broll: no A-roll keys
+            E.update({"broll": [], "captions": {"auto": True, "hide": [], "fixes": {}}, "cutaways": [], "sfx": {"auto": True, "extra": []}})
+            pr.save_edit(E); print("wrote skeleton Edit/edit.yaml: fill broll: (docs/FORMATS.md; `cves autocut` on a music spine) and cutaways from `cves templates`")
+        if not any(k in E for k in ("cutaways", "roto", "chest", "end_card", "broll")):      # first run: skeleton to fill in
             E.update({"edl": "edl.json", "aroll": {"zoom": {}, "creep": 0.015, "snap": None, "exposure_match": True},
                       "captions": {"auto": True, "max_chars": 34, "hide": [], "fixes": {}},
                       "cutaways": [], "roto": [], "chest": [],
@@ -153,7 +157,7 @@ def main(argv=None):
         for k in ("roto", "chest"):
             for c in E.get(k, []):
                 if c.get("template") not in T.REGISTRY: errs.append(f"{k} {c.get('segment')}: unknown template {c.get('template')}")
-        segs = {s["id"] for s in pr.json("edl.json", {"segments": []})["segments"]}
+        segs = {s["id"] for s in (pr.json("edl.json", {}) or {}).get("segments", [])}
         for k in ("roto", "chest"):
             for c in E.get(k, []):
                 for sid in ([c["segment"]] if isinstance(c["segment"], str) else c["segment"]):

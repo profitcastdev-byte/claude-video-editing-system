@@ -149,6 +149,12 @@ project.size` wins over it.
 |---|---|---|
 | `canvas.size` | `[1080, 1920]` | `[w, h]`, even numbers. 9:16 `[1080, 1920]`, 4:5 `[1080, 1350]`, 1:1 `[1080, 1080]`, 16:9 `[1920, 1080]`, 2.39:1 `[1920, 804]`. px values elsewhere in the profile (caption size, margins, gaps) are for a 1080 short side and scale by `min(w, h) / 1080` |
 | `canvas.safe_zones` | 9:16 / 4:5 / 1:1 / 16:9 / 2.39:1 boxes | text-safe box per aspect, `x0 y0 x1 y1` as fractions of the canvas; the nearest aspect is used. A 9:16 canvas uses `platform.safe_zone` (px) instead |
+| `canvas.safe_zones.9:16` | `[0.06, 0.14, 0.94, 0.65]` | the fraction form of `platform.safe_zone` (a 9:16 canvas uses `platform.safe_zone` itself) |
+| `canvas.safe_zones.4:5` | `[0.06, 0.08, 0.94, 0.86]` | feed posts |
+| `canvas.safe_zones.1:1` | `[0.06, 0.07, 0.94, 0.88]` | square |
+| `canvas.safe_zones.16:9` | `[0.05, 0.07, 0.95, 0.88]` | landscape (player controls at the bottom) |
+| `canvas.safe_zones.2.39:1` | `[0.05, 0.08, 0.95, 0.88]` | cinematic |
+| (any `w:h`) | | add an aspect as a new key; the nearest aspect (log ratio) wins |
 
 #### `platform`
 

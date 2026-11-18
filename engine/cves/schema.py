@@ -27,7 +27,7 @@ TRANSITIONS = ("cut", "whip", "glitch", "fade")
 MEDIA_EXT = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".tif", ".tiff", ".bmp", ".mp4", ".mov", ".mkv", ".webm", ".m4v",
              ".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".aif", ".aiff", ".ttf", ".otf", ".woff", ".woff2", ".json", ".lottie")
 # style maps whose keys are data (any name is fine), not schema
-OPEN_STYLE = {"colors", "font_files", "font_files.script_fallback", "captions.per_style", "sound.transition_sfx", "media.device_box",
+OPEN_STYLE = {"colors", "font_files", "font_files.script_fallback", "captions.per_style", "sound.transition_sfx", "media.device_box", "canvas.safe_zones",
               "_evidence", "_inspire"}
 STYLE_META = {"name", "preset", "_evidence", "_inspire", "_sources", "description", "extends"}
 

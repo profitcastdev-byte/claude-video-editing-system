@@ -299,7 +299,8 @@ def qc_reframe(pr, S, master, r, aspect, master_stamp):
         if f is not None and len(f): seen += 1
         else: miss.append(i)
     share = seen / max(1, len(want))
-    gate("RF-FACE", share >= .95, f"face found on {seen}/{len(want)} sampled A-roll frames ({share:.0%})", ", ".join(f"f{i}" for i in miss[:20]),
+    if not want: gate("RF-FACE", True, "no presenter face in the master (B-roll / voiceover / music edit): nothing to keep in frame", status="N/A")
+    else: gate("RF-FACE", share >= .95, f"face found on {seen}/{len(want)} sampled A-roll frames ({share:.0%})", ", ".join(f"f{i}" for i in miss[:20]),
          status=None if share >= .95 or share < .80 else "WARN")
     gate("RF-FACECUT", not nt["face_cut"], f"{len(nt['face_cut'])} frames where keeping the captions cost part of the face",
          ", ".join(f"f{i}" for i in nt["face_cut"][:20]), status="PASS" if not nt["face_cut"] else "WARN")
