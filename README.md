@@ -69,6 +69,7 @@ Restart Claude Code and run `/cves:install`. It installs every tool, model and s
 - **Not every gate is automated:** 84 of the 172 rules are. The others need instruments that don't exist yet (role and intent tags, blur and banding detectors, music-stem gates); see `knowledge-base/QC-GATES.md`.
 - **Footage limits the grade can't remove:** on the first test ad, two colour gates still fail. COL-06 (cut-to-cut colour match) fails where skin drifts within a shot and where the wall patch changes between punch-ins. FRAME-03 (edge halo) fails where a bright door frame sits next to the shoulder and where hair is motion-blurred. Both report honestly instead of being loosened.
 - **Windows CI** runs the test suite; a full edit on a Windows machine has not been tried by hand yet.
+- **Linux is not a supported editing platform.** CI runs the tests there, but Ubuntu's own `melt` (MLT 7.36) ignores overlay transparency in landscape projects, so Kdenlive playback is verified with the MLT that ships in Kdenlive (7.43, macOS), not on Linux.
 
 ## Rules for changing the system
 Branch → PR. CI (lint, tests and the gate table) must pass. Every new tool goes into `TOOLS-REGISTRY.md` and `CHANGELOG.md`; every threshold change gets a line in `knowledge-base/DECISIONS.md`; every new style key goes into `default.yaml` with a comment.
