@@ -47,7 +47,7 @@
       }
       if (ex) C.set(nm, { o: 1 - ex });
     },
-    cues() { C.cue(tl.t0('plate'), 'swipe', -22, { trim: [0, 0.3] }); if (C.ctx.exit) C.cue(C.ctx.dur - C.motion.exit_s, 'swipe', -27, { trim: [0, 0.25], pitch: -2 }); },
+    cues() { C.cue(tl.t0('plate'), 'swipe', -22, { trim: [0, 0.3] }); },     // on the plate's entry; it leaves silently (no logged entry to land on)
   });
 })();
 </script>
