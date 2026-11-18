@@ -119,14 +119,27 @@ music:                        # beat sync + music fit (docs/MUSIC.md); edit.yaml
   min_aroll_s: 0.5            # a moved cutaway edge never leaves an A-roll piece shorter than this
   sfx_snap: [whoosh, hit, boom, riser]   # full mode: cues whose name contains one of these are nudged to the beat
   sfx_snap_max_f: 1           # full mode: max nudge in frames (SND-07 keeps every SFX within 1 frame of its picture event)
-rhythm:                       # pattern-interrupt pacing (RET-26 / RET-27 / RET-32); `cves inspire` measures these from references
+rhythm:                       # how the edit moves. `cves inspire` measures these from the references (Edit/inspire/REPORT.md); RET-26/27/32 check them
   interrupt_max_s: 4.0        # longest gap between pattern interrupts (cut, zoom step, graphic in, motion element), s (RET-26)
   interrupt_min_s: 0.3        # interrupts closer than this, sustained for retention.soup_window_s, read as effect soup (RET-27)
-  cut_on_beat: false          # cut points sit on the music / guide beat (RET-32 reports the share on the beat)
-structure:                    # the shape of the piece (docs/VIRAL.md)
+  interrupt_median_s: null    # typical gap between pattern interrupts, s (plan-time target; null = none)
+  cut_on_beat: false          # cuts should land on the beat: true, or the share measured by inspire (0..1; >= 0.6 counts as on-beat, RET-32). false/null = no target
+  cuts_per_s: null            # target mean cut rate (cuts per second)
+  cut_curve: null             # how the cut rate moves over the video: rising (builds up) | flat | wave | peak_end | falling
+  tempo_bpm: null             # music tempo the references use; pick or generate music near it
+  voice: null                 # true = voice-led (presenter / VO); false = music-only edit (no voice in the references)
+  music_share: null           # share of the runtime with music under it (0..1)
+  sfx_per_10s: null           # transient SFX hits (off the beat, not speech) per 10 s
+  dropouts_per_30s: null      # deliberate music drop-outs / silences per 30 s
+  music_energy: null          # music level over the video: rising | flat | wave | peak_end | falling
+structure:                    # the shape of the piece (docs/VIRAL.md; `cves inspire` FEEL measures it)
   hook_change_s: 1.5          # first visual change (pattern interrupt) by this time, s (RET-24); preset viral: 1.0
+  first_cut_s: null           # first cut by this time, s (plan-time target)
+  first_text_s: null          # first on-screen text by this time, s (plan-time target)
   loop: false                 # the end flows back into the start for a seamless replay (RET-28 checks the seam)
   payoff_window: 0.2          # the payoff (a visual or audio peak) lands in this last fraction of the runtime (RET-29, goal viral)
+  energy_arc: null            # picture + sound energy over the video: rising | peak_end | wave | flat | falling
+  duration_s: null            # typical reference duration, s (the brief's platform.duration still rules)
 retention:                    # retention-gate measurement settings (RET-24..RET-32, knowledge-base/QC-GATES.md)
   hook_subject_s: 1.0         # goal viral: on-screen text or a strong subject (face / high-contrast centre) by this time (RET-25)
   soup_window_s: 1.5          # RET-27: a run of interrupt gaps under rhythm.interrupt_min_s longer than this is effect soup

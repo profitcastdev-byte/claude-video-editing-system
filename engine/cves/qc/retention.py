@@ -17,6 +17,10 @@ IDS = ["RET-24", "RET-25", "RET-26", "RET-27", "RET-28", "RET-29", "RET-30", "RE
 
 
 # ======================================================================== decoding
+def _on_beat_target(v):
+    """rhythm.cut_on_beat: true, or a measured share (inspire) of at least 0.6, asks for on-beat cuts"""
+    return v is True or (isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0.6)
+
 def probe(video):
     r = subprocess.run([C.get("ffprobe"), "-v", "error", "-show_entries", "stream=codec_type,width,height,r_frame_rate:format=duration",
                         "-of", "json", video], capture_output=True, text=True)
@@ -277,7 +281,7 @@ def run_retention(pr, video, gate, S=None):
         if probs: gate("RET-32", False, "music.slot: platform: " + "; ".join(probs)); return
         if not os.path.exists(gw): gate("RET-32", False, "music.slot: platform but Edit/stems/guide.wav is missing: run `cves mix`"); return
         g = GD.grid(pr, T, S); grid, what = (g["beats"] if g else []), f"guide ({g['kind']}, {g['tempo'] or 0:.1f} BPM)" if g else "guide"
-    elif S.get("rhythm.cut_on_beat") and (pr.edit.get("music") or {}).get("file"):
+    elif _on_beat_target(S.get("rhythm.cut_on_beat")) and (pr.edit.get("music") or {}).get("file"):
         try:
             P = BT.plan(pr, S=S, need_beats=True); grid, what = (P or {}).get("beats") or [], "music"
         except SystemExit as e: gate("RET-32", False, f"music beat grid not measured: {e}", status="WARN"); return

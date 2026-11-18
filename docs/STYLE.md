@@ -53,7 +53,7 @@ any other layer: nothing in the engine knows its name. To make a new preset, cop
 ## How `cves inspire` fills it
 
 ```
-cves inspire [PROJECT] [--refs DIR] [--dry-run] [--max-s 90]
+cves inspire [PROJECT] [--refs DIR] [--dry-run] [--max-s 90] [--mix "grade=refA,captions=refB,pacing=refC"] [--refresh] [--min-conf 0.5]
 ```
 
 It reads every video (`.mp4 .mov .m4v .mkv .webm .avi`) and image (`.png .jpg .jpeg .webp .bmp`) in `PROJECT/Inspirations/`
@@ -65,6 +65,63 @@ for faces, grade, captions and palette.
 Every key it writes carries evidence: `_evidence: {key: "how it was measured; n=<samples>; confidence <0..1>"}`. Keys
 below confidence 0.5 are **not** written; their evidence is still printed (marked `x`) and stored, and `_inspire.dropped`
 lists them. `_inspire` also records the reference files, the date and which project footage the grade was compared to.
+
+### Inspire v2: see, hear, feel, then mix and match
+
+The references are the client's taste spec, so inspire measures each one on its own and does **not** average looks that
+disagree. Per reference it writes, to `PROJECT/Edit/inspire/` (also on `--dry-run`; only `Edit/style.yaml` is skipped):
+
+| file | what |
+|---|---|
+| `REPORT.md` | the human read: the chosen mix (dimension, source ref, why, consistency), what the edit should feel like, then **see / hear / feel** per reference with sparklines of the cut rate, music energy and energy arc. Claude reads this to feel the edit. |
+| `<ref>-sheet.jpg` | contact sheet: 12 frames at shot middles, labelled with their time |
+| `aesthetic-review.md` | rubric Claude fills by looking at the sheets: composition, typography quality, colour mood, motion character, texture / grain, negative space, premium vs cheap read, what to steal, what to avoid. Kept when it exists (new refs are appended). |
+| `cache/` | the per-reference measurements (re-used until the file, `--max-s` or the analysis version changes; `--refresh` re-measures) |
+
+**Hear** (`engine/cves/inspire_audio.py`, no new model or dependency): speech = 1 s windows whose voice-band (250-3500 Hz)
+harmonic envelope swings at the syllable rate (3-8 Hz modulation >= 2.2 dB); the music bed = the median of the 0.5 s
+window minima of 23 ms frames inside speech (the bed shows through the gaps between words) plus its min-to-mean offset,
+measured on the reference's own music-only stretches (6 dB when there are none); tempo and beat grid = `beats.analyse()`
+on the soundtrack (only when music is present), with beat salience as confidence; SFX = strong percussive onsets off the
+beat and half-beat grid (inside speech only the strongest 5%, so plosives do not count); silences = >= 25 dB under the
+running 2 s median for >= 0.15 s (drop-outs with music, pauses without).
+
+**Feel** (`inspire_feel.py`): cut-on-beat = share of cuts within +-2 frames of a beat of the reference's own music, shown
+next to the chance level for that tempo; the cut-rate curve (per second, 3 s smoothing) and its shape; hook timing (first
+cut, first strong visual change, first burned-in text); pattern interrupts = cuts + frame-difference peaks that are not
+cuts + face-scale jumps >= 8%, and the gaps between them; the loop seam = the last frame vs the first, measured like a cut,
+against the reference's normal frame step (<= 3x, and < 0.15); the energy arc = per-second visual change + mix level,
+classified rising / peak_end / wave / flat / falling; the container duration.
+
+**See** (`inspire_see.py`): from the sheet frames, display and content aspect, orientation, letterbox / pillarbox bars
+(2.2-2.5 content = scope 2.39:1), the tone curve (luma p2 / p25 / p50 / p75 / p98), saturation p50 / p90, mid-tone Lab
+a* / b* (warm / cool / magenta / green), grain (high-pass noise sigma in flat areas), vignette (corner / centre) and the
+share of motion-soft frames. These are notes in `_inspire.aesthetics`, not keys: the engine has no grain, curve or
+aspect key to fill (no added grain is a recorded decision; the canvas is the brief's call).
+
+**Mix and match** (`inspire_mix.py`). Keys belong to dimensions: `grade` (grade.\*), `palette` (stage.\*, colors.\*),
+`captions`, `motion` (transitions.\*, framing.\*), `pacing` (grammar.max_shot_s / cutaway_share / max_cutaway_s,
+rhythm.cut_\* / cuts_per_s / interrupt_\*, music.sync), `sound` (sound.\*, the other rhythm.\* keys) and `structure`
+(structure.\*, grammar.face_on_first_frame). Every key is derived per reference and pooled. Per dimension the source is
+the first rule that applies:
+1. `--mix "dim=ref,..."` (ref = file name, stem or unique prefix);
+2. `Inspirations/refs.yaml`: the ref whose `use:` lists the dimension (best `rank`, then `weight`);
+3. the refs agree (consistency >= 0.6) or only one measured it: pooled (refs with `weight: 0` are left out);
+4. they disagree: ONE ref, the highest `1/rank x weight x (0.5 + distinctiveness) x confidence`; distinctiveness is how far
+   its values sit from the neutral defaults (a deliberate look beats a near-default one).
+
+Consistency per key: numbers `1 - (max - min) / max(|median|, 0.5)`, colours `1 - max dE / 40`, labels the share agreeing
+with the most common value; a dimension's is the mean of its keys. A picked ref's look is kept whole: keys it did not set
+keep the default (the pooled value is used only when it measured nothing in that dimension). Forced and authority picks
+are written down to confidence 0.2. `--dry-run` prints the per-dimension table (candidates per ref, chosen value, source,
+confidence); `_inspire.mix` and the `[ref]` prefix in `_evidence` record where every key came from.
+
+```yaml
+# Inspirations/refs.yaml (optional)
+refs:
+  hook-reel.mp4: {rank: 1, weight: 1.0, kind: viral, use: [pacing, structure], notes: "the energy we want"}
+  brand-ad.mov:  {rank: 2, kind: ad, use: [grade, captions]}
+```
 
 | area | keys | how |
 |---|---|---|
@@ -83,7 +140,11 @@ lists them. `_inspire` also records the reference files, the date and which proj
 | | `colors.accent`, `colors.accent_dark` | k-means on saturated graphics pixels: the cluster with the largest share x saturation; the dark accent is the same hue at 55% value. |
 | captions | `captions.position` (+ `lower_third_y` / `chin_gap`), `size`, `case`, `color`, `highlight_color`, `box_color`, `max_lines`, `max_chars`, `style` | burned-in text lines on A-roll frames: bright top-hat glyph components on a shared baseline, below the mouth; the most frequent text size is the caption (titles and graphics differ). Position: chin-anchored if the gap to the chin varies less than the absolute height, else center / lower_third / `y:<px>` (design space). Size = cap height / 0.72. Case = share of glyphs reaching cap height. Box = a flat surround that differs from the frame further out. Style: one_word (about one word on screen), word_reveal (the word count grows inside a caption), highlight (a second glyph colour), box, else pop. OCR is not needed. |
 | transitions | `transitions.in`, `transitions.out`, `transitions.whip_s / glitch_s / fade_s` | at each face <-> no-face cut: an RGB-split spike is a glitch, a luma dip below both sides is a fade, a sharpness collapse (motion / zoom blur) is a whip, else a cut. The most common kind per direction; the median duration per kind. |
-| sound | `sound.bed_lu` | ebur128 momentary loudness: the quiet gaps between words (p8) vs speech (p60). Rough: it assumes the gaps hold the music bed. Integrated loudness is reported, not written (downloads are platform-normalised). |
+| sound | `sound.bed_lu` | HEAR: the bed under the words (window minima + min-to-mean offset) vs the speech level. Confidence 0.55 when the offset was measured on the reference's own music-only stretch, else 0.42 (not written). Integrated loudness is reported, not written (downloads are platform-normalised). |
+| | `sound.duck_other_db` | HEAR: music level between phrases minus under the words (whole spectrum, so confidence 0.45: evidence only unless forced). |
+| rhythm | `rhythm.voice`, `music_share`, `tempo_bpm`, `sfx_per_10s`, `dropouts_per_30s`, `music_energy` | HEAR, per reference (above): mode / median across the refs, or the picked ref's. |
+| | `rhythm.cut_on_beat`, `cuts_per_s`, `cut_curve`, `interrupt_max_s`, `interrupt_median_s`; `music.sync` | FEEL. `music.sync: cuts` is written when cut-on-beat >= 0.6 and >= 2x the chance level. |
+| structure | `structure.hook_change_s`, `first_cut_s`, `first_text_s`, `loop`, `energy_arc`, `duration_s` | FEEL (above). |
 
 Anything that cannot be measured (fonts, motion timing, SFX choice, the safe zone) keeps the preset / default value.
 Screenshots count as single frames: they feed the palette (no face) or the grade and captions (face).
@@ -348,23 +409,38 @@ beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these pe
 
 #### `rhythm`
 
-pattern-interrupt pacing (RET-26 / RET-27 / RET-32); `cves inspire` measures these from references
+How the edit moves. `cves inspire` measures these from the references (HEAR / FEEL, `Edit/inspire/REPORT.md`); the retention
+gates (RET-26 / RET-27 / RET-32) check the ones with defaults, the rest are plan-time targets Claude reads when cutting
+and choosing music. null = no target.
 
 | key | default | meaning |
 |---|---|---|
 | `rhythm.interrupt_max_s` | `4.0` | longest gap between pattern interrupts (A-roll cut and zoom step, cutaway in/out, transition, graphic entry, picture change), s (RET-26); preset viral 2.5 |
 | `rhythm.interrupt_min_s` | `0.3` | interrupts closer than this, sustained for `retention.soup_window_s`, read as effect soup (RET-27); preset viral 0.25 |
-| `rhythm.cut_on_beat` | `false` | cut points sit on the music or guide beat; RET-32 reports the share on the beat (preset viral: true) |
+| `rhythm.interrupt_median_s` |  | typical gap between pattern interrupts, s |
+| `rhythm.cut_on_beat` | `false` | cuts should land on the beat: `true`, or the share inspire measured (0..1; >= 0.6 counts as on-beat and also sets music.sync: cuts). RET-32 reports the share on the beat (preset viral: true) |
+| `rhythm.cuts_per_s` |  | target mean cut rate (cuts per second) |
+| `rhythm.cut_curve` |  | how the cut rate moves over the video: rising (builds up) / flat / wave / peak_end / falling |
+| `rhythm.tempo_bpm` |  | music tempo the references use; pick or generate music near it |
+| `rhythm.voice` |  | true = voice-led (presenter / VO); false = music-only edit (no voice in the references) |
+| `rhythm.music_share` |  | share of the runtime with music under it (0..1) |
+| `rhythm.sfx_per_10s` |  | transient SFX hits (off the beat, not speech) per 10 s |
+| `rhythm.dropouts_per_30s` |  | deliberate music drop-outs / silences per 30 s |
+| `rhythm.music_energy` |  | music level over the video: rising / flat / wave / peak_end / falling |
 
 #### `structure`
 
-the shape of the piece ([VIRAL.md](VIRAL.md))
+The shape of the piece ([VIRAL.md](VIRAL.md)); `cves inspire` (FEEL) measures it.
 
 | key | default | meaning |
 |---|---|---|
 | `structure.hook_change_s` | `1.5` | first visual change (pattern interrupt) by this time, s (RET-24); preset viral 1.0 |
+| `structure.first_cut_s` |  | first cut by this time, s |
+| `structure.first_text_s` |  | first on-screen text by this time, s |
 | `structure.loop` | `false` | the end flows back into the start for a seamless replay; RET-28 checks the seam (goal viral) |
 | `structure.payoff_window` | `0.2` | the payoff (a visual or audio peak) lands in this last fraction of the runtime (RET-29, goal viral) |
+| `structure.energy_arc` |  | picture + sound energy over the video: rising / peak_end / wave / flat / falling |
+| `structure.duration_s` |  | typical reference duration, s (the brief's platform.duration still rules) |
 
 #### `retention`
 
