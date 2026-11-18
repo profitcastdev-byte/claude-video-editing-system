@@ -114,7 +114,7 @@ def draw_cover(pr, S, img, title, out, avoid=()):
     G.apply_style(S); CV = S.get("delivery.cover") or {}
     im = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).convert("RGBA")
     if title:
-        W, H = im.size; k = W / G.W
+        W, H = im.size; k = min(W, H) / 1080            # px keys are at a 1080 short side, on any canvas (docs/FORMATS.md)
         short = {"medium": "m", "semibold": "sb", "bold": "b", "extrabold": "xb", "serif": "serif"}.get(CV.get("title_font", "extrabold"), "xb")
         f = G.font(short, int(CV.get("title_size", 104) * k))
         col = lambda v: STY.rgb((S.get("colors") or {}).get(v, v))
@@ -125,8 +125,8 @@ def draw_cover(pr, S, img, title, out, avoid=()):
             cur.append(w)
         if cur: lines.append(cur)
         lay = Image.new("RGBA", im.size, (0, 0, 0, 0)); d = ImageDraw.Draw(lay); y = int(CV.get("title_y", .16) * H); lh = int(f.size * 1.12)
-        sz = S.get("platform.safe_zone"); x0z, x1z = (sz[0] * k, sz[2] * k) if sz else (0, W)
-        top = (sz[1] * k) if sz else S.get("platform.margin", 60) * k; bh = lh * len(lines); gap = 24 * k
+        sz = G.safe_zone(S, (W, H)); x0z, x1z = (sz[0], sz[2]) if sz else (0, W)
+        top = sz[1] if sz else S.get("platform.margin", 60) * k; bh = lh * len(lines); gap = 24 * k
         av = sorted(a for a in avoid if a)       # never over the face or burned-in text: preferred y, else above / below each
         hit = lambda y_: any(y_ < b + gap and y_ + bh > a - gap for a, b in av)
         cands = [y] + [int(a - gap - bh) for a, _ in av] + [int(b + gap) for _, b in av]
@@ -225,7 +225,7 @@ def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, kee
                        "qc": {k: st[k] for k in ("fail", "warn", "pass", "sha256")},
                        "notes": {"caption_frames_cropped": len(nt["caption_cut"]), "face_frames_cropped_for_captions": len(nt["face_cut"]),
                                  "graphics_cropped": nt["gfx_cut"], "moving_crop_shots": nt["moving_shots"], "source": r["source_frames"],
-                                 "geometry": {"out": list(r["geometry"]["out"]), "crop_h": r["crop_h"], "fill": bool(r["geometry"]["wide"])}}}
+                                 "geometry": {"out": list(r["geometry"]["out"]), "crop_h": r["crop_h"], "axis": r["geometry"].get("axis", "y"), "fill": bool(r["geometry"]["wide"])}}}
                 if ok: shutil.copy2(r["file"], os.path.join(stage, os.path.basename(r["file"]))); ent["file"] = os.path.basename(r["file"])
                 else: ent["reason"] = "QC FAIL: " + "; ".join(f"{g} {m}" for g, s_, m, _ in R if s_ == "FAIL")
                 results.append(ent)

@@ -8,7 +8,7 @@ KIND = "end"
 def _el(): from . import El, faded; return El, faded
 
 def logo_end(t, p, ctx):
-    """p: logo, label, pill, width (640), y (700). Defaults are 1080x1920 px; on other canvases the block is centred in the safe zone"""
+    """p: logo, label, pill, width (640), y (700). Defaults are design px (G.DESIGN); on other canvases the block is centred in the safe zone"""
     El, faded = _el(); F = G.fps_of(ctx); Q = lambda v: G.q(v, F); t0 = ctx["start"]; res = []
     pp = ease_out(G.enter(t, t0 - .15, .45, F)); wpx = p.get("width", 640)
     z = G.safe(); dy = 0 if G.is_design() else ((z[1] + z[3]) / 2 - 950)        # the 700-1230 px block, centred in the safe zone

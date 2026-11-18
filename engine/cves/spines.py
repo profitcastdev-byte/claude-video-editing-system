@@ -49,8 +49,8 @@ def ref_of(x):
     """the source reference of a shot: asset id or path"""
     return x.get("asset") or x.get("src")
 
-def shots(E, fps, S=None):
-    """edit.yaml broll: -> normalised, frame-snapped shots (sorted by start)"""
+def shots(E, fps, S=None, pr=None):
+    """edit.yaml broll: -> normalised, frame-snapped shots (sorted by start). pr resolves asset ids (stills default to kenburns)"""
     out = []
     kb_default = (S.get("broll.ken_burns", None) if S is not None else None) or [1.0, 1.08]
     for j, x in enumerate(E.get("broll") or []):
@@ -59,7 +59,7 @@ def shots(E, fps, S=None):
         if not ref: raise SystemExit(f"broll[{j}]: needs src (a footage path) or asset (an asset id)")
         a, b = round(float(x["start"]) * fps) / fps, round(float(x["end"]) * fps) / fps
         if b <= a: raise SystemExit(f"broll[{j}]: end {x['end']} is not after start {x['start']} (after frame snapping)")
-        still = str(ref).lower().endswith(STILL_EXT)
+        still = str((_path(pr, ref) if pr is not None else None) or ref).lower().endswith(STILL_EXT)
         fr = x.get("framing") or ("kenburns" if still else ((S.get("broll.framing", "fill") if S is not None else "fill")))
         if fr not in FRAMINGS: raise SystemExit(f"broll[{j}].framing: '{fr}' is not one of {', '.join(FRAMINGS)}")
         kb = x.get("kenburns") or ({"zoom": kb_default} if fr == "kenburns" else None)

@@ -12,7 +12,8 @@ face-centre smoothing, snap) is re-derived from timeline.json + faces.json exact
 import os, re, json, math, collections
 import numpy as np, cv2
 
-W, H = 1080, 1920          # the canvas of the video being judged: run_extra sets them from timeline.json (element bboxes are canvas px)
+from ..gfx import DESIGN as _D
+W, H = _D                  # the canvas of the video being judged: run_extra sets them from timeline.json (element bboxes are canvas px)
 TRANS_DUR = {"whip": .15, "glitch": .10, "cut": 0}          # render.TRANS_DUR (unknown kinds use .12, as trans_strength)
 DECOR = ("brackets", ".glow", ".bed")                        # frame decoration / glow / shadow beds: not type, not movers
 DESCRIPTOR = {"map", "listing", "map pack", "logo"}          # `text` used as a label on graphic-only elements
@@ -533,7 +534,7 @@ def gates_motion(cx, gate):
     shots = {}
     try:
         from .. import spines as SP
-        shots = {f"broll.{x['id']}": x for x in SP.shots(cx.E, cx.FPS, cx.S)}
+        shots = {f"broll.{x['id']}": x for x in SP.shots(cx.E, cx.FPS, cx.S, cx.pr)}
     except (SystemExit, KeyError, ValueError, TypeError): pass
     b_warn, b_fail = [], []
     for i in mov:

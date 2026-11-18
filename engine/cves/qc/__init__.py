@@ -269,10 +269,13 @@ def write_stamp(pr, video, R, fast=False, out=None):
 def run_stage(pr, stage):
     """early gates that need no render. story: after `cves select` (voice + edl). plan: after edit.yaml is filled."""
     R = []
-    def gate(gid, ok, summary, details="", status=None): R.append((gid, status or ("PASS" if ok else "FAIL"), summary, details))
-    from .. import style as STY
+    def gate0(gid, ok, summary, details="", status=None): R.append((gid, status or ("PASS" if ok else "FAIL"), summary, details))
+    from .. import style as STY, spines as SP
+    gate = na_gate(gate0, SP.spine_of(pr.edit), True)
     S = STY.load(pr); G_ = S.get("grammar") or {}; Q = pr.edit.get("qc", {}) or {}; step_min = S.get("framing.min_step", 1.15)
-    if stage == "story":
+    if stage == "story" and not SP.has_voice(SP.spine_of(pr.edit)):
+        for g_ in ("CUT-02", "CUT-03", "STORY-01"): gate(g_, True, f"not applicable: the {SP.spine_of(pr.edit)} spine has no story voice", status="N/A")
+    elif stage == "story":
         g = AG.gaps(pr.e("voice_final.wav")); gate("CUT-02", not g, f"{len(g)} gaps > 0.25 s", "\n".join(f"gap at {a:.2f}s {b:.2f}s" for a, b in g))
         st = AG.stutters(pr); gate("CUT-03", not st, f"{len(pr.json('edl.json')['segments'])} kept segments checked verbatim", "\n".join(st))
         tail = Q.get("brand_tail", [])
@@ -320,7 +323,7 @@ def run_stage(pr, stage):
         big = [k for k, z in TL.zoom.items() if z >= 1.4] + (["snap"] if TL.snap and TL.snap[2] >= 1.4 else [])
         xm = S.get("framing.extreme_max", 1); gate("FRAME-09", len(big) <= xm, f"{len(big)} extreme punch-in(s) (max {xm})")
         rm = G_.get("roto_max", 4); gate("GFX-25", len(TL.roto) <= rm, f"{len(TL.roto)} roto moments (max {rm})")
-        share = sum(c["end"] - c["start"] for c in TL.cuts) / max(TL.T_END, 1e-6); band = G_.get("cutaway_share")
+        share = sum(c["end"] - c["start"] for c in TL.cuts) / max(TL.T_END, 1e-6); band = G_.get("cutaway_share")   # B-roll over A-roll is a cutaway too
         if band: gate("RET-22", band[0] <= share <= band[1], f"cutaway share {share:.0%} of the body (style {band[0]:.0%}-{band[1]:.0%})")
         else: gate("RET-22", True, f"cutaway share {share:.0%} (style sets no band)")
         cut_t = sorted([(c["start"], c["end"]) for c in TL.cuts]); longest, last = 0, 0.0
@@ -331,10 +334,10 @@ def run_stage(pr, stage):
             for k, v in (c.get("params") or {}).items():
                 if k.endswith("_at") and isinstance(v, (int, float)) and v < c["start"] - .3: early.append(f"{c['id']}.{k} {v} < cutaway start {c['start']:.2f}")
         gate("GFX-01", not early, "no element keyed before its cutaway starts", "\n".join(early), status=None if not early else "WARN")
-    order = {"FAIL": 0, "WARN": 1, "PASS": 2}; R.sort(key=lambda x: (order.get(x[1], 3), x[0]))
+    order = {"FAIL": 0, "WARN": 1, "PASS": 2, "N/A": 3}; R.sort(key=lambda x: (order.get(x[1], 4), x[0]))
     nf = sum(r[1] == "FAIL" for r in R)
-    lines = [f"QC ({stage} stage)  {nf} FAIL  {sum(r[1] == 'WARN' for r in R)} WARN  {sum(r[1] == 'PASS' for r in R)} PASS", ""]
+    lines = [f"QC ({stage} stage)  {nf} FAIL  {sum(r[1] == 'WARN' for r in R)} WARN  {sum(r[1] == 'PASS' for r in R)} PASS  {sum(r[1] == 'N/A' for r in R)} N/A", ""]
     for gid, st_, summ, det_ in R:
         lines.append(f"[{st_:4s}] {gid:10s} {summ}")
-        if st_ != "PASS" and det_: lines += ["             " + l for l in det_.splitlines() if l.strip()]
+        if st_ not in ("PASS", "N/A") and det_: lines += ["             " + l for l in det_.splitlines() if l.strip()]
     return nf, "\n".join(lines)

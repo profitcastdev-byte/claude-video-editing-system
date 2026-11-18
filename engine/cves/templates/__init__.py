@@ -88,7 +88,7 @@ def _call_in(size, fn, t, p, ctx):
     finally: G.set_canvas(W0, H0)
 
 def _fit_for(name, fn, p, ctx):
-    """(a, ox, oy) mapping a fixed 1080x1920 template instance onto the canvas safe zone (cached per instance)"""
+    """(a, ox, oy) mapping a fixed-layout (G.DESIGN) template instance onto the canvas safe zone (cached per instance)"""
     import json
     try: key = (name, json.dumps(p, sort_keys=True, default=str), round(ctx.get("start", 0), 4), round(ctx.get("end", 0), 4), G.W, G.H)
     except (TypeError, ValueError): key = (name, id(p), G.W, G.H)

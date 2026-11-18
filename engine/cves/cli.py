@@ -21,7 +21,10 @@
   cves deliver [--variants 4:5,1:1,cut15] [--only master] [--force-unchecked]   QC-stamped Export/vNNN/ (docs/DELIVERY.md)
   cves export resolve [--push] | kdenlive | all          control mode: layered media + layers.json + Resolve / Kdenlive project
   cves music search|download|generate|credit ...        Openverse (licence-checked, credits logged) + ElevenLabs/Magnific hand-off
-  cves doctor                                           check tools, models, GPU backend, fonts"""
+  cves doctor                                           check tools, models, GPU backend, fonts
+  -- formats + spines (docs/FORMATS.md) --
+  cves ingest                                           on a voiceover spine: tighten + transcribe the VO; music / broll: edl.json (rate, canvas)
+  cves autocut [--every beats|downbeats|bars] [--bars 2] [--min-shot S] [--folder Raw] [--apply]   a broll: track cut on the music grid"""
 import argparse, os, sys, json, subprocess
 
 def _project(a):
@@ -55,6 +58,15 @@ def main(argv=None):
     vl = sp.add_parser("validate", help="[PROJECT]: check edit.yaml, selects.yaml and style keys (types, templates, times, ids, paths)"); vl.add_argument("dir", nargs="?"); vl.add_argument("--json", action="store_true")
     isp = sp.add_parser("inspire", help="[PROJECT] [--refs DIR] [--dry-run]: measure reference edits -> Edit/style.yaml (docs/STYLE.md)"); isp.add_argument("dir", nargs="?"); isp.add_argument("--refs"); isp.add_argument("--dry-run", action="store_true"); isp.add_argument("--max-s", type=float, default=90, help="seconds analysed per reference video")
     asx = sp.add_parser("assets", help="add | list | check | todo | resolve (media assets + provenance, docs/MEDIA.md)", add_help=False); asx.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- formats + spines (WS C, docs/FORMATS.md) ----
+    ac = sp.add_parser("autocut", help="[PROJECT]: propose a broll: track whose cuts land on the music grid (Edit/beats.json)")
+    ac.add_argument("dir", nargs="?"); ac.add_argument("--every", choices=["beats", "downbeats", "bars"], help="grid (default: style autocut.every)")
+    ac.add_argument("--bars", type=int, help="with --every bars: cut every N bars (default: style autocut.bars)")
+    ac.add_argument("--min-shot", type=float, help="skip grid points closer than this to the previous cut (s; default: style autocut.min_shot_s)")
+    ac.add_argument("--folder", default="Raw", help="clips to cycle through (project-relative, default Raw)")
+    ac.add_argument("--apply", action="store_true", help="write the track into edit.yaml broll: (backup kept); else print it")
+    ac.add_argument("--json", action="store_true")
+    # ---- end formats + spines ----
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
         if a.cmd in ("doctor", "music", "export", "assets"): a.rest = list(getattr(a, "rest", [])) + extra
@@ -78,7 +90,7 @@ def main(argv=None):
         from .export.__main__ import main as xmain; sys.exit(xmain(["selftest"] + list(a.rest)))
     if a.cmd == "beats" and a.dir: a.project = a.dir
     if a.cmd == "control" and a.dir: a.project = a.dir
-    if a.cmd in ("validate", "inspire") and a.dir: a.project = a.dir
+    if a.cmd in ("validate", "inspire", "autocut") and a.dir: a.project = a.dir
     if a.cmd == "import-edits" and len(a.paths) > 1: a.project = a.paths[0]
     pr = _project(a)
     if a.cmd == "control":       # control mode: re-render named layers in Export/control + refresh layers.json
@@ -95,6 +107,26 @@ def main(argv=None):
         from . import inspire; inspire.run(pr, refs=a.refs, dry_run=a.dry_run, max_s=a.max_s); return
     if a.cmd == "beats":
         from . import beats; sys.exit(beats.report(pr, a.sync, a.apply, a.file, a.json, a.refresh))
+    # ---- formats + spines (WS C, docs/FORMATS.md) ----
+    if a.cmd in ("ingest", "select", "prep"):
+        from . import spines as SP
+        sp_ = SP.spine_of(pr.edit)
+        if sp_ != "aroll":
+            if a.cmd != "ingest": raise SystemExit(f"`cves {a.cmd}` is for A-roll: the {sp_} spine needs only `cves ingest`")
+            print(json.dumps(SP.ingest_spine(pr), indent=1)); return
+    if a.cmd == "autocut":
+        from . import spines as SP, style as STY
+        S_ = STY.load(pr)
+        track, info = SP.autocut(pr, every=a.every or S_.get("autocut.every", "downbeats"), min_shot=a.min_shot if a.min_shot is not None else S_.get("autocut.min_shot_s"),
+                                 folder=a.folder, bars=a.bars or S_.get("autocut.bars", 2))
+        if a.apply: SP.write_broll(pr, track)
+        if a.json: print(json.dumps({"broll": track, "info": info}, indent=1))
+        else:
+            import yaml
+            print(yaml.safe_dump({"broll": track}, sort_keys=False).rstrip())
+            print(f"# {info['shots']} shots on {info['every']} ({info['grid']} grid points, min shot {info['min_shot']} s)" + (" -> written to edit.yaml" if a.apply else " (--apply writes it to edit.yaml)"))
+        return
+    # ---- end formats + spines ----
     if a.cmd == "ingest":
         from . import ingest; ingest.run_all(pr, a.steps.split(",")); print(f"read {pr.e('raw_transcript.txt')} and write {pr.e('selects.yaml')}")
     elif a.cmd == "select":

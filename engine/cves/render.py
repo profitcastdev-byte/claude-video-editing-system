@@ -47,7 +47,7 @@ class Timeline:
             raise SystemExit(f"the canvas is {self.size[0]}x{self.size[1]} (style canvas.size) but the plates were made at {edl['size'][0]}x{edl['size'][1]}: "
                              "re-run `cves select` + `cves prep` (or set canvas.size back)")
         fr = edl.get("fps_rational"); self.fps_rational = tuple(fr) if fr else (Fraction(self.FPS).limit_denominator(1001).numerator, Fraction(self.FPS).limit_denominator(1001).denominator)
-        self.broll = SP.shots(E, self.FPS, self.S)                           # the broll: track, frame-snapped
+        self.broll = SP.shots(E, self.FPS, self.S, pr)                       # the broll: track, frame-snapped
         self.segs = []; f0 = 0
         if self.aroll:
             for s in edl["segments"]:
@@ -349,8 +349,12 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
             sc = 1 + TL.S.get('motion.drift', .025) * clamp((t - cut["start"]) / 6); M = affine(sc, G.W / 2, G.H * .46875, False); img = warp(img, M)
         if mode in ("overlay", "chest"): img = None
         if cut.get("broll") and mode in ("final", "overlay"): img, els = _caption_front(TL, t, img, els)
-    elif s is not None and s.get("kind") in ("broll", "gap"):              # non-aroll timeline: a frame no shot covers
-        img = G.stage().copy() if mode not in ("overlay", "chest") else None
+    elif s is not None and s.get("kind") in ("broll", "gap"):              # non-aroll timeline: a frame no shot covers, or the
+        img = G.stage().copy() if mode not in ("overlay", "chest") else None    # V1 picture pass (mode aroll) of a B-roll shot
+        sh = next((c for c in TL.cuts if c.get("broll") and c["id"] == s["id"]), None) if mode == "aroll" and s.get("kind") == "broll" else None
+        if sh is not None:
+            els = TPL.get(sh["template"])[0](t, sh.get("params", {}), TL.ctx(sh["start"], sh["end"]))
+            for el in els: img = G.over(img, el.im)
         if mode in ("final", "overlay"): img, els = _caption_front(TL, t, img, els)
     else:
         sid = s["id"]; f = TL.faces[sid][min(k, len(TL.faces[sid]) - 1)]
