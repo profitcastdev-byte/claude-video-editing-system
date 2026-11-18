@@ -5,9 +5,9 @@
   </div>
 </div>
 <style>
-  .st { width: min(100%, calc(var(--u) * 84)); text-align: left; font-size: var(--t-4); }
+  .st { width: min(100%, calc(var(--u) * 84)); text-align: left; font-size: var(--t-5); }
   #tt { font-size: var(--t-5); margin-bottom: var(--s-4); }
-  .track { position: relative; display: flex; flex-direction: column; gap: calc(var(--u) * 5); }
+  .track { position: relative; display: flex; flex-direction: column; gap: calc(var(--u) * 7); }
   .line { position: absolute; left: calc(var(--u) * 3.6); top: calc(var(--u) * 3.6); bottom: calc(var(--u) * 3.6); width: calc(var(--u) * 0.5); margin-left: calc(var(--u) * -0.25);
           background: rgb(var(--text-rgb) / 0.14); border-radius: 99px; }
   .lf { position: absolute; inset: 0; background: var(--accent); border-radius: 99px; transform-origin: top center; box-shadow: 0 0 calc(var(--u) * 1.6) rgb(var(--accent-rgb) / 0.6); }
@@ -19,7 +19,7 @@
   .lab b { font-weight: 700; line-height: 1.1; }
   .lab small { font-size: 0.6em; font-weight: 500; color: var(--muted); }
   @media (min-aspect-ratio: 1/1) {
-    .st { width: min(100%, calc(var(--u) * 160)); }
+    .st { width: min(100%, calc(var(--u) * 160)); font-size: var(--t-4); }
     .track { flex-direction: row; gap: 0; justify-content: space-between; }
     .step { flex-direction: column; align-items: center; text-align: center; flex: 1; gap: calc(var(--u) * 2.4); }
     .lab { align-items: center; }

@@ -118,7 +118,25 @@ music:                        # beat sync + music fit (docs/MUSIC.md); edit.yaml
   min_aroll_s: 0.5            # a moved cutaway edge never leaves an A-roll piece shorter than this
   sfx_snap: [whoosh, hit, boom, riser]   # full mode: cues whose name contains one of these are nudged to the beat
   sfx_snap_max_f: 1           # full mode: max nudge in frames (SND-07 keeps every SFX within 1 frame of its picture event)
-motion: {entry_s: 0.28, overshoot: 1.6, slide_px: 50, stagger_s: 0.12, drift: 0.025}
+motion:
+  entry_s: 0.28                # graphic entry duration, s (PIL templates)
+  overshoot: 1.6               # back-ease overshoot of entries (motion pieces scale it by energy)
+  slide_px: 50                 # entry slide distance px
+  stagger_s: 0.12              # delay between items of a list, s
+  drift: 0.025                 # slow push on cutaway stages (fraction over 6 s)
+  # ---- HTML motion pieces (m_* templates, docs/MOTION.md)
+  ease: expo                   # house curve family: cubic | quint | expo (entries decelerate, exits accelerate)
+  energy: 0.5                  # 0 calm .. 1 punchy: scales every piece duration (x1.3 .. x0.7) and the overshoot
+  blur_on_fast: true           # fake motion blur (CSS blur) on frames where an element moves fast
+  blur_max_u: 1.6              # cap of that blur, in u (1 % of the shorter canvas side)
+  shutter: 0.5                 # simulated shutter, fraction of a frame (0.5 = 180 degrees): blur length per speed
+  exit_s: 0.32                 # exit animation length when a piece leaves on its own (overlays on A-roll)
+  type_ratio: 1.25             # modular type scale ratio of the --t-0 .. --t-9 CSS sizes
+  radius_u: 2.6                # corner radius of cards, in u
+  glass_alpha: 0.72            # opacity of the card colour under "glass" surfaces
+  safe: null                   # [x0, y0, x1, y1] canvas fractions pieces stay inside; null = platform.safe_zone when its aspect matches the canvas
+  safe_fallback: [0.06, 0.07, 0.94, 0.93]   # safe fractions when platform.safe_zone does not fit the canvas aspect
+  hero_min_gap_s: 8.0          # render warns when two hero pieces start closer than this (restraint: one hero moment per ~8-10 s)
 delivery:                     # `cves encode` / `cves deliver` (docs/DELIVERY.md). Encoder settings for every delivered file
   video: {codec: libx264, crf: 16, preset: slow, profile: high, pix_fmt: yuv420p, tune: null, x264_params: null}   # no tune=film (DEL-05)
   audio: {codec: aac, sample_rate: 48000, bitrate: 256k}

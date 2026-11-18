@@ -112,6 +112,8 @@ fi
 "$UV" pip install --python "$CVES/venv/bin/python" -r "$REPO/setup/requirements.txt"
 "$UV" pip install --python "$CVES/venv/bin/python" -e "$REPO/engine"
 "$CVES/venv/bin/python" -c 'import torch; print("    torch", torch.__version__, "MPS available:", torch.backends.mps.is_available())'
+# motion layer: the Chromium build Playwright drives (idempotent: an installed build is skipped)
+"$CVES/venv/bin/python" -m playwright install chromium && ok "Chromium for motion pieces (playwright)"
 ln -sfn "$CVES/venv/bin/cves" "$CVES/bin/cves" 2>/dev/null || true
 
 # ---- 4. voice venv (Python 3.11, deepfilternet) ----------------------------------------------------

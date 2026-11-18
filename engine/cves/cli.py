@@ -21,7 +21,8 @@
   cves deliver [--variants 4:5,1:1,cut15] [--only master] [--force-unchecked]   QC-stamped Export/vNNN/ (docs/DELIVERY.md)
   cves export resolve [--push] | kdenlive | all          control mode: layered media + layers.json + Resolve / Kdenlive project
   cves music search|download|generate|credit ...        Openverse (licence-checked, credits logged) + ElevenLabs/Magnific hand-off
-  cves doctor                                           check tools, models, GPU backend, fonts"""
+  cves doctor                                           check tools, models, GPU backend, fonts
+  cves motion list | preview <piece> [--params JSON] [--size WxH] [--out f.png|f.mp4]   HTML motion pieces (docs/MOTION.md)"""
 import argparse, os, sys, json, subprocess
 
 def _project(a):
@@ -54,10 +55,13 @@ def main(argv=None):
     dr = sp.add_parser("doctor"); dr.add_argument("rest", nargs=argparse.REMAINDER); sp.add_parser("templates")
     vl = sp.add_parser("validate", help="[PROJECT]: check edit.yaml, selects.yaml and style keys (types, templates, times, ids, paths)"); vl.add_argument("dir", nargs="?"); vl.add_argument("--json", action="store_true")
     isp = sp.add_parser("inspire", help="[PROJECT] [--refs DIR] [--dry-run]: measure reference edits -> Edit/style.yaml (docs/STYLE.md)"); isp.add_argument("dir", nargs="?"); isp.add_argument("--refs"); isp.add_argument("--dry-run", action="store_true"); isp.add_argument("--max-s", type=float, default=90, help="seconds analysed per reference video")
+    # ---- motion layer (WS A, docs/MOTION.md): list / preview HTML motion pieces; no project needed
+    mo = sp.add_parser("motion", help="list | preview <piece> (HTML motion pieces, docs/MOTION.md)", add_help=False); mo.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- end motion layer
     asx = sp.add_parser("assets", help="add | list | check | todo | resolve (media assets + provenance, docs/MEDIA.md)", add_help=False); asx.add_argument("rest", nargs=argparse.REMAINDER)
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
-        if a.cmd in ("doctor", "music", "export", "assets"): a.rest = list(getattr(a, "rest", [])) + extra
+        if a.cmd in ("doctor", "music", "export", "assets", "motion"): a.rest = list(getattr(a, "rest", [])) + extra
         else: ap.error("unrecognized arguments: " + " ".join(extra))
 
     if a.cmd == "new":
@@ -72,6 +76,8 @@ def main(argv=None):
         return
     if a.cmd == "assets":    # media registry: copy into Assets/, provenance in Edit/assets.json
         from . import assets; sys.exit(assets.main(a.rest, a.project))
+    if a.cmd == "motion":    # motion layer (WS A): `cves motion list | preview ...`; --project picks the style + Brand/motion
+        from . import motion; sys.exit(motion.main(list(a.rest) + (["--project", a.project] if a.project and a.rest and a.rest[0] == "preview" else [])))
     if a.cmd == "music":     # Openverse search/download (licence-checked, credits logged); ElevenLabs / Magnific hand-off
         from . import music; sys.exit(music.main(a.rest))
     if a.cmd == "export" and a.target == "selftest":     # synthetic layers, no project needed

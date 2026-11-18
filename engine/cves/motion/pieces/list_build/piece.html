@@ -34,7 +34,7 @@
         let path = null;
         if (state === 'check' || state === 'cross') path = C.svg(mk, state === 'check' ? C.CHECK : C.CROSS).querySelector('path');
         else if (state === 'number') mk.textContent = String(i + 1);
-        if (state === 'cross') r.classList.add('cross');
+        if (state === 'cross' && items.some((y) => (y.state || P.mark || 'check') !== 'cross')) r.classList.add('cross');   // mute crosses only beside checks
         const tx = C.el('div', 'txt', r); const b = C.el('b', '', tx, C.plain(it.text)); r.dataset.text = C.plain(it.text) + (it.sub ? ' ' + C.plain(it.sub) : '');
         if (it.sub) C.el('small', '', tx, C.plain(it.sub));
         rows.push({ r, mk, path, at: typeof it.at === 'number' ? it.at : t0 + i * st });

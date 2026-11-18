@@ -338,6 +338,23 @@ beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these pe
 | `motion.stagger_s` | `0.12` | delay between items of a list, s |
 | `motion.drift` | `0.025` | slow push on cutaway stages (fraction over 6 s) |
 
+The keys below drive the HTML motion pieces (`m_*` templates, [MOTION.md](MOTION.md)); pieces receive them as `CVES.motion` and as CSS variables.
+
+| key | default | meaning |
+|---|---|---|
+| `motion.ease` | `expo` | house curve family (`cubic` / `quint` / `expo`): entries decelerate on it, exits accelerate, moves do both |
+| `motion.energy` | `0.5` | 0 calm .. 1 punchy: scales every choreography duration (x1.3 .. x0.7) and the overshoot (x0.4 .. x1.6) |
+| `motion.blur_on_fast` | `true` | fake motion blur (a CSS blur) on frames where an element moves fast |
+| `motion.blur_max_u` | `1.6` | cap of that blur, in u (1 % of the shorter canvas side) |
+| `motion.shutter` | `0.5` | simulated shutter as a fraction of a frame (0.5 = 180°): how long the blur is for a given speed |
+| `motion.exit_s` | `0.32` | exit animation length when a piece leaves on its own (overlays on A-roll; cutaways cut out) |
+| `motion.type_ratio` | `1.25` | ratio of the modular type scale `--t-0` .. `--t-9` (`--t-0` = 2.2 u) |
+| `motion.radius_u` | `2.6` | card corner radius, in u (`--r`) |
+| `motion.glass_alpha` | `0.72` | opacity of the card colour under `.glass` surfaces (`--glass-alpha`) |
+| `motion.safe` | `null` | `[x0, y0, x1, y1]` canvas fractions pieces stay inside; `null` = `platform.safe_zone` when its design space has the canvas's aspect |
+| `motion.safe_fallback` | `[0.06, 0.07, 0.94, 0.93]` | safe fractions used when `platform.safe_zone` does not fit the canvas aspect (e.g. a 16:9 render with a 9:16 safe zone) |
+| `motion.hero_min_gap_s` | `8.0` | `cves render` warns when two hero pieces (meta `hero: true`) start closer than this: restraint, one hero moment per ~8-10 s |
+
 #### `delivery`
 
 `cves encode` / `cves deliver` (docs/DELIVERY.md). Encoder settings for every delivered file

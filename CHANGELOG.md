@@ -3,6 +3,16 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Added
+- **Motion layer** (docs/MOTION.md, WS A of v0.3): HTML/CSS motion pieces rendered by headless Chromium (Playwright 1.58.0) to RGBA frames, driven only by `window.__seek(t)` (deterministic: no wall clock). Our own JS runtime (`engine/cves/motion/runtime.js`: easing incl. back / elastic / spring, tween, stagger, word split, timeline, fake motion blur); no third-party JS. Colours, fonts (assets/fonts via `@font-face`, Noto fallbacks for Indic scripts), the type scale, motion tokens and the safe zone come from the style as CSS variables. Frames are cached per (html, runtime, params, style subset, size, fps, duration) in `PROJECT/Edit/motion/<hash>/`; `render.render()` pre-renders every motion piece once before its worker pool starts.
+- **15 motion templates** `m_kinetic_title`, `m_glass_card`, `m_stat_counter`, `m_list_build`, `m_lower_third`, `m_quote`, `m_highlight_words`, `m_progress`, `m_callout`, `m_logo_sting`, `m_split_reveal`, `m_compare`, `m_steps`, `m_chart_bars`, `m_cta` (+ `_roto` / `_end` variants where sensible). Usable as full-screen cutaways or as overlays over A-roll (`chest:`, logged with role `chest` so every chest gate applies, with their own exit animation); any aspect ratio. Each logs one element with a stable id, its visible text per frame and its own SFX cues.
+- **User motion pieces:** folders with `piece.html` + `meta.yaml` in `~/.cves/motion/` and `PROJECT/Brand/motion/` become `m_<name>` templates.
+- **`cves motion list | preview <piece> [--params JSON] [--size WxH] [--out f.png|f.mp4] [--at t]`:** contact sheet, one frame or a clip.
+- **Style keys** `motion.ease`, `energy`, `blur_on_fast`, `blur_max_u`, `shutter`, `exit_s`, `type_ratio`, `radius_u`, `glass_alpha`, `safe`, `safe_fallback`, `hero_min_gap_s` (render warns when two hero pieces sit closer than this).
+- **Install:** `playwright==1.58.0` in requirements.txt and the `motion` extra; both installers run `python -m playwright install chromium`; `cves doctor` checks Playwright and Chromium; CI installs them (`--with-deps` on Ubuntu). A missing Chromium is a one-line SystemExit with the install command.
+
 ## [0.2.0] - 2026-11-18
 The engine becomes a general autonomous editor: no look, client or footage format is hard-coded.
 
