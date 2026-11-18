@@ -19,10 +19,15 @@ in the [key reference](#key-reference) below.
 | # | layer | written by | typical content |
 |---|---|---|---|
 | 1 | `engine/cves/styles/default.yaml` | the engine | neutral defaults, no brand, no house look |
+| 1b | `engine/cves/styles/viral.yaml`, only when `edit.yaml goal: viral` | the engine | retention-first defaults for organic posts ([VIRAL.md](VIRAL.md)); `_sources` shows `goal:viral` |
 | 2 | `engine/cves/styles/<preset>.yaml`, named by `edit.yaml style: {preset: <name>}` | a person | a reusable house look, e.g. `profitcast-dark` |
 | 3 | `PROJECT/Edit/style.yaml` | `cves inspire` | the look measured from the client's reference edits, with `_evidence` |
 | 4 | `PROJECT/Brand/style.yaml` | the client / a person | brand tokens: logo colours, fonts |
 | 5 | `edit.yaml style:` (keys other than `preset`) | Claude / a person | per-video overrides |
+
+After the merge, `platform.target` fills `platform.safe_zone` (pixels of `platform.size`), `sound.master_lufs` and
+`sound.true_peak` from [platforms.yaml](../engine/cves/styles/platforms.yaml) unless a layer above `default.yaml` sets them.
+QC recomputes the zone from the profile's fractions on the real frame size.
 
 `S["_sources"]` lists the layers that were found, e.g. `["default", "preset:profitcast-dark", "inspire", "edit.yaml"]`.
 Keys that start with `_` (`_evidence`, `_inspire`) are notes: the engine never reads them.
@@ -106,6 +111,11 @@ graphics gets gates that match:
 | `sound.master_lufs`, `sound.true_peak` | SND-01, SND-02 |
 | `sound.bed_lu` (or `edit.yaml music.bed_lu`) | SND-04 music + SFX bed vs voice |
 | `platform.size`, `platform.safe_zone`, `platform.margin`, `platform.duration` | DEL-01, PLAT-01/02, DEL-04 |
+| `platform.target` (styles/platforms.yaml) | PLAT-02 safe zone and caption line, RET-30 duration band, SND-01/02 loudness |
+| `structure.hook_change_s`, `retention.hook_subject_s` | RET-24 hook change, RET-25 hook text / subject (viral) |
+| `rhythm.interrupt_max_s`, `rhythm.interrupt_min_s`, `retention.soup_window_s` | RET-26 interrupt gap, RET-27 effect soup |
+| `structure.loop`, `structure.payoff_window` | RET-28 loop seam, RET-29 payoff (viral) |
+| `retention.dead_air_*`, `retention.guide_on_beat_min`, `rhythm.cut_on_beat` | RET-31 dead air, RET-32 cuts on the guide / music beat |
 | `captions.*` (style, size, color, shadow, case, highlight_color) | PLAT-10 caption style |
 | `legibility.*` | GFX-15 text contrast |
 
@@ -149,6 +159,7 @@ Generated from `engine/cves/styles/default.yaml` (comments there are the source 
 | `platform.safe_zone` | `[65, 269, 1015, 1248]` | x0 y0 x1 y1 kept free of platform UI (Meta Reels norm); null to disable |
 | `platform.margin` | `60` | px kept clear at every frame edge for text (PLAT-01) |
 | `platform.duration` | `[15, 90]` | seconds the brief allows |
+| `platform.target` |  | reels / tiktok / shorts / youtube / meta_feed / meta_stories ([platforms.yaml](../engine/cves/styles/platforms.yaml), [VIRAL.md](VIRAL.md)): the platform's UI safe zone as fractions of the frame (PLAT-02), its caption line, duration band (RET-30) and loudness. With a target, `platform.safe_zone`, `sound.master_lufs` and `sound.true_peak` come from the profile unless a style layer sets them; null = the `platform.safe_zone` box above, scaled from `platform.size` to the real frame |
 
 #### `stage`
 
@@ -327,6 +338,43 @@ beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these pe
 | `music.min_aroll_s` | `0.5` | a moved cutaway edge never leaves an A-roll piece shorter than this |
 | `music.sfx_snap` | `["whoosh", "hit", "boom", "riser"]` | full mode: cues whose name contains one of these are nudged to the beat |
 | `music.sfx_snap_max_f` | `1` | full mode: max nudge in frames (SND-07 keeps every SFX within 1 frame of its picture event) |
+
+#### `rhythm`
+
+pattern-interrupt pacing (RET-26 / RET-27 / RET-32); `cves inspire` measures these from references
+
+| key | default | meaning |
+|---|---|---|
+| `rhythm.interrupt_max_s` | `4.0` | longest gap between pattern interrupts (A-roll cut and zoom step, cutaway in/out, transition, graphic entry, picture change), s (RET-26); preset viral 2.5 |
+| `rhythm.interrupt_min_s` | `0.3` | interrupts closer than this, sustained for `retention.soup_window_s`, read as effect soup (RET-27); preset viral 0.25 |
+| `rhythm.cut_on_beat` | `false` | cut points sit on the music or guide beat; RET-32 reports the share on the beat (preset viral: true) |
+
+#### `structure`
+
+the shape of the piece ([VIRAL.md](VIRAL.md))
+
+| key | default | meaning |
+|---|---|---|
+| `structure.hook_change_s` | `1.5` | first visual change (pattern interrupt) by this time, s (RET-24); preset viral 1.0 |
+| `structure.loop` | `false` | the end flows back into the start for a seamless replay; RET-28 checks the seam (goal viral) |
+| `structure.payoff_window` | `0.2` | the payoff (a visual or audio peak) lands in this last fraction of the runtime (RET-29, goal viral) |
+
+#### `retention`
+
+measurement settings of the retention gates RET-24 to RET-32 ([QC-GATES.md](../knowledge-base/QC-GATES.md))
+
+| key | default | meaning |
+|---|---|---|
+| `retention.hook_subject_s` | `1.0` | goal viral: on-screen text or a strong subject (face / high-contrast centre) by this time, s (RET-25) |
+| `retention.soup_window_s` | `1.5` | RET-27: a run of interrupt gaps under `rhythm.interrupt_min_s` longer than this is effect soup, s |
+| `retention.merge_s` | `0.05` | events this close count as one interrupt (one graphic entering with its parts), s |
+| `retention.scene_diff` | `12.0` | mean abs luma step (0-255, on a 96 px wide decode) that counts as a picture change in the master |
+| `retention.loop_seam_s` | `0.3` | RET-28: span compared at each end of the video, s |
+| `retention.loop_min_similarity` | `0.6` | RET-28: SSIM of the last span vs the first span (0..1) a seamless loop reaches |
+| `retention.payoff_rise_db` | `3.0` | RET-29: an audio peak this much above the body median counts as a payoff, dB |
+| `retention.dead_air_s` | `0.6` | RET-31: longest stretch with no speech, music or SFX, s (FAIL for goal viral, WARN for ads) |
+| `retention.dead_air_db` | `-45` | RET-31: a 50 ms window of the master quieter than this (dBFS) is silent |
+| `retention.guide_on_beat_min` | `0.6` | RET-32: share of cuts within `music.snap_tolerance_s` of a beat (music guide / slot: platform) |
 
 #### `motion`
 

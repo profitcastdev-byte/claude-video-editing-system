@@ -1,5 +1,7 @@
 """Mix: voice_final + music (placed and fitted by beats.plan, frequency-split ducking with look-ahead) + SFX (template cues + extras)
 -> Edit/mix_premaster.wav, Edit/mix.wav (style sound.master_lufs / sound.true_peak; default -14 LUFS, <= -1 dBTP) and stems (Edit/stems/voice|music|sfx.wav).
+`music.slot: platform` (organic posts, cves.guide): no music in the mix at all; the guide the edit is cut to is written as
+Edit/stems/guide.wav instead (never mixed in).
 Levels come from the style (`sound.*`); music placement / fit / beat sync from `music.*` (docs/MUSIC.md).
 Cue post-pass (all_cues): transition whooshes are placed by their measured PEAK on the cut (SND-08), identical back-to-back
 repeats get a deterministic pitch / gain variation (SND-09), and in `music.sync: full` transition-type cues are nudged so
@@ -127,7 +129,10 @@ def mix(pr):
     M = TL.E.get("music") or {}; mus = np.zeros((N, 2), np.float32); SND = TL.S.get("sound") or {}
     bed_lu = M.get("bed_lu", SND.get("bed_lu", -10)); tmp = tempfile.mkdtemp(prefix="cves_mix_")
     TV, TM, TB = (os.path.join(tmp, f"{k}.wav") for k in "vmb")
-    P = BT.plan(pr, TL) if M.get("file") else None
+    from . import guide as GD
+    slot = GD.is_slot(pr)          # music.slot: platform -> the master carries no music (the poster adds the sound in-app)
+    if slot and M.get("file"): raise SystemExit("music.slot: platform delivers no music: remove music.file (put the reference track in music.guide)")
+    P = BT.plan(pr, TL) if M.get("file") and not slot else None
     if P:
         y, legacy_fade = _music(pr, TL, P, N, T)
         sf.write(TV, vo, SR); sf.write(TM, y, SR)
@@ -156,7 +161,7 @@ def mix(pr):
         y = cache[key]; g = gain if kw.get("reveal") else gain + SND.get("sfx_offset_db", -3); i = int(round(t * SR)); j = min(N, i + len(y))
         if i < 0: y, i = y[-i:], 0                      # a cue placed before 0 keeps its peak where it belongs
         if i < N: sfx[i:j] += y[:j - i] * db(g)
-    if M.get("file"):     # measure the real bed (music + SFX) vs voice and correct the music gain: no guessed compensation
+    if P:                 # measure the real bed (music + SFX) vs voice and correct the music gain: no guessed compensation
         sf.write(TV, vo, SR)
         for _ in range(3):
             sf.write(TB, mus.mean(1) + sfx, SR); err = music_target - (lufs(TB) - lufs(TV))
@@ -168,6 +173,14 @@ def mix(pr):
     pk = max(1., np.abs(mixd).max() * 1.05); sf.write(pr.e("mix_premaster.wav"), mixd / pk, SR)
     for st in ("voice", "music", "sfx"):     # stems at the same scale as the premaster (for control-mode faders)
         y, _ = sf.read(pr.e("stems", f"{st}.wav")); sf.write(pr.e("stems", f"{st}.wav"), y / pk, SR)
+    gi = None
+    if os.path.exists(pr.e("stems", "guide.wav")): os.remove(pr.e("stems", "guide.wav"))
+    if slot:
+        gy, g = GD.stem(pr, N, SR, TL.S, TL)
+        if gy is None: raise SystemExit("music.slot: platform: " + ("; ".join(GD.problems(pr)) or "no guide grid"))
+        sf.write(pr.e("stems", "guide.wav"), gy, SR)
+        gi = {"slot": "platform", "kind": g["kind"], "tempo": g.get("tempo"), "offset_s": g.get("offset"), "drop_cut": g.get("drop_cut"),
+              "beats": len(g["beats"]), "sound": g["spec"].get("sound"), "notes": g.get("notes", [])}
     shutil.rmtree(tmp, ignore_errors=True)
     target = SND.get("master_lufs", -14); lim = SND.get("true_peak", -1.0) - 1.0      # limiter ceiling 1 dB under the TP target (inter-sample headroom)
     g = target - lufs(pr.e("mix_premaster.wav"))
@@ -179,6 +192,7 @@ def mix(pr):
         g += err
     info = {"master_gain_db": round(g, 2), "cues": len(cues), "peak_placed": sum(1 for c in cues if c[3].get("peak_at") is not None),
             "beat_nudged": len(snaps)}
+    if gi: info["guide"] = gi
     if P:
         lay = P.get("lay") or {}
         info["music"] = {"sync": P["mode"], "fit": P["fit"], "offset_s": round(P["offset"], 3), "drop": P["drop"],

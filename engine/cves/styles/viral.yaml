@@ -1,0 +1,21 @@
+# Preset "viral": retention-first defaults for organic posts (Reels, TikTok, Shorts). Layered automatically right after
+# default.yaml when edit.yaml says `goal: viral`, so a named preset, `cves inspire` (Edit/style.yaml), the brand and
+# edit.yaml still win. Holds only keys that exist in default.yaml. Rationale: knowledge-base/modules/viral-playbook.md.
+name: viral
+platform: {duration: [7, 60]}            # organic short-form; the platform band (platform.target) is checked by RET-30
+grammar: {max_shot_s: 2.5, topic_by_s: 1.0, max_cutaway_s: 6}   # faster pacing bands than an ad
+rhythm: {interrupt_max_s: 2.5, interrupt_min_s: 0.25, cut_on_beat: true}
+structure: {hook_change_s: 1.0, loop: false, payoff_window: 0.2}  # loop is a per-video structure choice (edit.yaml style:)
+framing: {creep: 0.02}                   # every shot keeps moving
+transitions: {whip_s: 0.12, glitch_s: 0.08}
+captions:                                # punchier: bigger, shorter lines, popped words, keywords and numbers emphasised
+  style: pop
+  size: 60
+  max_chars: 22
+  max_lines: 2
+  outline: 3
+  emphasis: {color: accent, scale: 1.25, numbers: true}
+  pop_s: 0.12
+motion: {entry_s: 0.22, stagger_s: 0.08}
+sound: {sfx_offset_db: 0, bed_lu: -8}    # a louder SFX share and a fuller bed (an in-app sound replaces the bed with music.slot: platform)
+music: {sync: cuts}                      # cuts and graphic entries snap to the beat (or to the guide track)

@@ -1,0 +1,81 @@
+# Platform profiles: where the platform's own UI sits on the frame, how long a post may / should run, and the loudness the
+# platform plays at. Picked with style `platform.target` (docs/VIRAL.md, docs/STYLE.md). Read by cves.platforms.
+#
+# Every box is a FRACTION of the frame [x0, y0, x1, y1] (0 = left / top, 1 = right / bottom), so the same profile works on
+# any canvas size (9:16, 4:5, 1:1, 16:9). Pixels = fraction x the real frame width / height, computed at use time.
+#   safe:            text, captions, logos, prices and CTAs stay inside this box (PLAT-02)
+#   caption_bottom:  burned-in captions end above this line (the platform's own description / sound line sits below it)
+#   ui:              the overlays themselves, for the moodboard / review overlay and the QC detail lines
+#   duration:        {ideal: [lo, hi] s (RET-30 WARN outside), max: s (RET-30 FAIL above: the platform cuts or refuses it)}
+#   lufs, true_peak: the level the platform normalises to; fills sound.master_lufs / sound.true_peak unless a style layer sets them
+# Sources: Meta Ads Guide (Reels / Stories / Feed safe zones: 14% top, 35% bottom, 6% sides for Reels; 14% top, 20% bottom for
+# Stories), TikTok and YouTube Shorts creator safe-zone templates (right action rail, bottom caption + sound line), YouTube
+# player controls for landscape. Values are the builder's call where a source gives no number (knowledge-base/DECISIONS.md).
+reels:
+  label: Instagram / Facebook Reels
+  aspect: "9:16"
+  safe: [0.0602, 0.1401, 0.9398, 0.65]      # = x 65-1015, y 269-1248 on 1080x1920 (the v0.2 default safe zone)
+  caption_bottom: 0.65
+  ui:
+    top_bar: [0.0, 0.0, 1.0, 0.08]
+    right_rail: [0.86, 0.45, 1.0, 0.88]
+    bottom_text: [0.0, 0.78, 1.0, 1.0]
+  duration: {ideal: [7, 35], max: 180}
+  lufs: -14
+  true_peak: -1.0
+tiktok:
+  label: TikTok
+  aspect: "9:16"
+  safe: [0.06, 0.08, 0.84, 0.74]            # right rail ~16%, bottom caption + sound line ~26%
+  caption_bottom: 0.72
+  ui:
+    top_tabs: [0.0, 0.0, 1.0, 0.07]
+    right_rail: [0.84, 0.38, 1.0, 0.86]
+    bottom_text: [0.0, 0.76, 0.84, 1.0]
+  duration: {ideal: [9, 34], max: 600}
+  lufs: -14
+  true_peak: -1.0
+shorts:
+  label: YouTube Shorts
+  aspect: "9:16"
+  safe: [0.06, 0.08, 0.86, 0.72]            # right rail ~14%, bottom title / channel / subscribe ~28%
+  caption_bottom: 0.70
+  ui:
+    top_bar: [0.0, 0.0, 1.0, 0.06]
+    right_rail: [0.86, 0.42, 1.0, 0.88]
+    bottom_text: [0.0, 0.74, 0.86, 1.0]
+  duration: {ideal: [15, 45], max: 180}
+  lufs: -14
+  true_peak: -1.0
+youtube:
+  label: YouTube (landscape)
+  aspect: "16:9"
+  safe: [0.05, 0.05, 0.95, 0.86]            # title bar on pause, progress bar + controls at the bottom
+  caption_bottom: 0.86
+  ui:
+    title_bar: [0.0, 0.0, 1.0, 0.1]
+    controls: [0.0, 0.88, 1.0, 1.0]
+  duration: {ideal: [60, 1200], max: 43200}
+  lufs: -14
+  true_peak: -1.0
+meta_feed:
+  label: Facebook / Instagram feed (4:5 or 1:1)
+  aspect: "4:5"
+  safe: [0.05, 0.05, 0.95, 0.90]            # feed video has little overlay: the mute / progress chrome at the bottom
+  caption_bottom: 0.90
+  ui:
+    controls: [0.0, 0.92, 1.0, 1.0]
+  duration: {ideal: [6, 30], max: 14460}
+  lufs: -14
+  true_peak: -1.0
+meta_stories:
+  label: Instagram / Facebook Stories
+  aspect: "9:16"
+  safe: [0.0602, 0.14, 0.9398, 0.80]        # 14% top (progress bar, account), 20% bottom (reply bar / CTA)
+  caption_bottom: 0.80
+  ui:
+    top_bar: [0.0, 0.0, 1.0, 0.14]
+    bottom_bar: [0.0, 0.80, 1.0, 1.0]
+  duration: {ideal: [5, 15], max: 60}
+  lufs: -14
+  true_peak: -1.0

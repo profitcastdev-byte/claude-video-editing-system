@@ -43,6 +43,10 @@ def mode_of(c):
 
 def music_file(pr, file=None):
     f = file or (pr.edit.get("music") or {}).get("file")
+    if not f:     # music.slot: platform: the reference track the edit is cut to stands in for the music (cves.guide)
+        from . import guide as GD
+        s = GD.spec(pr)
+        if s and s["kind"] == "file": f = s["path"]
     if not f: return None
     p = f if os.path.isabs(f) else pr.p(f)
     if not os.path.exists(p): raise SystemExit(f"music file not found: {p} (set music.file in edit.yaml or pass --file)")
