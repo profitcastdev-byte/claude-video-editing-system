@@ -65,13 +65,19 @@ def test_template_call(tmp_path, monkeypatch):
     p = {"title": "Show up", "icon": "place", "at": 2.0}
     assert render(1.9, p, ctx) == []                                          # before its clock starts
     els = render(2.9, p, ctx)
-    assert len(els) == 1 and els[0].id == "m_glass_card" and els[0].role == "cutaway"
-    assert els[0].im.size == (270, 480) and els[0].text and "Show up" in els[0].text
-    assert abs(els[0].t_key - 2.0) < 1e-9
+    ids = {e.id: e for e in els}
+    assert all(e.role == "cutaway" and e.im.size == (270, 480) for e in els)
+    assert "m_glass_card.tt" in ids and "Show up" in ids["m_glass_card.tt"].text      # one element per text block
+    assert ids["m_glass_card.tt"].t_key > 2.0                                     # its own entry frame, not the piece start
+    a = sum(np.asarray(e.im, np.float32)[..., 3] for e in els)                    # disjoint layers: they rebuild the frame
+    assert a.max() <= 255.5
     chest = render(2.9, p, dict(ctx, chin=300))                               # over A-roll: chest role, exits on its own
-    assert chest[0].role == "chest"
+    assert chest and all(e.role == "chest" for e in chest)
     cs = cues(p, ctx)
     assert cs and all(2.0 <= c[0] < 3.0 for c in cs)
+    job = T.REGISTRY["m_glass_card"][0].motion_job(p, ctx); ev = job.manifest()["events"]
+    entries = {round(job.start + f / job.fps, 6) for f in ev.values()}
+    assert all(round(c[0], 6) in entries for c in cs)                           # every cue sits on a logged entry frame (SND-07)
 
 
 def test_user_piece_discovery(tmp_path):

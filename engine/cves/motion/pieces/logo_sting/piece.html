@@ -57,8 +57,7 @@
       }
     },
     cues(P) {
-      if (P.ring !== false) C.cue(0, 'riser', -26, { trim: [0, D(0.72)] });
-      C.cue(tl.t0('burst'), 'boom', -17, { trim: [0, 1.0], reveal: true });
+      C.cue(tl.t0('logo'), 'boom', -17, { trim: [0, 1.0], reveal: true });   // on the mark's entry frame
       if (P.tagline) C.cue(tl.t0('tag'), 'swipe', -26, { trim: [0, 0.3] });
     },
   });

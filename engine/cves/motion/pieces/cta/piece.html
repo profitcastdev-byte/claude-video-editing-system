@@ -1,8 +1,8 @@
 <div class="safe center" id="root">
   <h2 class="title" id="tt"></h2>
   <div class="btnwrap" id="bw">
-    <div class="ripple" id="rp"></div>
-    <div class="btn" id="btn"><span class="lbl" id="lb1"></span><span class="lbl done" id="lb2"></span></div>
+    <div class="ripple" id="rp" data-el="ripple"></div>
+    <div class="btn" id="btn"><span class="lbl" id="lb1"></span><span class="lbl done" id="lb2" data-el="done"></span></div>
   </div>
   <p class="body" id="sub"></p>
   <svg class="cursor" id="cur" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 2 L4 19 L8.6 14.8 L11.6 21.4 L14.6 20 L11.7 13.6 L18 13.4 Z"/></svg>
@@ -58,7 +58,7 @@
       }
     },
     cues(P) {
-      C.cue(tl.t0('btn'), 'pop', -18); if (P.cursor !== false) C.cue(tl.t0('click'), 'button', -14);
+      C.cue(tl.t0('btn'), 'pop', -18); if (P.cursor !== false) C.cue(tl.t0('ripple'), 'button', -14);       // the ripple enters on the click
       if (P.done) C.cue(tl.t0('done'), 'ding', -22);
     },
   });

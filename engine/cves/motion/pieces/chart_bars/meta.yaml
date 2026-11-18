@@ -12,4 +12,4 @@ params:
 preview:
   params: {title: "Calls per month", bars: [{label: "Jan", value: 12}, {label: "Feb", value: 18}, {label: "Mar", value: 31}, {label: "Apr", value: 54}]}
 cues:
-  - [0.3, riser, -28]
+  - [0.0, swipe, -24]

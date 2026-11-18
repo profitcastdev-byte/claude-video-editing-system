@@ -11,4 +11,4 @@ params:
 preview:
   params: {text: "Morgan Roofing", tagline: "Built for storms"}
 cues:
-  - [0.0, riser, -26]
+  - [0.0, boom, -17]

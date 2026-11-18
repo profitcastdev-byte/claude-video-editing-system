@@ -62,7 +62,7 @@
       });
       if (ex && tt.isConnected) C.set(tt, { o: 1 - ex });
     },
-    cues() { steps.forEach((s, i) => C.cue(s.at + D(0.12), 'pop', -19, { pitch: i * 1.2 })); },
+    cues() { steps.forEach((s, i) => C.cue(s.at, 'pop', -19, { pitch: i * 1.2 })); },
   });
 })();
 </script>

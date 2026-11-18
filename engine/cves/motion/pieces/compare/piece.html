@@ -1,8 +1,8 @@
 <div class="safe center">
   <div class="cmp" id="cmp">
-    <div class="side l solid" id="L"><div class="hd"></div><ul></ul></div>
-    <div class="vs" id="vs"></div>
-    <div class="side r glass" id="R"><div class="hd"></div><ul></ul></div>
+    <div class="side l solid" id="L" data-el="before"><div class="hd"></div><ul></ul></div>
+    <div class="vs" id="vs" data-el="vs"></div>
+    <div class="side r glass" id="R" data-el="after"><div class="hd"></div><ul></ul></div>
   </div>
 </div>
 <style>
@@ -52,8 +52,8 @@
       rows.forEach((x) => { C.rise(x.li, t, x.at, D(0.5), 1.6 * u); C.draw(x.path, C.easings.outCubic(C.prog(t, x.at + D(0.15), D(0.35)))); });
     },
     cues(P) {
-      C.cue(0, 'card', -16); C.cue(tl.t0('R'), 'card', -14, { pitch: 1 }); if (P.vs) C.cue(tl.t0('vs') + D(0.1), 'pop', -18);
-      rows.forEach((x, i) => C.cue(x.at + D(0.15), 'pop', -26, { pitch: i % 4 }));
+      C.cue(0, 'card', -16); C.cue(tl.t0('R'), 'card', -14, { pitch: 1 }); if (P.vs) C.cue(tl.t0('vs'), 'pop', -18);
+      rows.forEach((x, i) => C.cue(x.at, 'pop', -26, { pitch: i % 4 }));
     },
   });
 })();

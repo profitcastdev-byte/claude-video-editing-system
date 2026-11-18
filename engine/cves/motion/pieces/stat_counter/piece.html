@@ -24,7 +24,7 @@
       fill = document.getElementById('fill'); cp = document.getElementById('cp'); row = document.getElementById('row');
       if (P.label) { lb.textContent = C.plain(P.label); lb.dataset.text = lb.textContent; } else lb.remove();
       if (P.caption) { cp.textContent = C.plain(P.caption); cp.dataset.text = cp.textContent; } else cp.remove();
-      pre = C.el('span', 'pre', num, P.prefix || ''); val = C.el('span', '', num); sfx = C.el('span', 'sfx', num, P.suffix || '');
+      pre = C.el('span', 'pre', num, P.prefix || ''); val = C.el('span', '', num); sfx = C.el('span', 'sfx', num, P.suffix || ''); if (P.suffix) sfx.dataset.el = 'suffix';
       val.textContent = C.fmt(+P.value, P.decimals || 0, P.grouping);
       num.dataset.text = `${P.prefix || ''}${val.textContent}${P.suffix || ''}`;
       C.fit(num, row.parentElement.clientWidth * 0.94, ctx.h * 0.4, 1, 0.3);
@@ -48,9 +48,8 @@
       if (lb.isConnected && ex) C.set(lb, { o: 1 - ex });
     },
     cues(P) {
-      const n = 5;
-      for (let k = 0; k < n; k++) C.cue(tl.t0('count') + (D(P.count_s || 1.3) * 0.55) * Math.pow(k / n, 1.6), 'pop', -30, { pitch: 5 + k * 0.8 });
-      C.cue(tl.t0('sfx'), 'lowhit', -13, { reveal: true });
+      C.cue(tl.t0('num'), 'pop', -22, { pitch: 4 });                              // the number enters
+      if (P.suffix) C.cue(tl.t0('sfx'), 'lowhit', -13, { reveal: true });     // the suffix lands with the final digit
     },
   });
 })();

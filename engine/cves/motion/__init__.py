@@ -22,7 +22,7 @@ from .. import gfx as G
 
 HERE = pathlib.Path(__file__).resolve().parent
 RUNTIME, BASE_CSS, BUILTIN = HERE / "runtime.js", HERE / "base.css", HERE / "pieces"
-VERSION = 1                       # bump to invalidate every cached render when the page assembly changes
+VERSION = 3                       # bump to invalidate every cached render when the page assembly changes
 INSTALL_HINT = "run `python -m playwright install chromium` (in the CVES venv) to install the motion renderer's Chromium"
 PIP_HINT = "pip install playwright==1.58.0 && python -m playwright install chromium"
 DEFAULT_MOTION = {"ease": "expo", "energy": 0.5, "overshoot": 1.6, "blur_on_fast": True, "blur_max_u": 1.6, "exit_s": 0.32,
@@ -348,12 +348,23 @@ def render(job, log=None):
     tmp = pathlib.Path(tempfile.mkdtemp(prefix=f".{job.key}.", dir=str(job.root)))
     try:
         page = CHROME.get_page(job.size)
-        res = _load(page, job, tmp); text = []
+        import io
+        import numpy as np
+        from PIL import Image
+        res = _load(page, job, tmp); text, parts, events = [], [], {}
+        pad = part_pad(job.size)
+        nudge = optical_nudge(page, job, pad)          # ink-true alignment of centred / left-aligned blocks (GFX-08)
+        if nudge: page.evaluate("o => CVES.__nudge(o)", nudge)
         for k in range(job.n):
-            text.append(page.evaluate("t => window.__seek(t)", k / job.fps) or "")
-            page.screenshot(path=str(tmp / f"{k:05d}.png"), omit_background=True, type="png")
+            pk = page.evaluate("t => window.__seek(t)", k / job.fps) or []
+            png = page.screenshot(omit_background=True, type="png")
+            (tmp / f"{k:05d}.png").write_bytes(png)
+            parts.append(pk); text.append(" | ".join(p[1] for p in pk if p[1] and p[6] >= .15))
+            a = np.asarray(Image.open(io.BytesIO(png)).convert("RGBA"))[..., 3]
+            for pid, layer in split_alpha(a, pk, pad):          # entry frame of each part = first frame the log would see it
+                if pid not in events and layer.max() > LOG_ALPHA: events[pid] = k
         man = {"piece": job.piece.name, "n": job.n, "fps": job.fps, "size": list(job.size), "dur": job.n / job.fps,
-               "text": text, "cues": res.get("cues", []), "params": job.params, "version": VERSION}
+               "text": text, "parts": parts, "events": events, "cues": res.get("cues", []), "params": job.params, "version": VERSION}
         (tmp / "manifest.json").write_text(json.dumps(man, indent=1), encoding="utf-8")
         (tmp / "index.html").unlink(missing_ok=True)
         try: os.replace(tmp, job.dir)
@@ -365,10 +376,88 @@ def render(job, log=None):
     return job.dir
 
 
+LOG_ALPHA = 20            # render.log_records logs a pixel as drawn above this alpha (0..255)
+
+
+def part_pad(size):
+    """margin around a part's box that still belongs to it (shadows, blur, descenders): 1.2 u"""
+    return int(round(1.2 * min(size) / 100))
+
+
+def split_alpha(a, parts, pad):
+    """partition a frame (alpha HxW, or RGBA HxWx4) into the layers of its parts + the rest ('' id), without overlap:
+    each pixel goes to the smallest visible part whose padded box holds it, the rest to ''. Compositing the
+    layers in any order gives the frame back exactly. Yields (part id, masked array)."""
+    import numpy as np
+    H, W = a.shape[:2]; claimed = np.zeros((H, W), bool)
+    for p in sorted(parts or [], key=lambda p: (p[4] - p[2]) * (p[5] - p[3])):     # smallest first: nested parts claim their box
+        pid, x0, y0, x1, y1, o = p[0], p[2], p[3], p[4], p[5], p[6]
+        if o < .02: continue
+        x0, y0, x1, y1 = max(0, x0 - pad), max(0, y0 - pad), min(W, x1 + pad), min(H, y1 + pad)
+        if x1 <= x0 or y1 <= y0: continue
+        m = np.zeros((H, W), bool); m[y0:y1, x0:x1] = True; m &= ~claimed; claimed |= m
+        if not m.any(): continue
+        out = a.copy()
+        if out.ndim == 3: out[..., 3] = np.where(m, out[..., 3], 0)
+        else: out = np.where(m, out, 0)
+        yield pid, out
+    out = a.copy()
+    if out.ndim == 3: out[..., 3] = np.where(claimed, 0, out[..., 3])
+    else: out = np.where(claimed, 0, out)
+    yield "", out
+
+
+def optical_nudge(page, job, pad):
+    """{part: dx} so blocks that share an axis by layout also share it in ink (QC GFX-08 measures drawn ink, and glyph
+    side bearings / trailing tracking leave 2-12 px near-misses). Measured on a settled frame: parts whose boxes share a
+    centre are moved so their ink centres sit on it; parts whose boxes share a left edge, so their ink starts on it."""
+    import io
+    import numpy as np
+    from PIL import Image
+    ex = float(motion_cfg(job.S).get("exit_s") or .32) if job.exit else 0
+    t = max(0., min(job.n / job.fps * .8, job.n / job.fps - ex - 2 / job.fps))
+    pk = page.evaluate("t => window.__seek(t)", t) or []
+    a = np.asarray(Image.open(io.BytesIO(page.screenshot(omit_background=True, type="png"))).convert("RGBA"))[..., 3]
+    box = {p[0]: (p[2], p[4]) for p in pk if p[6] >= .95}; ink = {}
+    for pid, layer in split_alpha(a, pk, pad):
+        if pid in box:
+            xs = np.where((layer > LOG_ALPHA).any(0))[0]
+            if len(xs): ink[pid] = (float(xs.min()), float(xs.max()))
+    lim = 1.6 * min(job.size) / 100; out = {}
+    def group(key):
+        g = {}
+        for pid in ink:
+            k = key(box[pid]); g.setdefault(next((x for x in g if abs(x - k) <= 1.5), k), []).append(pid)
+        return [v for v in g.values() if len(v) > 1]
+    for g in group(lambda b: (b[0] + b[1]) / 2):          # shared centre axis
+        for pid in g:
+            dx = (box[pid][0] + box[pid][1]) / 2 - (ink[pid][0] + ink[pid][1]) / 2
+            if 0.5 < abs(dx) <= lim: out[pid] = round(dx, 2)
+    for g in group(lambda b: b[0]):                       # shared left edge
+        for pid in g:
+            if pid in out: continue
+            dx = box[pid][0] - ink[pid][0]
+            if 0.5 < abs(dx) <= lim: out[pid] = round(dx, 2)
+    return out
+
+
+def snap_cues(cues, events, fps, max_f=6):
+    """move each cue onto the nearest logged entry frame of a part (within max_f frames): the sound lands on the frame its
+    visual event is logged (SND-07). Cues with no entry nearby keep their time."""
+    fr = sorted(set(events.values()))
+    out = []
+    for c in cues:
+        t = float(c[0]); k = t * fps
+        near = min(fr, key=lambda f: abs(f - k)) if fr else None
+        out.append([near / fps if near is not None and abs(near - k) <= max_f else t] + list(c[1:]))
+    return out
+
+
 def cues_for(job):
     """the piece's own sound cues (piece-relative seconds): from the rendered manifest, else from the page (no frames),
     else from meta.yaml `cues:` when Chromium is missing"""
-    if job.done: return job.manifest().get("cues", [])
+    if job.done:
+        m = job.manifest(); return snap_cues(m.get("cues", []), m.get("events") or {}, job.fps)
     side = job.root / f"{job.key}.cues.json"
     if side.exists(): return json.loads(side.read_text(encoding="utf-8"))
     if available()[0]:

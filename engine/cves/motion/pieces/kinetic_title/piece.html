@@ -48,8 +48,7 @@
       if (sub.isConnected) C.set(sub, { y: (1 - tl.p('sub', t)) * 2.2 * u + exd * 0.6, o: tl.raw('sub', t) * (1 - ex) });
     },
     cues(P, ctx) {
-      C.cue(tl.t0('words'), 'whoosh', -20, { trim: [0, 0.6] });
-      if (ul.length) C.cue(tl.t0('ul'), 'swipe', -24, { trim: [0, 0.3] });
+      C.cue(tl.t0('words'), 'whoosh', -20, { trim: [0, 0.6] });          // on the headline's entry frame
     },
   });
 })();
