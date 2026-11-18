@@ -20,6 +20,7 @@ from .. import gfx as G
 from .. import motion as MO
 
 KIND = "overlay"
+NATIVE = True          # pages lay out on the canvas itself (G.W x G.H, u units): no design-canvas adapter
 KINDS, PARAMS, T = {}, {}, {}
 _JOBS = {}
 
@@ -57,12 +58,20 @@ def _make(name, piece):
         job = job_for(name, piece, p, ctx)
         if t < job.start - 1e-6 or t >= job.end - 1e-6: return []
         if not job.done: MO.render(job)
-        k = job.frame_index(t)
-        im = Image.open(job.frame_path(k)).convert("RGBA")
-        if im.size != (G.W, G.H): im = im.resize((G.W, G.H), Image.LANCZOS)
+        k = job.frame_index(t); F = G.fps_of(ctx)
+        a = np.asarray(Image.open(job.frame_path(k)).convert("RGBA"))
         man = getattr(job, "_man", None) or job.manifest(); job._man = man
-        text = (man.get("text") or [""] * job.n)[k] or None
-        return [El(im, name, _slot(name, ctx), text=text, t_key=G.q(job.start, G.fps_of(ctx)), asset=piece.name)]
+        ev = man.get("events") or {}; role = _slot(name, ctx); out = []
+        texts = {p[0]: (p[1] if p[6] >= .95 else None) for p in (man.get("parts") or [[]] * job.n)[k]}
+        # one element per part (text block / marked element), the rest of the frame as <name>: disjoint alpha, so the
+        # composite is the frame exactly, and QC sees each block with its own bbox, text and entry frame
+        for pid, layer in MO.split_alpha(a, (man.get("parts") or [[]] * job.n)[k], MO.part_pad(job.size)):
+            if layer[..., 3].max() <= MO.LOG_ALPHA and pid: continue
+            im = Image.fromarray(layer)
+            if im.size != (G.W, G.H): im = im.resize((G.W, G.H), Image.LANCZOS)
+            t_key = G.q(job.start + ev.get(pid, 0) / job.fps, F)
+            out.append(El(im, f"{name}.{pid}" if pid else name, role, text=texts.get(pid) if pid else None, t_key=t_key))
+        return out
 
     def cues(p, ctx):
         jobs = [job_for(name, piece, p, ctx, exit=e) for e in (False, True)]
@@ -85,6 +94,8 @@ def _primary_kind(kinds):
 def register(pieces, registry=None, kinds=None, source=None):
     """add motion pieces to the template registry: m_<piece> (+ m_<piece>_roto / _end when the meta lists them)"""
     from . import REGISTRY, KIND as TKIND, SOURCE
+    import sys
+    layout = getattr(sys.modules[__package__], "LAYOUT", None)       # any-canvas adapter: motion pages are native
     got = []
     for pc in pieces.values():
         MO.PIECES[pc.name] = pc
@@ -92,6 +103,7 @@ def register(pieces, registry=None, kinds=None, source=None):
         for n, k in names:
             T[n] = _make(n, pc); KINDS[n] = k; PARAMS[n] = pc.schema_types()
             REGISTRY[n] = T[n]; TKIND[n] = k; SOURCE[n] = f"motion:{pc.origin}"; got.append(n)
+            if layout is not None: layout[n] = "native"
     return got
 
 

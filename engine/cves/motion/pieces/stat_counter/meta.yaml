@@ -17,4 +17,4 @@ params:
 preview:
   params: {label: "Calls from Google", value: 312, prefix: "+", suffix: "%", caption: "in the first 90 days", max: 400}
 cues:
-  - [0.2, riser, -26]
+  - [0.0, pop, -22]

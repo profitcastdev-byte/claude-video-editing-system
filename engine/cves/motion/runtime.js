@@ -212,30 +212,38 @@
   const CUES = [];
   C.cue = (t, sfx, gain = -18, kw = {}) => CUES.push([+t, String(sfx), +gain, kw || {}]);
 
-  // ------------------------------------------------------------------ visible text (element log)
-  function visibleText() {
+  // ------------------------------------------------------------------ parts (element log)
+  // Every text block ([data-text]) and every [data-el] element is a *part*: the engine logs it as its own element
+  // (id <piece>.<part>, its own bbox, text and entry frame), so QC measures each block on its own.
+  function partEls() {
+    const els = [...document.querySelectorAll('[data-text], [data-el]')];
+    // stable ids: data-el, else the element id, else its first class; repeats get 0, 1, 2 ... (QC groups digits as one class)
+    const base = els.map((el) => (el.dataset.el || el.id || String(el.className || '').split(' ')[0] || 'part').replace(/[^\w-]/g, ''));
+    const seen = {}, count = {}; base.forEach((b) => { count[b] = (count[b] || 0) + 1; });
+    return els.map((el, i) => [count[base[i]] > 1 ? base[i] + (seen[base[i]] = (seen[base[i]] ?? -1) + 1) : base[i], el]);
+  }
+  /** optical alignment from the engine: {part id: dx px}, measured on the drawn ink of a settled frame. Uses the CSS
+   *  `translate` property, which composes with (and never fights) the transforms a piece sets. */
+  C.__nudge = (o) => { partEls().forEach(([id, el]) => { if (o[id]) el.style.translate = `${(+o[id]).toFixed(2)}px 0`; }); };
+  function parts() {
     const out = [];
-    document.querySelectorAll('[data-text]').forEach((el) => {
-      const txt = el.dataset.text; if (!txt) return;
-      let o = 1, n = el;
+    partEls().forEach(([id, el]) => {
+      const txt = el.dataset.text || '';
+      let o = 1, n = el, hidden = false;
       while (n && n.nodeType === 1) {
         const cs = getComputedStyle(n);
-        if (cs.display === 'none' || cs.visibility === 'hidden') return;
+        if (cs.display === 'none' || cs.visibility === 'hidden') { hidden = true; break; }
         o *= parseFloat(cs.opacity); n = n.parentElement;
       }
-      if (o < 0.15) return;
+      if (hidden || !el.isConnected) return;
+      // a word mask whose words have not risen yet shows nothing: the block is as visible as its most visible word
+      const ws = el.querySelectorAll('.wi');
+      if (ws.length) { let m = 0; ws.forEach((w) => { m = Math.max(m, parseFloat(getComputedStyle(w).opacity || '1')); }); o *= m; }
       const r = el.getBoundingClientRect();
       if (r.width < 1 || r.height < 1 || r.right < 0 || r.bottom < 0 || r.left > CTX.w || r.top > CTX.h) return;
-      // a word mask whose words have not risen yet shows nothing: count the text once any word is mostly in
-      const ws = el.querySelectorAll('.wi');
-      if (ws.length) {
-        let any = false;
-        ws.forEach((w) => { if (!any && parseFloat(getComputedStyle(w).opacity || '1') > 0.15) any = true; });
-        if (!any) return;
-      }
-      out.push(txt);
+      out.push([id, txt, Math.floor(r.left), Math.floor(r.top), Math.ceil(r.right), Math.ceil(r.bottom), +o.toFixed(3)]);
     });
-    return out.join(' | ');
+    return out;
   }
 
   // ------------------------------------------------------------------ boot
@@ -261,6 +269,6 @@
   C.__ready = ready;
   window.__seek = (t) => {
     PIECE.seek(t, BOOT.params || {}, CTX);
-    return visibleText();
+    return parts();
   };
 })();

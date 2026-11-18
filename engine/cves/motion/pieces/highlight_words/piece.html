@@ -25,7 +25,7 @@
       style = P.style || 'marker'; tx.classList.add('style-' + style); if (P.plate) wrap.classList.add('plate');
       W = C.words(tx, P.text);
       C.fit(tx, tx.clientWidth, ctx.h * 0.5, 6);
-      W.words.forEach((w, i) => { if (w.classList.contains('accent')) marks.push({ w, wi: W.inners[i], mk: C.el('span', 'mk', w), i }); });
+      W.words.forEach((w, i) => { if (w.classList.contains('accent')) { const mk = C.el('span', 'mk', w); mk.dataset.el = 'bed'; marks.push({ w, wi: W.inners[i], mk, i }); } });
       TXT = rgbOf('--text-rgb'); INK = rgbOf('--bg-rgb');
       const n = W.words.length, each = D(Math.min(0.045, 0.6 / Math.max(1, n)));
       tl = C.timeline().at('in', 0, D(0.6) + each * (n - 1)); tl.each = each;

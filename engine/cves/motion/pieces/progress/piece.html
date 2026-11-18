@@ -3,7 +3,7 @@
     <h2 class="title" id="lb"></h2>
     <div class="track" id="track">
       <div class="rail" id="rail"></div>
-      <div class="fill" id="fill"></div>
+      <div class="fill" id="fill" data-el="fill"></div>
       <div class="head" id="head"><span class="val" id="val"></span></div>
     </div>
     <div class="ms" id="ms"></div>
@@ -65,7 +65,7 @@
       if (ex) C.set(document.getElementById('pg'), { y: ex * 3 * u, o: 1 - ex });
     },
     cues(P) {
-      C.cue(tl.t0('fill'), 'riser', -28, { trim: [0, D(P.fill_s || 1.8)] });
+      C.cue(tl.t0('fill'), 'swipe', -24, { trim: [0, 0.35] });                  // the fill enters
       ms.forEach((m, i) => { const pf = m.pos / Math.max(1, +P.value); if (m.pos <= +P.value && pf <= 1) {
         // the cue lands where the fill (inOutCubic) passes the milestone
         let lo = 0, hi = 1; for (let k = 0; k < 30; k++) { const mid = (lo + hi) / 2; if (C.easings.inOutCubic(mid) < pf) lo = mid; else hi = mid; }

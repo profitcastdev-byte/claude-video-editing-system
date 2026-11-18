@@ -62,7 +62,7 @@
     cues() {
       rows.forEach((x, i) => {
         C.cue(x.at, 'card', -16, { pitch: [0, 0.5, -0.5, 1][i % 4] });
-        if (x.path) C.cue(x.at + D(0.24), 'pop', x.mk.classList.contains('cross') ? -19 : -17, { pitch: (x.mk.classList.contains('cross') ? -2 : 2) + (i % 3) * 0.4 });
+        if (x.path) C.cue(x.at + D(0.22), 'pop', x.mk.classList.contains('cross') ? -19 : -17, { pitch: (x.mk.classList.contains('cross') ? -2 : 2) + (i % 3) * 0.4 });
       });
     },
   });

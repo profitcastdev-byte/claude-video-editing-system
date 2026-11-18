@@ -1,6 +1,6 @@
 <div class="stage" id="st">
   <svg class="lines" id="sv" xmlns="http://www.w3.org/2000/svg"><path id="ld" pathLength="1"/></svg>
-  <div class="pin" id="pin"><div class="ring" id="r1"></div><div class="ring" id="r2"></div><div class="shadow" id="shd"></div>
+  <div class="pin" id="pin" data-el="pin"><div class="ring" id="r1"></div><div class="ring" id="r2"></div><div class="shadow" id="shd"></div>
     <div class="drop" id="drop"><div class="head"><div class="hole"></div></div></div></div>
   <div class="glass lab" id="lab"><div class="well" id="well"></div><div class="tx"><b id="lt"></b><small id="ls"></small></div></div>
 </div>
@@ -75,7 +75,7 @@
       const pl = tl.p('lab', t);
       C.set(lab, { x: geo.side === 'up' ? 0 : (1 - pl) * (geo.side === 'right' ? -3 : 3) * u, y: geo.side === 'up' ? (1 - pl) * 2 * u : 0, s: 0.92 + 0.08 * pl, o: Math.min(1, tl.raw('lab', t) * 2.5) * (1 - ex), blur: (1 - pl) * 0.6 * u });
     },
-    cues() { C.cue(D(0.3), 'pop', -17, { pitch: -2 }); C.cue(tl.t0('lab'), 'swipe', -23, { trim: [0, 0.3] }); },
+    cues() { C.cue(0, 'pop', -17, { pitch: -2 }); C.cue(tl.t0('lab'), 'swipe', -23, { trim: [0, 0.3] }); },
   });
 })();
 </script>

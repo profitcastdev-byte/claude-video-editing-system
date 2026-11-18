@@ -1,7 +1,7 @@
 <div class="safe center">
-  <div class="glass card" id="card">
+  <div class="glass card" id="card" data-el="card">
     <div class="sheen" id="sh"></div>
-    <div class="top" id="top"><div class="well" id="well"></div><span class="chip" id="chip"></span></div>
+    <div class="top" id="top"><div class="well" id="well" data-el="well"></div><span class="chip" id="chip"></span></div>
     <div class="eyebrow bare" id="eb"></div>
     <h2 class="title" id="tt"></h2>
     <p class="body" id="bd"></p>
@@ -51,8 +51,8 @@
     },
     cues(P) {
       C.cue(0, 'swipe', -20, { trim: [0, 0.35] });
-      if (P.icon) C.cue(tl.t0('well') + D(0.12), 'pop', -20);
-      if (P.chip) C.cue(tl.t0('chip') + D(0.1), 'pop', -23, { pitch: 3 });
+      if (P.icon) C.cue(tl.t0('well'), 'pop', -20);
+      if (P.chip) C.cue(tl.t0('chip'), 'pop', -23, { pitch: 3 });
     },
   });
 })();

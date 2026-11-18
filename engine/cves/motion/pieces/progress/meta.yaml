@@ -11,4 +11,4 @@ params:
 preview:
   params: {label: "Your first 30 days", value: 80, milestones: ["Audit", "Fix", "Post", "Grow"]}
 cues:
-  - [0.3, riser, -28]
+  - [0.0, swipe, -24]

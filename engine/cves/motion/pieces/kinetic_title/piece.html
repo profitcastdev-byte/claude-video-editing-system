@@ -29,7 +29,7 @@
       const sw = root.clientWidth - 2 * ctx.u * 2, sh = root.clientHeight * (P.sub || P.eyebrow ? 0.62 : 0.8);
       C.fit(hd, sw, sh, Math.min(4, Math.max(2, Math.ceil(W.words.length / 3))));
       lines = C.lines(W.words);
-      if (P.underline !== false) document.querySelectorAll('#hd .acc').forEach((a) => ul.push(C.el('span', 'uline', a)));
+      if (P.underline !== false) document.querySelectorAll('#hd .acc').forEach((a) => { const b = C.el('span', 'uline', a); b.dataset.el = 'bed'; ul.push(b); });   // .bed: logged as decoration, not type
       const n = W.words.length, each = D(Math.min(0.07, 0.42 / Math.max(1, n)));
       tl = C.timeline().at('eb', 0, D(0.55)).at('words', D(0.1), D(0.72) + each * (n - 1));
       tl.at('ul', tl.end('words') - D(0.12), D(0.5)).at('sub', tl.end('words') - D(0.3), D(0.6));
@@ -48,8 +48,7 @@
       if (sub.isConnected) C.set(sub, { y: (1 - tl.p('sub', t)) * 2.2 * u + exd * 0.6, o: tl.raw('sub', t) * (1 - ex) });
     },
     cues(P, ctx) {
-      C.cue(tl.t0('words'), 'whoosh', -20, { trim: [0, 0.6] });
-      if (ul.length) C.cue(tl.t0('ul'), 'swipe', -24, { trim: [0, 0.3] });
+      C.cue(tl.t0('words'), 'whoosh', -20, { trim: [0, 0.6] });          // on the headline's entry frame
     },
   });
 })();
