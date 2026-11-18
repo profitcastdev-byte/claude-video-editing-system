@@ -29,3 +29,25 @@ def demo_rendered(demo_built, tmp_path_factory):
 @pytest.fixture
 def demo_copy(demo_built, tmp_path):
     d = str(tmp_path / "demo"); shutil.copytree(demo_built, d); return d
+
+
+# ---- formats + spines (docs/FORMATS.md): small synthetic demos, built once per session per (kind, size)
+_SPINE_DEMOS = {}
+
+@pytest.fixture(scope="session")
+def spine_demo(tmp_path_factory):
+    """spine_demo(kind, size="480x270") -> path of a make_demo --kind project (ingest state), shared read-only"""
+    def get(kind, size="480x270"):
+        key = (kind, size)
+        if key not in _SPINE_DEMOS:
+            d = str(tmp_path_factory.mktemp(f"{kind}_{size}") / "demo")
+            subprocess.run([sys.executable, os.path.join(ROOT, "tools", "make_demo.py"), d, "--small", "--kind", kind, "--size", size], check=True)
+            _SPINE_DEMOS[key] = d
+        return _SPINE_DEMOS[key]
+    return get
+
+def build_spine_copy(src, dst):
+    """copy a spine demo and run render + mix + encode on it -> (Project, master mp4)"""
+    from cves import project, render, mix, encode
+    shutil.copytree(src, dst); pr = project.Project(dst)
+    render.render(pr); mix.mix(pr); return pr, encode.encode(pr)

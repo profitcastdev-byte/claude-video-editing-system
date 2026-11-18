@@ -470,9 +470,15 @@ def _write(TL, out_dir, i, img, logf):
 
 _TL = None
 def _init(root):
+    """worker initializer. spawn re-imports every module, so the canvas (gfx.set_canvas) and the style are re-applied here
+    by Timeline: never rely on the parent's module state"""
     global _TL
     from .project import Project
     _TL = Timeline(Project(root))
+
+def canvas_of_worker():
+    """(G.W, G.H) as this process sees it (tests: the canvas is re-set inside spawned workers)"""
+    return (G.W, G.H)
 
 def job_seg(sid, only, out_dir, mode):
     """one segment, streamed: plate/matte decoded a frame at a time, element records written as they come (O(1) RAM in length)"""
