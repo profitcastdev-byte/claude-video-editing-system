@@ -16,13 +16,14 @@ Follow the `video-editor` skill. Resolve `CVES_ROOT`, `cves` and the project (sk
 - **Inspirations**: 1-3 reference edits for this client. These are the style spec. For an existing client, reuse `<projects root>/<Client>/STYLE.md` and its style profile, and ask only whether this video should differ.
 - **Brand**: logo (png/svg), colours, approved claims (a client name plus a number for the proof), wordmark.
 - **Mode**: vibe (default) or control.
+- **Format and spine** (skill §2a, `docs/FORMATS.md`): where it runs (sets `canvas.size`: 9:16 default, 4:5, 1:1, 16:9, 2.39:1) and what drives the cut: a presenter (`aroll`, default), a voiceover (`voiceover`: a recorded VO or an ElevenLabs VO the user asked for), the music (`music`) or the shots (`broll`).
 
-Don't continue without a raw file. Missing inspirations, brand or proof is not a blocker; carry it forward as a flag.
+Don't continue without a raw file (aroll), a VO (voiceover) or the music / footage (music, broll). Missing inspirations, brand or proof is not a blocker; carry it forward as a flag.
 
 ## Run
 1. `cves new "<Client>" "<Video>" --raw "<raw file>"`. It creates `~/CVES Projects/<Client>/<YYYY-MM-DD Video>/` (root: `$CVES_CLIENTS`, else config `clients_root`) with `Raw/ Inspirations/ Brand/ Music/ Edit/ Moodboard/ Export/` (ARCHITECTURE §2). Copy the inspirations and brand files the user gave into `Inspirations/` and `Brand/`. Put claims in `Brand/claims.md`.
 2. Probe the source: `ffprobe` colour tags, resolution and fps (RULEBOOK §1). Note them in `Edit/NOTES.md`.
-3. `cves ingest`. This step is local: words.json, voice_final.wav, plate/, matte/, faces.json. If it fails, read the error text, fix the cause or report it. Don't hand-roll a replacement.
+3. Set the canvas and spine in `edit.yaml` (`style: {canvas: {size: [w, h]}}`, `spine:`; `voiceover: {asset | file}`; `music.file` + `duration`), then `cves ingest`. This step is local. On the aroll spine: the raw transcript (then the story step). On a voiceover spine: voice_raw / voice_final.wav (pauses tightened), words.json, edl.json. On music / broll: edl.json only. If it fails, read the error text, fix the cause or report it. Don't hand-roll a replacement.
 
 ## You decide
 - **The brief**, written to `Edit/NOTES.md`: the ad's emotion in one line; the viewer's want plus obstacle; the proof (client name plus number), or "MISSING: ask the client"; the sound moments (hook hit, first cutaway, offer, CTA).

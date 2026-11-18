@@ -59,7 +59,12 @@ delete `Edit/plate/` to rebuild plates (existing plate files are never overwritt
 
 Filter order per segment: `[SAR fix] [HDR→SDR] [fps] [crop] scale=W:H:lanczos [setsar=1]`.
 
-- **Canvas**: `edit.yaml project.size` if set, else style `platform.size` (default `[1080, 1920]`).
+- **Canvas**: `edit.yaml project.size` if set, else style `canvas.size` (default `[1080, 1920]`; `platform.size` is a legacy
+  alias). Landscape footage on a landscape canvas is not cropped; a different aspect gets the face-steered crop below.
+- **Spines** ([FORMATS.md](FORMATS.md)): this page is the `aroll` spine. On a `voiceover` spine `cves ingest` takes the VO
+  (`edit.yaml voiceover: {asset | file}`) through extract → optional DeepFilterNet (`denoise`) → pause tightening (the
+  rules below) → the voice chain → `voice_final.wav`, `voice_chain.json`, `edl.json` and `words.json`; `music` and
+  `broll` spines only write `edl.json` (rate, canvas, duration). B-roll is never plated: it is framed at render time.
 - **Frame rate**: style `platform.fps`. `source` (default) = the primary source's rate: its `r_frame_rate` when CFR,
   the nearest standard rate (23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60) to `avg_frame_rate` when VFR.
   An explicit rate (`[30000, 1001]`, `"30000/1001"`, `25`, `29.97`) overrides it. Sources at another rate, and every VFR

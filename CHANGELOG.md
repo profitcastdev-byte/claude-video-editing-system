@@ -3,6 +3,38 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Added
+- **Any frame size, natively** (docs/FORMATS.md): style `canvas.size` (9:16 default; 4:5, 1:1, 16:9, 2.39:1 or any even size;
+  `edit.yaml project.size` wins; `platform.size` becomes a legacy alias) and `canvas.safe_zones` per aspect. `gfx.set_canvas`
+  sets `G.W` / `G.H` / `G.U` per process (re-set inside spawned render workers); render, captions, templates, the moodboard,
+  control-mode layers, encode, QC, `cves inspire` and the cover follow it. Templates lay out on any canvas: relative templates
+  scale by `G.U`, legacy fixed 1080×1920 modules (`DESIGN = True`: cutaways, roto) are fitted into the safe zone, `NATIVE`
+  modules draw at the canvas resolution. Identity at 1080×1920 (golden frames unchanged).
+- **Timeline spines** (`edit.yaml spine: aroll | voiceover | music | broll`, `engine/cves/spines.py`): a VO (recorded or
+  ElevenLabs, `voiceover: {asset | file}`) tightened and transcribed by `cves ingest`; a music-led cut; a shot-led cut with
+  the clips' own sound. Face-only stages skip when there is no A-roll.
+- **The `broll:` track**: shots in cut time `{src | asset, start, end, in, speed, framing: fill | fit | kenburns, kenburns,
+  anchor, after, transition, audio, gain}`, rendered by the new native `broll_shot` media template from any source size,
+  rotation and frame rate (fill crops, fit sits on a blurred fill, stills get ken burns). On the aroll spine the same track
+  is cutaway footage over the presenter, with captions continuing over it. Style sections `broll:` and `autocut:`.
+- **`cves autocut`** `[--every beats|downbeats|bars] [--bars N] [--min-shot S] [--folder DIR] [--apply]`: proposes a
+  `broll:` track whose cuts land on the music grid (cut time, from `cves beats`).
+- **QC status N/A**: presenter gates (FRAME-*, COL-03..10/12, CUT-03/05, RET-22, GFX-25/26) on voiceover / music / broll
+  edits, voice gates on music / broll edits and caption gates on caption-free edits report N/A, never FAIL; `qc.json` gains
+  `na`. MOT-14 judges B-roll shots by the scale applied to source pixels (WARN > 1.0×, FAIL > 1.5×).
+- `tools/make_demo.py --kind aroll|voiceover|music|broll --size WxH` (drawn clips incl. a rotated phone clip, 25 fps, a still);
+  `tests/test_formats.py`, `tests/test_spines.py`.
+
+### Changed
+- **Reframes from any master** to any aspect (a narrower target crops the width, a wider one the height; decimal aspects
+  such as `2.39:1`); the 9:16 → 16:9 blurred-fill path is unchanged.
+- QC analysis frames, margins (`platform.margin` × `G.U`) and caption wrap width follow the canvas; the moodboard keeps the
+  canvas aspect; `cves inspire` measures on the project canvas (workers get it through their job args).
+- The mix reads a video's sound track through ffmpeg when librosa cannot (B-roll `audio: true`, `video_broll` audio).
+- Lint L4 points at `canvas.size`.
+
 ## [0.2.0] - 2026-11-18
 The engine becomes a general autonomous editor: no look, client or footage format is hard-coded.
 

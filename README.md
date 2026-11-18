@@ -63,7 +63,10 @@ Restart Claude Code and run `/cves:install`. It installs every tool, model and s
 - Never ship unlicensed music in a paid ad.
 
 ## Known limits (honest)
-- **The design space is 1080×1920.** Other aspect ratios are made by face-aware reframing at delivery. A native landscape layout is not built yet.
+- **Native formats, legacy layouts.** Any canvas renders natively (`canvas.size`, docs/FORMATS.md), but the v0.2 UI cutaways
+  (`search_rows`, `card_list`, `stat`, `browser_list`) and the roto cards keep their 1080×1920 layout and are fitted into the
+  safe zone on other canvases (smaller on landscape). On canvases whose short side is far from 1080 (e.g. 4K) relative
+  templates are drawn at a 1080 short side and scaled, so graphics are slightly softer than footage.
 - **Resolve round trip:** the FCPXML is validated structurally, and a Kdenlive project loads in `melt`, but a live DaVinci Resolve import has not been tested yet.
 - **Complex scripts** (Indic, Arabic) need Pillow with libraqm for correct shaping; `cves doctor` reports whether it is available.
 - **Not every gate is automated:** 84 of the 172 rules are. The others need instruments that don't exist yet (role and intent tags, blur and banding detectors, music-stem gates); see `knowledge-base/QC-GATES.md`.

@@ -13,7 +13,7 @@ Run `cves templates` to see the live list. All times are cut-time seconds (from 
 - **Legible over video.** Small text on A-roll gets an auto-darkened bed when its colour misses the WCAG target against `legibility.video_bg` (GFX-15).
 - **Script fallback.** Non-Latin text picks its font from `font_files.script_fallback`.
 
-Layout is in the 1080×1920 design space, inside `platform.safe_zone`. Most generic templates take `align: center|left`, `y` (block position), `pad` and `out_at` (fade out).
+Layout is relative to the canvas (`G.W`, `G.H`, `G.safe()`; px at a 1080 short side, see "Layout on any canvas" below), inside the safe zone. Most generic templates take `align: center|left`, `y` (block position), `pad` and `out_at` (fade out).
 
 **Common cutaway keys:** `id`, `start`, `end` (snapped to segment boundaries; `snap: false` to start mid-shot), `in: whip|glitch|cut|fade`, `out: …`. Any template can be used in any section. `KIND` only says where it is designed to sit.
 
@@ -271,6 +271,22 @@ To add an icon:
 1. Put the SVG in `assets/icons/`.
 2. Render it with `rsvg-convert -w 512 -h 512` to `<name>_512.png`.
 3. Map an alias in `gfx.MAT` if you want one.
+
+## Layout on any canvas
+The canvas is configurable (style `canvas.size`, [FORMATS.md](FORMATS.md)). Template authors:
+- read the frame as `G.W`, `G.H` and the safe zone as `G.safe()` **at call time** (never `from ..gfx import W, H`);
+- place things relative to them (centre `G.W / 2`, blocks centred in the safe zone, fractions of `G.H`), and write px sizes
+  (fonts, radii, gaps) as px at a 1080 short side: the registry scales them by `G.U` on other canvases;
+- a module that draws its own picture at the canvas resolution (e.g. `broll_shot`) sets `NATIVE = True` (or `{names}`) and
+  scales its own px by `G.U`;
+- a legacy module with hard-coded 1080×1920 coordinates sets `DESIGN = True`: it keeps drawing in 1080×1920 and is fitted,
+  per instance, into the canvas safe zone (uniform scale, never up, centred). `cutaways.py` and `roto.py` work this way.
+Everything is the identity at 1080×1920.
+
+### `broll_shot` (internal: the `broll:` track)
+One B-roll shot, full frame (`media.py`, native). The `broll:` track in `edit.yaml` compiles to it; you rarely name it
+yourself. Params: `asset` (id or footage path), `in`, `speed`, `after`, `framing` (`fill` | `fit`), `kenburns`, `anchor`,
+`audio`, `gain`. See FORMATS.md §5.
 
 ## Adding a template
 1. Write `render(t, p, ctx) -> [El]` and `cues(p, ctx) -> [(t, sfx, gain_db, kw)]` in any module under `engine/cves/templates/` (or `$CVES_TEMPLATES`, `~/.cves/templates`, `PROJECT/Brand/templates`). Use these gfx helpers:
