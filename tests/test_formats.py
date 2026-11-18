@@ -111,3 +111,18 @@ def test_landscape_voiceover_broll_builds_and_passes_qc(spine_demo, tmp_path):
     from PIL import Image
     im = Image.open(pr.p("Moodboard", "frames", sorted(os.listdir(pr.p("Moodboard", "frames")))[0]))
     assert abs(im.width / im.height - 16 / 9) < .02                          # moodboard keeps the canvas aspect
+
+
+def test_broll_rotated_phone_clip_is_upright(tmp_path):
+    """a phone clip stored on its side with a display rotation flag is decoded upright by the B-roll reader (as ffmpeg shows it)"""
+    import subprocess
+    from cves import config as C
+    from cves.templates import media
+    up, side, flag = (str(tmp_path / f) for f in ("up.mp4", "side.mp4", "flag.mp4"))
+    ff = lambda *a: subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", *a], check=True)
+    ff("-f", "lavfi", "-i", "color=c=gray:s=180x320:d=0.5,drawbox=x=0:y=0:w=60:h=60:c=red:t=fill", "-pix_fmt", "yuv420p", up)
+    ff("-i", up, "-vf", "transpose=2", "-pix_fmt", "yuv420p", side)
+    try: ff("-display_rotation:v:0", "-90", "-i", side, "-c", "copy", flag)
+    except subprocess.CalledProcessError: pytest.skip("this ffmpeg cannot write a display rotation flag")
+    a = media.Clip(flag).frame(0)
+    assert a.shape[:2] == (320, 180) and a[10, 10, 0] > 150 and a[10, 10, 1] < 100, (a.shape, a[10, 10])

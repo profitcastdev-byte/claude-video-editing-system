@@ -214,9 +214,10 @@ def merge_demo(edit, tmpl, st, en):
 
 # ------------------------------------------------------------------ the other spines (voiceover / music / broll)
 def _rotate_flag(src, dst, deg):
-    """copy src to dst with a display-rotation flag (a phone clip stored landscape, shown portrait)"""
+    """copy src to dst with a display-rotation flag (a phone clip stored landscape, shown portrait). deg: counter-clockwise,
+    as ffprobe reports it (an upright phone clip stored on its side is -90); old ffmpeg: the legacy clockwise `rotate` tag"""
     try: ff(["-display_rotation:v:0", str(deg), "-i", src, "-c", "copy", dst])
-    except subprocess.CalledProcessError: ff(["-i", src, "-c", "copy", "-metadata:s:v:0", f"rotate={(360 - deg) % 360}", dst])
+    except subprocess.CalledProcessError: ff(["-i", src, "-c", "copy", "-metadata:s:v:0", f"rotate={(-deg) % 360}", dst])
 
 def drawn_clip(path, w, h, fps, seconds, seed, audio=None):
     """a drawn, moving B-roll clip (no real media): a lit gradient, drifting discs and a sweeping bar, mid-tone colours
@@ -263,7 +264,7 @@ def _even(x): return max(2, int(math.ceil(x / 2)) * 2)
 
 def broll_set(out, fps, seconds, audio=False):
     """drawn clips sized to cover the canvas without upscaling (a fill crop never goes above 1.0x source pixels):
-    16:9 landscape, 9:16 portrait, a phone clip stored landscape with a 90 degree rotation flag, a 25 fps clip, a 3:2 still"""
+    16:9 landscape, 9:16 portrait, a phone clip stored landscape with a -90 degree rotation flag, a 25 fps clip, a 3:2 still"""
     A = os.path.join(out, "Assets")
     lh = _even(max(H, W * 9 / 16)); land = (_even(lh * 16 / 9), lh)
     pw = _even(max(W, H * 9 / 16)); port = (pw, _even(pw * 16 / 9))
@@ -272,12 +273,12 @@ def broll_set(out, fps, seconds, audio=False):
     files = {}
     for name, (w, h), r, seed in specs:
         p = os.path.join(A, name + ".mp4")
-        if name == "broll_phone_raw":       # drawn upright, stored on its side (as phones store portrait video)
+        if name == "broll_phone_raw":       # drawn upright, stored on its side (as phones store portrait video; transpose=2 = 90 deg CCW)
             tmp = os.path.join(A, "_upright.mp4"); drawn_clip(tmp, port[0], port[1], r, seconds, seed, ambience(seconds, seed) if audio else None)
             ff(["-i", tmp, "-vf", "transpose=2", "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-c:a", "copy", p]); os.remove(tmp)
         else: drawn_clip(p, w, h, r, seconds, seed, ambience(seconds, seed) if audio else None)
         files[name] = p
-    _rotate_flag(files["broll_phone_raw"], os.path.join(A, "broll_phone.mp4"), 90); os.remove(files.pop("broll_phone_raw"))
+    _rotate_flag(files["broll_phone_raw"], os.path.join(A, "broll_phone.mp4"), -90); os.remove(files.pop("broll_phone_raw"))
     files["broll_phone"] = os.path.join(A, "broll_phone.mp4")
     drawn_still(os.path.join(A, "broll_still.png"), still[0], still[1], 5); files["broll_still"] = os.path.join(A, "broll_still.png")
     return files
