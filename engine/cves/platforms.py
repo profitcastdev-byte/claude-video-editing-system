@@ -37,6 +37,15 @@ def profile(S):
     return dict(table()[t], name=t) if t else None
 
 
+def profile_fits(S, w, h, tol=.03):
+    """the active profile is meant for a w x h frame: its `aspect` matches (profiles without an aspect fit any frame)"""
+    pf = profile(S)
+    if not pf: return False
+    a = pf.get("aspect")
+    if not a: return True
+    x, y = (float(v) for v in str(a).split(":")); return abs((w / h) / (x / y) - 1) <= tol
+
+
 def _design_size(S):
     sz = S.get("canvas.size") or S.get("platform.size") or None
     return (float(sz[0]), float(sz[1])) if sz else None

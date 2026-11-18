@@ -5,7 +5,7 @@ Rules (each line can opt out with a trailing `# lint: ok <reason>`):
   L1  no /tmp paths                     -> use tempfile
   L2  text-mode open() without encoding -> encoding="utf-8"
   L3  hard-coded 24000/1001 or 23.976   -> timeline fps_rational
-  L4  hard-coded 1080x1920 canvas       -> style platform.size / gfx.W, gfx.H
+  L4  hard-coded 1080x1920 canvas       -> style canvas.size / gfx.W, gfx.H
   L5  client or brand names in code     -> params / style presets
   L6  hex colour literals in templates  -> gfx / style colours
 Exit 1 on any finding."""
@@ -23,7 +23,7 @@ BRANDS = re.compile(r"vedh?avalli|madapalli|srinivas|sattvic|pure veg|profitcast
 RULES = [
     ("L1", re.compile(r"""['"]/tmp(/|['"])"""), "use tempfile, not /tmp"),
     ("L3", re.compile(r"24000\s*/\s*1001|\b23\.976\b|24000,\s*1001|1001/24000"), "frame rate must come from the timeline (fps_rational)"),
-    ("L4", re.compile(r"\b1080\s*[x:,]\s*1920\b|\(1080,\s*1920\)|\[1080,\s*1920\]"), "canvas size must come from the style (platform.size) or gfx.W/H"),
+    ("L4", re.compile(r"\b1080\s*[x:,]\s*1920\b|\(1080,\s*1920\)|\[1080,\s*1920\]"), "canvas size must come from the style (canvas.size) or gfx.W/H"),
     ("L5", BRANDS, "no client or brand names in engine code"),
 ]
 OPEN = re.compile(r"(?<![\.\w])open\(")

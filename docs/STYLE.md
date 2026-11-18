@@ -1,7 +1,7 @@
 # Style profile
 
 A **style profile** is the only place a look lives. The engine hard-codes no client, brand, colour, font, pacing, caption
-look, grade, frame size, frame rate or language: every module reads them with
+look, grade, frame size (`canvas.size`), frame rate or language: every module reads them with
 
 ```python
 from cves import style as STY
@@ -178,7 +178,7 @@ graphics gets gates that match:
 | `framing.extreme_max` | FRAME-09 extreme punch-ins |
 | `sound.master_lufs`, `sound.true_peak` | SND-01, SND-02 |
 | `sound.bed_lu` (or `edit.yaml music.bed_lu`) | SND-04 music + SFX bed vs voice |
-| `platform.size`, `platform.safe_zone`, `platform.margin`, `platform.duration` | DEL-01, PLAT-01/02, DEL-04 |
+| `canvas.size` (or `platform.size`), `platform.safe_zone` / `canvas.safe_zones`, `platform.margin`, `platform.duration` | DEL-01, PLAT-01/02, DEL-04 |
 | `platform.target` (styles/platforms.yaml) | PLAT-02 safe zone and caption line, RET-30 duration band, SND-01/02 loudness |
 | `structure.hook_change_s`, `retention.hook_subject_s` | RET-24 hook change, RET-25 hook text / subject (viral) |
 | `rhythm.interrupt_max_s`, `rhythm.interrupt_min_s`, `retention.soup_window_s` | RET-26 interrupt gap, RET-27 effect soup |
@@ -218,14 +218,30 @@ number) is a warning. Maps whose keys are data (`colors`, `font_files`, `caption
 
 Generated from `engine/cves/styles/default.yaml` (comments there are the source of truth).
 
+#### `canvas`
+
+The frame the edit is designed, rendered and delivered at: native, not reframed ([FORMATS.md](FORMATS.md)). `edit.yaml
+project.size` wins over it.
+
+| key | default | meaning |
+|---|---|---|
+| `canvas.size` | `[1080, 1920]` | `[w, h]`, even numbers. 9:16 `[1080, 1920]`, 4:5 `[1080, 1350]`, 1:1 `[1080, 1080]`, 16:9 `[1920, 1080]`, 2.39:1 `[1920, 804]`. px values elsewhere in the profile (caption size, margins, gaps) are for a 1080 short side and scale by `min(w, h) / 1080` |
+| `canvas.safe_zones` | 9:16 / 4:5 / 1:1 / 16:9 / 2.39:1 boxes | text-safe box per aspect, `x0 y0 x1 y1` as fractions of the canvas; the nearest aspect is used. A 9:16 canvas uses `platform.safe_zone` (px) instead |
+| `canvas.safe_zones.9:16` | `[0.06, 0.14, 0.94, 0.65]` | the fraction form of `platform.safe_zone` (a 9:16 canvas uses `platform.safe_zone` itself) |
+| `canvas.safe_zones.4:5` | `[0.06, 0.08, 0.94, 0.86]` | feed posts |
+| `canvas.safe_zones.1:1` | `[0.06, 0.07, 0.94, 0.88]` | square |
+| `canvas.safe_zones.16:9` | `[0.05, 0.07, 0.95, 0.88]` | landscape (player controls at the bottom) |
+| `canvas.safe_zones.2.39:1` | `[0.05, 0.08, 0.95, 0.88]` | cinematic |
+| (any `w:h`) | | add an aspect as a new key; the nearest aspect (log ratio) wins |
+
 #### `platform`
 
 | key | default | meaning |
 |---|---|---|
-| `platform.size` | `[1080, 1920]` | master canvas (design space for templates is 1080x1920; other ratios via `cves deliver` reframes) |
+| `platform.size` | `null` | legacy alias of `canvas.size`, used only when `canvas.size` is null |
 | `platform.fps` | `source` | "source" = keep the footage rate; or e.g. [30000, 1001], 25, 30 |
-| `platform.safe_zone` | `[65, 269, 1015, 1248]` | x0 y0 x1 y1 kept free of platform UI (Meta Reels norm); null to disable |
-| `platform.margin` | `60` | px kept clear at every frame edge for text (PLAT-01) |
+| `platform.safe_zone` | `[65, 269, 1015, 1248]` | x0 y0 x1 y1 kept free of platform UI on a 9:16 canvas, in 1080x1920 px (Meta Reels norm; scaled on other 9:16 sizes; other aspects use `canvas.safe_zones`); null to disable |
+| `platform.margin` | `60` | px kept clear at every frame edge for text (PLAT-01), scaled by `min(w, h) / 1080` |
 | `platform.duration` | `[15, 90]` | seconds the brief allows |
 | `platform.target` |  | reels / tiktok / shorts / youtube / meta_feed / meta_stories ([platforms.yaml](../engine/cves/styles/platforms.yaml), [VIRAL.md](VIRAL.md)): the platform's UI safe zone as fractions of the frame (PLAT-02), its caption line, duration band (RET-30) and loudness. With a target, `platform.safe_zone`, `sound.master_lufs` and `sound.true_peak` come from the profile unless a style layer sets them; null = the `platform.safe_zone` box above, scaled from `platform.size` to the real frame |
 
@@ -535,7 +551,7 @@ image / video_broll / screen_rec / pip / split / overlay_render templates (docs/
 | key | default | meaning |
 |---|---|---|
 | `media.frame` | `bleed` | default framing of a picture: bleed (full screen) / card (rounded card on the stage) |
-| `media.card_box` | `[100, 300, 980, 1200]` | card rect x0 y0 x1 y1 in the 1080x1920 design space (inside platform.safe_zone) |
+| `media.card_box` | `[100, 300, 980, 1200]` | card rect x0 y0 x1 y1 in the 1080x1920 design space (inside platform.safe_zone); fitted into the safe zone on other canvases (also `media.device_box`) |
 | `media.radius` | `36` | card / pane / bubble corner radius px |
 | `media.border` | `3` | card outline px (colour = colors.card_border); 0 = none |
 | `media.shadow` | `0.5` | drop-shadow opacity under cards and the pip bubble; 0 = none |
@@ -560,6 +576,28 @@ image / video_broll / screen_rec / pip / split / overlay_render templates (docs/
 | `media.split.radius` | `0` | two-pane layout |
 | `media.sfx_in` | `swipe` | cue for a card / pane / bubble that enters after the cutaway starts ("" = none) |
 | `media.sfx_click` | `button` | screen_rec cursor click cue ("" = none) |
+
+#### `broll`
+
+The `edit.yaml broll:` track ([FORMATS.md](FORMATS.md)); a shot's own keys win.
+
+| key | default | meaning |
+|---|---|---|
+| `broll.framing` | `fill` | default framing of a video shot: `fill` (crop to the canvas aspect) \| `fit` (the whole picture on a blurred, dimmed fill of itself) \| `kenburns` |
+| `broll.ken_burns` | `[1.0, 1.08]` | zoom from → to over a `kenburns` shot (stills default to kenburns) |
+| `broll.fit_blur` | `40` | px (at a 1080 short side) Gaussian blur of the fill behind a `fit` shot |
+| `broll.fit_dim` | `0.55` | brightness multiplier of that fill |
+| `broll.audio_gain` | `-14` | dB of a shot's own sound (`audio: true`) when the shot sets no `gain` |
+
+#### `autocut`
+
+`cves autocut` defaults: a broll: track cut on the music grid.
+
+| key | default | meaning |
+|---|---|---|
+| `autocut.every` | `downbeats` | `beats` \| `downbeats` (every bar) \| `bars` (every `autocut.bars` bars) |
+| `autocut.bars` | `2` | bars per shot with `every: bars` |
+| `autocut.min_shot_s` | `0.5` | grid points closer than this to the previous cut are skipped |
 
 #### `ingest`
 

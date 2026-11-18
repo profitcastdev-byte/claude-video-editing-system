@@ -113,17 +113,26 @@ variants:
 
 **Every variant goes through QC.** A variant that fails is not copied into the delivery. The manifest lists it as `failed` with the failing gates, and its QC report is kept under `qc/`. A variant cannot pass a gate the master failed, so fix the master first.
 
-### Reframes (4:5, 1:1, 16:9)
+### Reframes (any master to any aspect: 4:5, 1:1, 16:9, 9:16, 2.39:1 …)
 
-Reframes are cut from the QC'd 9:16 master. The source is the lossless `Edit/frames` when they are exactly the master's frames (same count, none newer than the master); otherwise it is the decoded master. The audio is copied from the master.
+Prefer a native canvas (`canvas.size`, [FORMATS.md](FORMATS.md)) when the edit is designed for one aspect; reframes are the
+fast way to more aspects from one QC'd master, whatever its own aspect:
+- **narrower target** (e.g. a 16:9 master to 9:16 or 1:1): the crop keeps the full height and moves horizontally
+  (`axis: x`), the face centred, captions and chest text kept whole;
+- **wider target** (e.g. 9:16 to 4:5, or 16:9 to 2.39:1): the crop keeps the full width and moves vertically (`axis: y`);
+- **portrait master to a landscape target** (9:16 to 16:9): a foreground crop on a blurred fill (below);
+- the same aspect as the master is refused.
+Ad-hoc aspects may be decimal (`--variants 2.39:1`).
 
-- **Crop.** The crop keeps the full width and moves vertically.
+Reframes are cut from the QC'd master. The source is the lossless `Edit/frames` when they are exactly the master's frames (same count, none newer than the master); otherwise it is the decoded master. The audio is copied from the master.
+
+- **Crop.** Along one axis (above); the rules below are written for the vertical case and apply the same way horizontally.
   - On A-roll shots it follows the face: YuNet is run on every A-roll frame of the master, so zooms, snaps and lifts are already baked in. The face centre sits at `delivery.reframe.face_y` (0.40) of the new frame.
   - **Smoothing.** A shot gets one static crop whenever a single crop can hold the face and the captions for the whole shot. Otherwise the crop follows a smoothed path (`smooth_s`, Gaussian, clamped to the constraints).
   - The crop never moves across a cut. Shots are split at segment starts, cutaway in/out points, snap in/out points and the end card.
 - **Captions.** Caption and chest text boxes from `elements.jsonl` are hard constraints: the crop shifts to keep them whole. If the text and the face cannot both fit, the text wins. The face frames this costs are counted (`RF-FACECUT` WARN, `notes.face_frames_cropped_for_captions`).
 - **Graphics.** On cutaway and end-card shots, one crop per shot is centred on everything drawn in that shot. Elements taller than the frame are listed in `notes.graphics_cropped` (`RF-GFX` WARN).
-- **16:9.** A `delivery.reframe.wide_fg` (4:5) crop on the same path is placed in the centre, over a blurred (`fill_blur`), dimmed (`fill_dim`) and scaled copy of the frame.
+- **16:9 from a portrait master.** A `delivery.reframe.wide_fg` (4:5) crop on the same path is placed in the centre, over a blurred (`fill_blur`), dimmed (`fill_dim`) and scaled copy of the frame.
 - **Reframe QC** (`qc/<id>.qc.json`):
   - `RF-00`: the master stamp is clean;
   - `DEL-01/02/03`, `COL-01`: size, constant frame rate equal to the master's, codec/profile/pix_fmt/AAC/faststart, bt709 tags;

@@ -31,8 +31,14 @@ import numpy as np, cv2, yaml
 
 VIDEO_EXT = (".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi")
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
-from .gfx import W as DESIGN_W, H as DESIGN_H     # template design space (docs/CONTRACTS.md §2); caption px are reported in it
-AW, AH = DESIGN_W // 2, DESIGN_H // 2              # analysis frame: half the design space; other aspects are letter-fitted
+from .gfx import DESIGN as _DESIGN
+DESIGN_W, DESIGN_H = _DESIGN                     # the project canvas (style canvas.size; set_frame); caption px are reported in it
+AW, AH = DESIGN_W // 2, DESIGN_H // 2              # analysis frame: half the canvas; references of another aspect are letter-fitted
+
+def set_frame(w, h):
+    """measure references on the project's canvas (docs/FORMATS.md). Spawned workers get it through their job args."""
+    global DESIGN_W, DESIGN_H, AW, AH
+    DESIGN_W, DESIGN_H = int(w), int(h); AW, AH = max(2, DESIGN_W // 4 * 2), max(2, DESIGN_H // 4 * 2)
 LW, LH = 90, 160           # cut-detection thumbnail
 SAMPLE_FPS = 6.0           # face / grade / caption samples per second
 
@@ -518,8 +524,9 @@ def caption_style(R, ev):
     else: pos, how = f"y:{int(round(mab * DESIGN_H))}", f"caption top at {mab * DESIGN_H:.0f} px (std {as_ * DESIGN_H:.0f} px)"
     ev.put("captions.position", pos, how, n, c0 * (.9 if pos == "chin" else .75))
     if pos == "lower_third": ev.put("captions.lower_third_y", _r(mab), "median caption top / frame height", n, c0 * .7)
-    if pos == "chin": ev.put("captions.chin_gap", int(round(max(10, mrel * DESIGN_H))), "median gap chin -> caption top (design px)", n, c0 * .6)
-    cap_h = float(np.median(hts)) * DESIGN_H / AH
+    u = min(DESIGN_W, DESIGN_H) / 1080          # caption px keys are at a 1080 short side (scaled by gfx.U on the canvas)
+    if pos == "chin": ev.put("captions.chin_gap", int(round(max(10, mrel * DESIGN_H / u))), "median gap chin -> caption top (design px)", n, c0 * .6)
+    cap_h = float(np.median(hts)) * DESIGN_H / AH / u
     ev.put("captions.size", int(round(cap_h / .72)), f"median cap height {cap_h:.0f} px (design space) / 0.72 cap-height ratio", n, c0 * .7)
     tall = float(np.median(ratio_tall))
     ev.put("captions.case", "upper" if tall > .8 else "sentence", f"{tall:.0%} of glyphs reach cap height (upper case > 80%)", n, c0 * .6)
@@ -566,7 +573,8 @@ V2 = 1      # bump when an Edit/inspire/cache entry must be re-measured
 
 
 def _job(a):
-    path, max_s, sheet = a
+    path, max_s, sheet, frame = a
+    set_frame(*frame)                       # spawn: this worker re-imported the module with the default canvas
     try: r = analyse_video(path, max_s)
     except SystemExit: raise
     except Exception as e: return dict(path=path, kind="error", error=f"{type(e).__name__}: {e}")
@@ -622,6 +630,8 @@ def run(pr, refs=None, dry_run=False, max_s=90.0, min_conf=.5, workers=None, mix
     dimension (inspire_mix), write Edit/inspire/REPORT.md + contact sheets always and Edit/style.yaml unless dry_run"""
     from . import inspire_mix as MX, inspire_report as RP, inspire_see, style as STY
     d = os.path.abspath(os.path.expanduser(refs)) if refs else pr.p("Inspirations")
+    from . import gfx as G, style as STY
+    set_frame(*G.canvas_of(STY.load(pr), pr))
     vids, ims = _collect(d)
     if not vids and not ims:
         raise SystemExit(f"no reference videos or images in {d}: put the client's reference edits there (or pass --refs DIR)")
@@ -645,7 +655,7 @@ def run(pr, refs=None, dry_run=False, max_s=90.0, min_conf=.5, workers=None, mix
     if todo:
         import multiprocessing as _mp; Pool = _mp.get_context("spawn").Pool   # no fork: see render.py
         with Pool(workers or max(1, min(len(todo), (os.cpu_count() or 4) // 2))) as pool:
-            for r in pool.imap(_job, [(v, max_s, os.path.join(idir, labs[v] + "-sheet.jpg")) for v in todo]):
+            for r in pool.imap(_job, [(v, max_s, os.path.join(idir, labs[v] + "-sheet.jpg"), (DESIGN_W, DESIGN_H)) for v in todo]):
                 if r.get("kind") == "error": print(f"  skipped {os.path.basename(r['path'])}: {r['error']}"); continue
                 for w in r.get("warnings", []): print(f"  ({os.path.basename(r['path'])}: {w})")
                 _cache_put(cdir, labs[r["path"]], _cache_key(r["path"], max_s), r); got[r["path"]] = r

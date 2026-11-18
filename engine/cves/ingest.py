@@ -9,7 +9,7 @@ Steps (each idempotent, run by `cves ingest --steps a,b` or individually):
   plate           one lossless 10-bit FFV1 decode per segment, conform filters applied in that single decode
   matte           Robust Video Matting per segment (MPS / CUDA / CPU)
   faces           YuNet box + 5 landmarks per frame -> faces.json
-Canvas = style `platform.size`; rate = style `platform.fps` ("source" = the primary source's rate). See docs/INGEST.md.
+Canvas = style `canvas.size` (edit.yaml project.size wins); rate = style `platform.fps` ("source" = the primary source's rate). See docs/INGEST.md.
 Lessons baked in: no generative voice enhancement; frame-snapped segments; drop slivers < 4 frames; edge-accurate mattes;
 never squash (crop to the canvas aspect, then scale); long sources are streamed, never loaded whole."""
 import os, sys, json, glob, subprocess, re, tempfile, shutil
@@ -30,10 +30,9 @@ def sh(cmd, **kw): return subprocess.run(cmd, check=True, capture_output=True, t
 def _S(pr): return STY.load(pr)
 
 def canvas(pr, S=None):
-    """master canvas (w, h): edit.yaml project.size if set, else style platform.size"""
-    S = S or _S(pr)
-    w, h = (pr.edit.get("project") or {}).get("size") or S.get("platform.size")
-    return int(w), int(h)
+    """master canvas (w, h): edit.yaml project.size if set, else style canvas.size (platform.size = legacy alias)"""
+    from . import gfx as G
+    return G.canvas_of(S or _S(pr), pr)
 
 def whisper_language(pr, S=None):
     """whisper language code: edit.yaml project.language > style captions.language > 'auto' (whisper auto-detect)"""
@@ -527,7 +526,7 @@ def faces(pr):
                 _, fc = det.detect(im)
                 if fc is not None and len(fc): last = [round(float(v) * (kx if i % 2 == 0 else ky), 1) for i, v in enumerate(max(fc, key=lambda r: r[2] * r[3])[:14])]
                 rows.append(last)
-        first = next((r for r in rows if r), [round(380 * W / 1080), round(420 * H / 1920), round(320 * W / 1080), round(420 * H / 1920)] + [0] * 10)
+        first = next((r for r in rows if r), [round(W * .352), round(H * .219), round(W * .296), round(H * .219)] + [0] * 10)
         out[s["id"]] = [r or first for r in rows]     # [x, y, w, h, reye x,y, leye x,y, nose x,y, rmouth x,y, lmouth x,y]
     pr.save_json("faces.json", out)
 

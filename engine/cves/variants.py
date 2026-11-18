@@ -2,7 +2,8 @@
 delivered (the manifest lists it as failed, with the reason).
 
   variants:
-    reframes: ["4:5", "1:1", "16:9"]          # face-aware crops of the QC'd 9:16 master (16:9 = crop on a blurred fill)
+    reframes: ["4:5", "1:1", "16:9"]          # face-aware crops of the QC'd master, any master aspect to any target (narrower targets
+                                              # crop the width, wider ones the height; portrait -> landscape = crop on a blurred fill)
     hooks:    [{id: hook_b, first: [04_competitors_0], title_card: {template: ..., duration: 1.5, params: {...}}}]
     end_cards: [{id: end_b, end_card: {template: logo_end, duration: 1.25, params: {...}}}]
     music:    [{id: music_b, file: Music/other.wav, drop_track: 12.0, drop_cut: 31.13, bed_lu: -8}]
@@ -52,7 +53,7 @@ def plan(pr, requested=None):
         if r in kinds: out += [s for s in specs if s["kind"] == kinds[r]]; continue
         hit = [s for s in specs if s["id"] in (r, vid(r))]
         if hit: out += hit; continue
-        if re.fullmatch(r"\d+:\d+", r): out.append({"id": vid(r), "kind": "reframe", "aspect": r}); continue
+        if re.fullmatch(r"\d+(\.\d+)?:\d+(\.\d+)?", r): out.append({"id": vid(r), "kind": "reframe", "aspect": r}); continue
         m = re.fullmatch(r"cut(\d+)", r)
         if m: out.append({"id": r, "kind": "cutdown", "seconds": int(m.group(1))}); continue
         raise SystemExit(f"unknown variant '{r}': define it under edit.yaml variants: or use 4:5 / 1:1 / 16:9 / cut15 / cut30")
@@ -100,19 +101,24 @@ def iter_frames(pr, master, n, size, use_png):
 
 # ------------------------------------------------------------------ reframes
 def _aspect(a):
-    x, y = (int(v) for v in a.split(":")); return x, y
+    x, y = (float(v) for v in a.split(":")); return x, y
 
 def reframe_geometry(aspect, W, H, S):
-    """crop height (always the full width), output size, and for wide outputs the foreground crop height"""
-    ax, ay = _aspect(aspect); ev = lambda v: int(round(v / 2)) * 2
-    if ax / ay <= W / H: raise SystemExit(f"reframe {aspect}: not wider than the {W}x{H} master (only wider ratios are supported)")
-    if ax > ay:          # 16:9 etc: foreground crop on a blurred fill, output height = master width
-        fx, fy = _aspect(str(S.get("delivery.reframe.wide_fg", "4:5")))
-        ch = min(H, ev(W * fy / fx)); oh = W; ow = ev(oh * ax / ay)
-        return {"crop_h": ch, "out": (ow, oh), "fg": (ev(oh * W / ch), oh), "wide": True}
-    ch = ev(W * ay / ax); return {"crop_h": min(H, ch), "out": (W, min(H, ch)), "fg": None, "wide": False}
+    """reframe from any master (docs/DELIVERY.md): a wider target crops the height (full width; `axis` y), a narrower one
+    crops the width (full height; `axis` x). A landscape target from a portrait master puts a foreground crop on a blurred
+    fill (`wide`, output height = master width). -> {axis, crop (px along the axis), crop_h, out, fg, wide}"""
+    ax, ay = _aspect(aspect); ev = lambda v: int(round(v / 2)) * 2; t, m = ax / ay, W / H
+    if abs(t - m) < .01: raise SystemExit(f"reframe {aspect}: the {W}x{H} master already has that aspect")
+    if t > m:
+        if ax > ay and H > W:    # portrait master -> landscape: foreground crop on a blurred fill, output height = master width
+            fx, fy = _aspect(str(S.get("delivery.reframe.wide_fg", "4:5")))
+            ch = min(H, ev(W * fy / fx)); oh = W; ow = ev(oh * ax / ay)
+            return {"axis": "y", "crop": ch, "crop_h": ch, "out": (ow, oh), "fg": (ev(oh * W / ch), oh), "wide": True}
+        ch = min(H, ev(W * ay / ax)); return {"axis": "y", "crop": ch, "crop_h": ch, "out": (W, ch), "fg": None, "wide": False}
+    cw = min(W, ev(H * ax / ay)); return {"axis": "x", "crop": cw, "crop_h": H, "out": (cw, H), "fg": None, "wide": False}
 
-def _load_elements(pr):
+def _load_elements(pr, axis="y"):
+    """{frame: [lo, hi, ids]} extents along the crop axis of caption / chest text and of graphics"""
     cap, gfx = {}, {}
     p = pr.e("elements.jsonl")
     if not os.path.exists(p): return cap, gfx
@@ -122,7 +128,9 @@ def _load_elements(pr):
             if (e.get("alpha") or 0) < .3: continue
             tgt = cap if e["role"] in ("caption", "chest") else gfx if e["role"] in ("cutaway", "end") else None
             if tgt is None: continue
-            x0, y0, x1, y1 = e["bbox"]; cur = tgt.get(e["f"])
+            x0, y0, x1, y1 = e["bbox"]
+            if axis == "x": y0, y1 = x0, x1
+            cur = tgt.get(e["f"])
             tgt[e["f"]] = [y0, y1, [e["id"]]] if cur is None else [min(cur[0], y0), max(cur[1], y1), cur[2] + [e["id"]]]
     return cap, gfx
 
@@ -140,10 +148,11 @@ def _gauss(x, sigma):
     r = int(3 * sigma); k = np.exp(-np.arange(-r, r + 1) ** 2 / (2 * sigma ** 2)); k /= k.sum()
     return np.convolve(np.pad(x, r, mode="edge"), k, "valid")
 
-def crop_path(n, H, ch, shots, is_gfx, face, cap, gfx, S, fps):
-    """per-frame crop top y0 (ints) + notes. Static crop per shot when one crop can hold face + captions; else a smoothed path.
-    Captions/chest text are hard constraints (never cut); the face is kept when it can be; graphics are centred."""
-    R = S.get("delivery.reframe") or {}; m = R.get("margin", 24); fy = R.get("face_y", .40)
+def crop_path(n, H, ch, shots, is_gfx, face, cap, gfx, S, fps, fy=None):
+    """per-frame crop start along the axis (y0, ints) + notes. Static crop per shot when one crop can hold face + captions;
+    else a smoothed path. Captions/chest text are hard constraints (never cut); the face is kept when it can be; graphics
+    are centred. H / ch: the master and crop length along the axis; face {i: (c_other, c_axis, lo, hi)}."""
+    R = S.get("delivery.reframe") or {}; m = R.get("margin", 24); fy = R.get("face_y", .40) if fy is None else fy
     y0 = np.zeros(n); notes = {"caption_cut": [], "face_cut": [], "gfx_cut": set(), "moving_shots": 0}
     hiF = H - ch
     for a, b in shots:
@@ -202,7 +211,7 @@ def detect_faces(frames, is_gfx, n):
         _, f = det.detect(cv2.resize(fr, (sw, sh), interpolation=cv2.INTER_AREA))
         if f is not None and len(f):
             b = max(f, key=lambda r: r[2] * r[3] * r[14]); x, y, bw, bh = (float(v) * 4 for v in b[:4])
-            out[i] = (x + bw / 2, y + bh / 2, y, y + bh)
+            out[i] = (x + bw / 2, y + bh / 2, y, y + bh, x, x + bw)
     return out
 
 def reframe_all(pr, S, master, specs, outdir, title):
@@ -216,20 +225,23 @@ def reframe_all(pr, S, master, specs, outdir, title):
     a_frames = int(tl.get("a_frames") or n); cuts = tl.get("cutaways", [])
     is_gfx = [i >= a_frames or any(c["start"] <= i / fps < c["end"] for c in cuts) for i in range(n)]
     face = detect_faces(iter_frames(pr, master, n, (W, H), use_png), is_gfx, n)
-    cap, gfx = _load_elements(pr); shots = _shots(tl, n, fps)
+    face_x = {i: (f[1], f[0], f[4], f[5]) for i, f in face.items()}            # the same faces seen along x (narrower targets)
+    shots = _shots(tl, n, fps); els = {"y": _load_elements(pr, "y"), "x": _load_elements(pr, "x")}
     jobs = []
     for sp in specs:
         g = reframe_geometry(sp["aspect"], W, H, S)
         geo_fg = reframe_geometry(str(S.get("delivery.reframe.wide_fg", "4:5")), W, H, S) if g["wide"] else g
-        y0, notes = crop_path(n, H, geo_fg["crop_h"], shots, is_gfx, face, cap, gfx, S, fps)
+        cap, gfx = els[g["axis"]]
+        if g["axis"] == "x": y0, notes = crop_path(n, W, g["crop"], shots, is_gfx, face_x, cap, gfx, S, fps, fy=.5)
+        else: y0, notes = crop_path(n, H, geo_fg["crop_h"], shots, is_gfx, face, cap, gfx, S, fps)
         out = os.path.join(outdir, f"{title}_{sp['id']}.mp4"); ow, oh = g["out"]
         p = subprocess.Popen([_ff(), "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{ow}x{oh}", "-framerate", fr, "-i", "pipe:0",
                               "-i", master, "-map", "0:v", "-map", "1:a?"] + video_args(S) + ["-c:a", "copy", "-shortest", out], stdin=subprocess.PIPE)
-        jobs.append({"spec": sp, "g": g, "ch": geo_fg["crop_h"], "y0": y0, "notes": notes, "out": out, "p": p})
+        jobs.append({"spec": sp, "g": g, "ch": g["crop"] if g["axis"] == "x" else geo_fg["crop_h"], "y0": y0, "notes": notes, "out": out, "p": p})
     R = S.get("delivery.reframe") or {}; dim = float(R.get("fill_dim", .55)); blur = float(R.get("fill_blur", 40))
     for i, frm in enumerate(iter_frames(pr, master, n, (W, H), use_png)):
         for j in jobs:
-            c = frm[j["y0"][i]:j["y0"][i] + j["ch"]]
+            c = frm[:, j["y0"][i]:j["y0"][i] + j["ch"]] if j["g"]["axis"] == "x" else frm[j["y0"][i]:j["y0"][i] + j["ch"]]
             if j["g"]["wide"]:
                 ow, oh = j["g"]["out"]; fw, fh = j["g"]["fg"]
                 sc = ow / W; bh = int(H * sc); cy = int((j["y0"][i] + j["ch"] / 2) * sc)
@@ -287,7 +299,8 @@ def qc_reframe(pr, S, master, r, aspect, master_stamp):
         if f is not None and len(f): seen += 1
         else: miss.append(i)
     share = seen / max(1, len(want))
-    gate("RF-FACE", share >= .95, f"face found on {seen}/{len(want)} sampled A-roll frames ({share:.0%})", ", ".join(f"f{i}" for i in miss[:20]),
+    if not want: gate("RF-FACE", True, "no presenter face in the master (B-roll / voiceover / music edit): nothing to keep in frame", status="N/A")
+    else: gate("RF-FACE", share >= .95, f"face found on {seen}/{len(want)} sampled A-roll frames ({share:.0%})", ", ".join(f"f{i}" for i in miss[:20]),
          status=None if share >= .95 or share < .80 else "WARN")
     gate("RF-FACECUT", not nt["face_cut"], f"{len(nt['face_cut'])} frames where keeping the captions cost part of the face",
          ", ".join(f"f{i}" for i in nt["face_cut"][:20]), status="PASS" if not nt["face_cut"] else "WARN")

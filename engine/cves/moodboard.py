@@ -4,12 +4,14 @@ Outputs in PROJECT/Moodboard/:
                    on-screen content, framing, transitions, captions and sound cues; pre-render gate results. Approve or mark up.
   EDIT-PLAN.md     the same plan as text (what Claude reads; no images needed)
   moodboard.jpg    contact sheet of every keyframe (Claude's one-image visual review)
-  frames/          the keyframes (JPG, 540x960)"""
+  frames/          the keyframes (JPG, long side 960 px, the canvas aspect)
+Works on every spine (docs/FORMATS.md): B-roll shots are their own shot kind; on a voiceover / music / broll edit there is
+no A-roll lane content."""
 import os, json, html, shutil, math
 from PIL import Image, ImageDraw
 from .render import Timeline, render
 
-TRACK_COLORS = {"aroll": "#6b7d74", "zoom1": "#4f8f73", "zoom2": "#2f6f55", "zoom3": "#1d4f3c", "snap": "#e0663a", "cutaway": "#19e6a0",
+TRACK_COLORS = {"broll": "#5a7fa8", "aroll": "#6b7d74", "zoom1": "#4f8f73", "zoom2": "#2f6f55", "zoom3": "#1d4f3c", "snap": "#e0663a", "cutaway": "#19e6a0",
                 "roto": "#b48cff", "chest": "#d6b26c", "caption": "#9fb3ff", "end": "#ffffff", "whip": "#ffcc4d", "glitch": "#ff6b8b"}
 
 def _words(TL, a, b):
@@ -20,7 +22,8 @@ def _cap_visible(TL, a, b):
     """is a caption event actually on screen (not under a cutaway, chest graphic, extreme punch-in or hide window)?"""
     m = (a + b) / 2
     chest_t = [(s["t0"], s["t1"]) for sid in TL.chest for s in TL.segs if s["id"] == sid]
-    return not (TL.in_cut(m) or m >= TL.T_END or any(x <= m < y for x, y in chest_t) or any(x <= m < y for x, y in getattr(TL, "cap_hide", []))
+    c = TL.in_cut(m)
+    return not ((c and not c.get("broll")) or m >= TL.T_END or any(x <= m < y for x, y in chest_t) or any(x <= m < y for x, y in getattr(TL, "cap_hide", []))
                 or (TL.snap and TL.snap[0] <= m < TL.snap[1]))
 
 def _times_in(params):
@@ -40,16 +43,16 @@ def _times_in(params):
 def shots(TL):
     """the edit as an ordered list of shots covering the whole runtime"""
     F = TL.FPS; S = []
-    cut_iv = sorted((c["start"], c["end"], c) for c in TL.cuts)
-    t = 0.0
-    def aroll_pieces(a, b):
-        for s in TL.segs:
-            lo, hi = max(a, s["t0"]), min(b, s["t1"])
-            if hi - lo >= .5 / F: S.append({"kind": "aroll", "start": lo, "end": hi, "seg": s})
-    for a, b, c in cut_iv:
-        if a > t: aroll_pieces(t, a)
-        S.append({"kind": "cutaway", "start": a, "end": b, "cut": c}); t = b
-    if t < TL.T_END: aroll_pieces(t, TL.T_END)
+    # pieces between every boundary, owned by what the renderer shows there (drawn cutaways win over B-roll shots)
+    bounds = sorted(set([0.0, TL.T_END] + [s["t0"] for s in TL.segs] + [x for c in TL.cuts for x in (c["start"], c["end"]) if 0 <= x <= TL.T_END]))
+    for a, b in zip(bounds[:-1], bounds[1:]):
+        if b - a < .5 / F: continue
+        m = (a + b) / 2; c = TL.in_cut(m); seg = next((s for s in TL.segs if s["t0"] <= m < s["t1"]), None)
+        own = ("cut", id(c)) if c else ("seg", seg["id"] if seg else None)
+        if S and S[-1]["_own"] == own and abs(S[-1]["end"] - a) < 1e-6: S[-1]["end"] = b; continue
+        if c: S.append({"kind": "broll" if c.get("broll") else "cutaway", "start": a, "end": b, "cut": c, "_own": own})
+        elif seg is not None: S.append({"kind": "aroll" if seg.get("kind", "aroll") == "aroll" else "gap", "start": a, "end": b, "seg": seg, "_own": own})
+    for sh in S: sh.pop("_own", None)
     if TL.END: S.append({"kind": "end", "start": TL.T_END, "end": TL.N / F})
     for sh in S:
         a, b = sh["start"], sh["end"]
@@ -61,6 +64,8 @@ def shots(TL):
             for c in ch: keys += [x + .7 for x in _times_in(c.get("params")) if a <= x < b]
             if snap: keys.append((max(a, snap[0]) + min(b, snap[1])) / 2)
             sh.update(zoom=z, lift=sid in getattr(TL, "lift", set()), roto=r, chest=ch, snap=snap)
+        elif sh["kind"] == "broll": keys = [a + min(.2, (b - a) / 3), (a + b) / 2, b - .1]
+        elif sh["kind"] == "gap": keys = [(a + b) / 2]
         elif sh["kind"] == "cutaway":
             c = sh["cut"]; inner = [x + .35 for x in _times_in(c.get("params")) if a <= x < b - .1]
             keys = [a + .2] + inner + [b - .15]
@@ -71,13 +76,18 @@ def shots(TL):
             idx = sorted(set([0, len(keys) - 1] + [round(i * (len(keys) - 1) / 5) for i in range(6)])); keys = [keys[i] for i in idx]
         sh["frames"] = keys
         sh["words"] = _words(TL, a, b)
-        sh["captions"] = [" ".join(w for w, _ in ws) for ca, cb, ws in TL.caps if ca < b and cb > a and _cap_visible(TL, max(ca, a), min(cb, b))] if sh["kind"] == "aroll" else []
-        sh["beat"] = ("" if sh["kind"] != "aroll" else (TL.pr.json("edl.json") and next((c.get("beat") or "" for c in TL.pr.json("edl.json")["clips"] if c["id"] == sh["seg"]["clip"]), "")))
+        sh["captions"] = [" ".join(w for w, _ in ws) for ca, cb, ws in TL.caps if ca < b and cb > a and _cap_visible(TL, max(ca, a), min(cb, b))] if sh["kind"] in ("aroll", "broll", "gap") else []
+        sh["beat"] = ("" if sh["kind"] != "aroll" else (TL.pr.json("edl.json") and next((c.get("beat") or "" for c in TL.pr.json("edl.json").get("clips", []) if c["id"] == sh["seg"].get("clip")), "")))
         sh["trans_in"] = next((k for tb, k in TL.trans if abs(tb - a) < .02), "cut" if a > 0 else "open")
         sh["trans_out"] = next((k for tb, k in TL.trans if abs(tb - b) < .02), "cut")
     return S
 
 def describe(sh):
+    if sh["kind"] == "broll":
+        p = sh["cut"].get("params", {}); kb = (p.get("kenburns") or {}).get("zoom")
+        return (f"B-roll `{p.get('asset')}` {p.get('framing', 'fill')}" + (f", ken burns {kb}" if kb else "") +
+                f", from {float(p.get('in', 0)):.2f} s" + (f" at {p.get('speed')}x" if float(p.get("speed", 1)) != 1 else "") + (", own sound" if p.get("audio") else ""))
+    if sh["kind"] == "gap": return "no shot scheduled (stage)"
     if sh["kind"] == "cutaway":
         c = sh["cut"]; p = c.get("params", {})
         bits = [p.get(k) for k in ("label", "unit", "pill") if p.get(k)]
@@ -104,8 +114,9 @@ def moodboard(pr):
     tmp = pr.e("frames_plan"); shutil.rmtree(tmp, ignore_errors=True)
     render(pr, only=want, out_dir=tmp)
     out = pr.p("Moodboard"); fdir = os.path.join(out, "frames"); shutil.rmtree(fdir, ignore_errors=True); os.makedirs(fdir)
+    W0, H0 = TL.size; k = 960 / max(W0, H0); thumb = (max(2, round(W0 * k)), max(2, round(H0 * k)))      # the canvas aspect, never squashed
     for f in want:
-        Image.open(os.path.join(tmp, f"{f:05d}.png")).convert("RGB").resize((540, 960), Image.LANCZOS).save(os.path.join(fdir, f"{f:05d}.jpg"), quality=86)
+        Image.open(os.path.join(tmp, f"{f:05d}.png")).convert("RGB").resize(thumb, Image.LANCZOS).save(os.path.join(fdir, f"{f:05d}.jpg"), quality=86)
     shutil.rmtree(tmp, ignore_errors=True)
     E = pr.edit; title = E.get("project", {}).get("title", "Edit"); T = TL.N / F
     cut_share = sum(sh["end"] - sh["start"] for sh in S if sh["kind"] == "cutaway") / max(TL.T_END, 1e-6)
@@ -127,7 +138,7 @@ def moodboard(pr):
     open(os.path.join(out, "EDIT-PLAN.md"), "w", encoding="utf-8").write("\n".join(md) + "\n")
 
     # ---------------- contact sheet (Claude's one-image review)
-    cols = 8; tw, th = 180, 320; rows = math.ceil(len(want) / cols)
+    k2 = 320 / max(W0, H0); tw, th = max(2, round(W0 * k2)), max(2, round(H0 * k2)); cols = max(3, 1440 // tw); rows = math.ceil(len(want) / cols)
     sheet = Image.new("RGB", (cols * tw, rows * (th + 22)), (20, 20, 20)); d = ImageDraw.Draw(sheet)
     shot_of = {f: i for i, sh in enumerate(S, 1) for f in sh["frames"]}
     for k, f in enumerate(want):
@@ -138,7 +149,7 @@ def moodboard(pr):
 
     # ---------------- EDIT-PLAN.html (the user's plan)
     W_ = 1000; px = lambda t: t / T * W_
-    beat_of = {c["id"]: c.get("beat") for c in pr.json("edl.json")["clips"]}
+    beat_of = {c["id"]: c.get("beat") for c in (pr.json("edl.json") or {}).get("clips", [])}
     BEATC = {"H": "#ff9f43", "P": "#ff6b6b", "A": "#c56cf0", "PR": "#19e6a0", "O": "#54a0ff", "C": "#feca57"}
     lanes = [("Beats", "beat"), ("Shots", "shot"), ("Framing", "zoom"), ("Roto", "roto"), ("Chest", "chest"), ("Captions", "caption"), ("Transitions", "trans"), ("SFX", "sfx"), ("Music", "music")]
     lane_y = {name: 22 + i * 26 for i, (name, _) in enumerate(lanes)}; H_ = 22 + len(lanes) * 26 + 24
@@ -153,7 +164,7 @@ def moodboard(pr):
         bt = beat_of.get(s_["clip"])
         if bt: rect("Beats", s_["t0"], s_["t1"], BEATC.get(bt, "#888"), bt, f"{bt}: {s_['clip']}")
     for i, sh in enumerate(S, 1):
-        k = sh["kind"]; col = TRACK_COLORS["cutaway" if k == "cutaway" else "end" if k == "end" else "aroll"]
+        k = sh["kind"]; col = TRACK_COLORS["cutaway" if k == "cutaway" else "end" if k == "end" else "broll" if k == "broll" else "aroll"]
         rect("Shots", sh["start"], sh["end"], col, f"{i}", f"#{i} {describe(sh)}")
         if k == "aroll":
             z = sh["zoom"]; zc = TRACK_COLORS["zoom1" if z < 1.1 else "zoom2" if z < 1.3 else "zoom3"]
@@ -176,13 +187,13 @@ def moodboard(pr):
     for i, sh in enumerate(S, 1):
         frames = "".join(f'<figure><img loading="lazy" src="frames/{f:05d}.jpg" alt="frame {f}"><figcaption>{f / F:.2f}s</figcaption></figure>' for f in sh["frames"])
         sfx = ", ".join(f"{html.escape(c[1])} {c[0]:.2f}s" for c in cues if sh["start"] - .3 <= c[0] < sh["end"]) or "–"
-        if sh["kind"] == "cutaway":   # a cutaway sits on the beat of the voice under it
+        if sh["kind"] in ("cutaway", "broll"):   # a cutaway sits on the beat of the voice under it
             mid = (sh["start"] + sh["end"]) / 2; sseg = next((x for x in TL.segs if x["t0"] <= mid < x["t1"]), None)
             sh["beat"] = beat_of.get(sseg["clip"], "") if sseg else ""
         rows = [("Beat", {"H": "Hook", "P": "Problem", "A": "Agitation", "PR": "Proof", "O": "Offer", "C": "CTA"}.get(sh.get("beat") or "", "–")),
                 ("Spoken", html.escape(sh["words"]) or "–"), ("On screen", html.escape(describe(sh)).replace("`", "")),
                 ("Transitions", f"{sh['trans_in']} → {sh['trans_out']}"), ("Captions", html.escape(" / ".join(sh["captions"])) or "–"), ("Sound", sfx)]
-        kind = {"aroll": "A-roll", "cutaway": "Cutaway", "end": "End card"}[sh["kind"]]
+        kind = {"aroll": "A-roll", "cutaway": "Cutaway", "end": "End card", "broll": "B-roll", "gap": "Gap"}[sh["kind"]]
         cards.append(f'<section class="shot {sh["kind"]}"><header><b>#{i}</b> <span class="tag">{kind}</span> {sh["start"]:.2f}–{sh["end"]:.2f}s '
                      f'<span class="dur">{sh["end"] - sh["start"]:.2f}s</span></header><div class="strip">{frames}</div>'
                      f'<table>{"".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in rows)}</table></section>')
@@ -196,7 +207,7 @@ h1{{margin:0 0 4px}} .sub{{color:var(--mut);margin:0 0 18px}} h2{{margin:28px 0 
 .stats span{{display:block;color:var(--mut);font-size:12px}} .tl{{width:100%;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 0}}
 .ln{{fill:var(--mut);font-size:11px}} .bl{{fill:#0b0f0d;font-size:10px;font-weight:600}} .ax{{fill:var(--mut);font-size:10px}}
 .shot{{background:var(--card);border:1px solid var(--line);border-left:4px solid #6b7d74;border-radius:8px;margin:12px 0;padding:10px 12px}}
-.shot.cutaway{{border-left-color:var(--acc)}} .shot.end{{border-left-color:#fff}} header{{margin-bottom:8px}} .tag{{background:#26302b;border-radius:10px;padding:1px 8px;font-size:12px}}
+.shot.cutaway{{border-left-color:var(--acc)}} .shot.broll{{border-left-color:#5a7fa8}} .shot.end{{border-left-color:#fff}} header{{margin-bottom:8px}} .tag{{background:#26302b;border-radius:10px;padding:1px 8px;font-size:12px}}
 .dur{{color:var(--mut)}} .strip{{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}} figure{{margin:0;flex:0 0 auto}} img{{height:240px;border-radius:6px;display:block}}
 figcaption{{color:var(--mut);font-size:11px;text-align:center}} table{{border-collapse:collapse;width:100%;margin-top:6px}} th{{text-align:left;color:var(--mut);font-weight:500;width:110px;vertical-align:top;padding:3px 8px 3px 0}}
 td{{padding:3px 0}} pre{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;overflow-x:auto;font-size:12px}}

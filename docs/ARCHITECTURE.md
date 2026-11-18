@@ -4,8 +4,10 @@ Claude Video Editing System (CVES): an autonomous, Claude-driven editor for talk
 **Claude makes the decisions; local code does the work; humans tweak in a real editor.**
 
 The engine has no house look. Every visual, pacing and sound choice comes from a **style profile** (§9), normally measured
-from the client's own reference edits. Templates draw in a **1080×1920 design space**; the master is rendered at
-`platform.size` from the style, and other aspect ratios are reframes of it (`cves deliver --variants`, see `docs/CONTRACTS.md` §2).
+from the client's own reference edits. The **canvas** is configurable (style `canvas.size`: 9:16, 4:5, 1:1, 16:9, 2.39:1 or any
+even size) and edits are designed and rendered natively at it; other aspect ratios can still be delivered as reframes of the
+master (`cves deliver --variants`). What drives the timeline is the **spine**: `aroll` (a presenter), `voiceover`, `music` or
+`broll` ([FORMATS.md](FORMATS.md), `docs/CONTRACTS.md` §2).
 
 ## 1. Repo layout
 ```
@@ -17,8 +19,9 @@ claude-video-editing-system/
     cli.py                entry point
     project.py            project folder layout, edit.yaml load/save/validate
     ingest.py             transcribe, pause-tighten, plate extract, matte, faces, voice chain
-    gfx.py                drawing kit (2x supersampled, Material icons, fonts) + ELEMENT LOG
+    gfx.py                drawing kit (2x supersampled, Material icons, fonts) + ELEMENT LOG; the canvas (set_canvas, safe_zone)
     motion/               HTML motion layer: Chromium (Playwright) renderer + frame cache, runtime.js, base.css, pieces/<name>/ (docs/MOTION.md)
+    spines.py             timeline spines (aroll | voiceover | music | broll), the broll: track, VO ingest, `cves autocut`
     style.py              loads and merges the style profile (§9); every module reads looks through it
     styles/               default.yaml (neutral defaults, the full schema) + optional named presets
     look.py               A-roll grade (optional edge-accurate relight) + per-shot skin exposure balance, from `grade:`
@@ -77,7 +80,8 @@ claude-video-editing-system/
 ## 4. edit.yaml (the single source of truth for a video)
 ```yaml
 goal: ad                                     # ad (default) | viral: goal layer, retention QC profile, music slot rules (docs/VIRAL.md)
-project: {client: "Client", title: "Video Title", raw: "Raw/take.MP4"}   # fps and size come from the source / style profile
+project: {client: "Client", title: "Video Title", raw: "Raw/take.MP4"}   # fps and size come from the source / style profile (canvas.size)
+spine: aroll                                 # aroll (default) | voiceover | music | broll: what drives the timeline (FORMATS.md)
 style: {preset: null, captions: {position: lower_third}}   # optional preset + inline per-video overrides (§9)
 edl: edl.json                                # segments (raw in/out, frame-snapped) from `cves story`
 aroll:
@@ -96,6 +100,11 @@ music: {file: "Music/track.wav", drop_track: 38.70, drop_cut: 31.13, credits: ".
 # organic post on a trending sound: music: {slot: platform, guide: 128, sound: "..."}  -> no music in the master (docs/VIRAL.md §4)
 sfx: {auto: true, extra: [{t: 31.12, name: boom, gain: -16}]}   # templates emit their own cues
 qc: {topic_keywords: [topic, words], brand_tail: [brand, name], duration: [30, 60]}   # duration omitted = style platform.duration
+broll:                                       # footage on the timeline (FORMATS.md §5): cutaways over A-roll, or the picture of a
+  - {src: Raw/street.mp4, start: 12.4, end: 14.1, in: 3.0, framing: fill}            # voiceover / music / broll edit
+  - {asset: hero_img, start: 14.1, end: 15.6, kenburns: {zoom: [1.0, 1.1]}}
+# voiceover spine: voiceover: {asset: vo} (an ElevenLabs VO registered with `cves assets add`, or {file: Raw/vo.wav})
+# music / broll spines: duration: 20 (else the music track / the end of the broll track); `cves autocut` proposes broll: on the beat
 ```
 Every time is cut time in seconds; the engine snaps edits to frame/segment boundaries. Any look value left out of `edit.yaml`
 (transition kinds, accent colour, bed level, caption position, cutaway share band) comes from the style profile.
@@ -109,8 +118,9 @@ Every time is cut time in seconds; the engine snaps edits to frame/segment bound
 - end: `logo_end`
 - motion (`m_*`, `templates/motion.py`): HTML/CSS pieces from `engine/cves/motion/pieces/`, `~/.cves/motion/` and `PROJECT/Brand/motion/`, rendered once by headless Chromium (`cves.motion`, pre-rendered by `render.render()` before the worker pool) and read back as cached RGBA frames; cutaway, overlay (chest), `_roto` and `_end` uses. See `docs/MOTION.md`.
 
-New template = new file + registry entry + a moodboard sample in `docs/TEMPLATES.md`. Templates draw in the 1080×1920 design
-space and read every colour and font through `gfx` from the style profile, never as literal values (`docs/CONTRACTS.md` §4).
+New template = new file + registry entry + a moodboard sample in `docs/TEMPLATES.md`. Templates lay out relative to the canvas
+(`G.W`, `G.H`, `G.safe()`, px scaled by `G.U`; legacy fixed 1080×1920 modules are fitted into the safe zone) and read every
+colour and font through `gfx` from the style profile, never as literal values (`docs/CONTRACTS.md` §4, FORMATS.md §3).
 
 ## 6. Element log (unlocks the remaining QC gates)
 `render.py` writes `Edit/elements.jsonl`: one line per element per frame:
@@ -119,7 +129,7 @@ QC gates for motion (MOT-*), graphics (GFX-*), captions (PLAT-*), safe zones and
 
 ## 7. Control mode export contract (`Export/control/`)
 ```
-media/aroll/<seg>.mov        graded A-roll per segment, ProRes 422 HQ, zoom baked, 1080x1920
+media/aroll/<seg>.mov        graded A-roll per segment (B-roll shot on a non-aroll spine), ProRes 422 HQ, zoom baked, canvas size
 media/cutaways/<id>.mov      full-frame cutaway incl. its in/out transition, ProRes 422 HQ
 media/overlays/<id>.mov      chest/roto foreground elements with alpha, ProRes 4444 (roto shots: plate+behind+person baked as A-roll)
 media/audio/voice.wav  music.wav  sfx.wav   48 kHz stems (mix levels as rendered)
@@ -154,7 +164,7 @@ Python 3.12 venv in `~/.cves/venv` (Mac) / `%USERPROFILE%\.cves\venv` (Windows);
 The learned layers apply only sections whose scope matches the project, and every entry in them was approved by a person
 (`docs/LEARNING.md`).
 
-Sections: `platform` (canvas size, fps, safe zone, duration), `stage`, `colors`, `font_files`, `grade`, `captions`, `transitions`,
+Sections: `canvas` (size, safe zones per aspect), `platform` (fps, 9:16 safe zone, margin, duration), `broll`, `autocut`, `stage`, `colors`, `font_files`, `grade`, `captions`, `transitions`,
 `framing`, `grammar` (cutaway share band, shot lengths, roto count, beat order), `sound` (bed level, ducking, master loudness),
 `motion`. The schema is in `docs/STYLE.md`.
 

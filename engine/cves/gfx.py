@@ -1,7 +1,9 @@
 """CVES graphics kit: stage, cards, icon wells, pills, check / cross states, corner brackets, type, timing and cue helpers.
 Colours, stage, fonts and motion are NOT fixed here: `apply_style(style.load(pr))` sets them from the style profile
-(docs/STYLE.md). The names below are neutral fallbacks only. Everything is drawn in a 1080x1920 design space,
-supersampled 2x for clean edges; other aspect ratios come from `cves deliver` reframes.
+(docs/STYLE.md). The names below are neutral fallbacks only. Everything is drawn on the configured canvas (`set_canvas`,
+from style `canvas.size`; default 1080x1920), supersampled 2x for clean edges. Read `G.W` / `G.H` / `G.U` at call time,
+never import them by value: the canvas is set per process (render workers re-set it in their initializer).
+`U` = min(W, H) / 1080 is the layout unit: px constants designed for a 1080-wide portrait frame scale by it.
 
 Timing: templates quantise every animation start to a whole frame with `q(t, fps)` and use `enter(t, t0, d)` for entries,
 so an element is first visible on the frame of its word (MOT-07, SND-07). The frame rate comes from `ctx["fps"]`, else
@@ -10,7 +12,9 @@ import math, os, re, numpy as np
 from functools import lru_cache
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-W, H = 1080, 1920
+W, H = 1080, 1920      # the canvas of this process: set_canvas() changes it (read G.W / G.H at call time)
+DESIGN = (1080, 1920)  # the reference design space of fixed-layout templates (module-level DESIGN = True)
+U = 1.0                # layout unit: min(W, H) / 1080
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))   # repo root
 FONTS = os.path.join(ROOT, "assets", "fonts")
 ICONS = os.path.join(ROOT, "assets", "icons")
@@ -74,9 +78,12 @@ def enter(t, t0, d, fps=None):
     return prog(t, t0, d)
 
 # ---------- stage
-@lru_cache(None)
 def stage():
-    """Dark stage, accent glow rising from the bottom, dot grid fading upward. float32 HxWx3 0..1"""
+    """Dark stage, accent glow rising from the bottom, dot grid fading upward. float32 HxWx3 0..1 (the current canvas)"""
+    return _stage(W, H)
+
+@lru_cache(4)
+def _stage(W, H):
     y = np.linspace(0, 1, H)[:, None]; x = np.linspace(-1, 1, W)[None, :]
     base = np.zeros((H, W, 3), np.float32) + np.array(STAGE['background'], np.float32) / 255
     if sget("stage.glow", True):
@@ -84,8 +91,9 @@ def stage():
         base += glow[..., None] * (np.array(STAGE['glow_bottom'], np.float32) / 255)
     if sget("stage.dots", True):
         dots = Image.new("L", (W, H), 0); d = ImageDraw.Draw(dots)
-        for gy in range(30, H, 56):
-            for gx in range(14, W, 56):
+        step = 56 * min(W, H) / 1080 if min(W, H) != 1080 else 56
+        for gy in np.arange(30 * step / 56, H, step):
+            for gx in np.arange(14 * step / 56, W, step):
                 d.ellipse((gx - 1.6, gy - 1.6, gx + 1.6, gy + 1.6), fill=255)
         dots = np.asarray(dots, np.float32)[..., None] / 255
         fade = (.10 + .30 * np.clip((y - .25) / .75, 0, 1))[..., None]
@@ -134,7 +142,7 @@ def contrast(a, b):
 
 def need_contrast(size_px):
     """WCAG target for text of this pixel size (style `legibility`)"""
-    big = size_px >= sget("legibility.large_px", 48)
+    big = size_px >= sget("legibility.large_px", 48) * U          # large_px is at a 1080 short side
     return sget("legibility.large_contrast", 3.0) if big else sget("legibility.min_contrast", 4.5)
 
 def legible_bed(im, fg, size_px, bg=None, force=0.0):
@@ -632,11 +640,75 @@ def _emoji_notdef():
 def strip_emoji(s): return "".join(ch for ch in str(s) if not is_emoji(ch))
 
 # ---------- layout (safe zone from the style)
-def safe():
-    """(x0, y0, x1, y1) kept free of platform UI: style platform.safe_zone, else the canvas inset by platform.margin"""
-    z = sget("platform.safe_zone")
+def margin(S=None):
+    """platform.margin (px at a 1080 short side) on the current canvas"""
+    m = (S.get("platform.margin", 60) if S is not None else sget("platform.margin", 60))
+    return float(m) * U
+
+def safe_zone(S=None, size=None):
+    """(x0, y0, x1, y1) kept free of platform UI on the canvas, or None when the style disables it (platform.safe_zone: null).
+    platform.safe_zone is in 1080x1920 px for 9:16 platforms: on a 9:16 canvas it is scaled to the canvas (identity at
+    1080x1920). Any other aspect uses canvas.safe_zones (fractions of the canvas per aspect, the nearest aspect wins)."""
+    get = S.get if S is not None else sget
+    w, h = size or (W, H)
+    if S is not None:                       # platform.target (styles/platforms.yaml) wins when its aspect fits the canvas
+        from . import platforms as PF
+        if PF.profile_fits(S, w, h): return tuple(float(v) for v in PF.box_px(PF.profile(S)["safe"], w, h))
+    z = get("platform.safe_zone")
+    if not z: return None
+    if abs(w / h - 9 / 16) < .01:
+        return (z[0] * w / 1080, z[1] * h / 1920, z[2] * w / 1080, z[3] * h / 1920) if (w, h) != (1080, 1920) else tuple(float(v) for v in z)
+    zones = get("canvas.safe_zones") or {}
+    best, fr = None, None
+    for k, v in zones.items():
+        try:
+            a, b = (float(x) for x in str(k).split(":")); d = abs(math.log((w / h) / (a / b)))
+        except (ValueError, ZeroDivisionError): continue
+        if best is None or d < best: best, fr = d, v
+    if not fr: fr = (.05, .05, .95, .95)
+    return (fr[0] * w, fr[1] * h, fr[2] * w, fr[3] * h)
+
+def safe(S=None):
+    """(x0, y0, x1, y1) kept free of platform UI: the canvas safe zone (safe_zone), else the canvas inset by platform.margin"""
+    z = safe_zone(S)
     if z: return tuple(float(v) for v in z)
-    m = sget("platform.margin", 60); return (m, m, W - m, H - m)
+    m = margin(S); return (m, m, W - m, H - m)
+
+# ---------- canvas (style canvas.size; docs/FORMATS.md)
+def canvas_of(S=None, pr=None):
+    """the canvas (w, h): edit.yaml project.size > style canvas.size > style platform.size (legacy alias) > 1080x1920"""
+    get = S.get if S is not None else sget
+    sz = ((pr.edit.get("project") or {}).get("size") if pr is not None else None) or get("canvas.size") or get("platform.size") or DESIGN
+    w, h = int(sz[0]), int(sz[1])
+    if w < 16 or h < 16 or w % 2 or h % 2: raise SystemExit(f"canvas {w}x{h}: width and height must be even and >= 16 (style canvas.size)")
+    return w, h
+
+def set_canvas(w, h):
+    """set the canvas of this process (G.W, G.H, G.U). Spawned render workers call it again in their initializer."""
+    global W, H, U
+    w, h = int(w), int(h)
+    if (w, h) == (W, H): return
+    W, H, U = w, h, min(w, h) / 1080.0
+    _stage.cache_clear()
+
+def is_design(): return (W, H) == DESIGN
+
+def place(im, a, ox, oy, size=None):
+    """map an RGBA layer (PIL) drawn in another space onto the canvas: scale a, then offset (ox, oy) in canvas px.
+    Only the drawn region is resampled. Returns a canvas-sized PIL RGBA."""
+    size = size or (W, H)
+    if isinstance(im, np.ndarray):
+        im = Image.fromarray(np.clip(im * 255 + .5, 0, 255).astype(np.uint8) if im.dtype != np.uint8 else im, "RGBA")
+    out = Image.new("RGBA", size, (0, 0, 0, 0)); bb = im.getbbox()
+    if not bb: return out
+    x0, y0, x1, y1 = bb
+    px0, py0 = int(round(ox + x0 * a)), int(round(oy + y0 * a)); pw, ph = max(1, int(round((x1 - x0) * a))), max(1, int(round((y1 - y0) * a)))
+    crop = im.crop(bb)
+    if (pw, ph) != crop.size: crop = crop.resize((pw, ph), Image.LANCZOS)
+    if px0 >= size[0] or py0 >= size[1] or px0 + pw <= 0 or py0 + ph <= 0: return out
+    if px0 < 0 or py0 < 0:
+        crop = crop.crop((max(0, -px0), max(0, -py0), pw, ph)); px0, py0 = max(0, px0), max(0, py0)
+    out.alpha_composite(crop, (px0, py0)); return out
 
 
 # ---------- style presets (engine/cves/styles/<preset>.yaml, optionally overridden by PROJECT/Brand/style.yaml)
@@ -649,11 +721,13 @@ def load_style(preset=None, override=None):
     from . import style as STY
     return STY.load(preset=preset, extra=STY._read(override) if override else None)
 
-def apply_style(d):
-    """set the palette, stage, fonts and motion for this process, including names templates imported by value"""
+def apply_style(d, canvas=None):
+    """set the palette, stage, fonts, motion and canvas (`canvas` (w, h), else the style's canvas.size) for this process,
+    including names templates imported by value"""
     import sys
     g = globals(); changed = {}; cols = d.get("colors") or {}
     STYLE.clear(); STYLE.update(d)
+    set_canvas(*(canvas or canvas_of()))
     for k, name in _COLOR_KEYS.items():
         if cols.get(k): changed[name] = _rgb(cols[k])
     g.update(changed)
@@ -671,5 +745,5 @@ def apply_style(d):
         if getattr(mod, "__name__", "").startswith("cves.") and mod is not sys.modules[__name__]:
             for name, val in changed.items():
                 if hasattr(mod, name): setattr(mod, name, val)
-    stage.cache_clear(); font.cache_clear(); _font0.cache_clear(); _icon_img.cache_clear(); _inkbox.cache_clear(); has_glyph.cache_clear()
+    _stage.cache_clear(); font.cache_clear(); _font0.cache_clear(); _icon_img.cache_clear(); _inkbox.cache_clear(); has_glyph.cache_clear()
     return changed

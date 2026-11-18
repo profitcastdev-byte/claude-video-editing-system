@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 """Build the synthetic demo project: no real person, no client, no licensed media.
 
-    python tools/make_demo.py OUT_DIR [--fps 30] [--seconds 9]
+    python tools/make_demo.py OUT_DIR [--fps 30] [--small] [--kind aroll|voiceover|music|broll] [--size WxH]
 
 It writes a complete CVES project in the state ingest leaves it in, so render, mix, QC, deliver and export can run on any
-machine without whisper, RVM or DeepFilterNet (CI uses it; teammates can use it to try the engine):
+machine without whisper, RVM or DeepFilterNet (CI uses it; teammates can use it to try the engine).
+
+--kind picks the timeline spine (docs/FORMATS.md); --size the canvas (style canvas.size, written to edit.yaml style:).
+  aroll      (default) the drawn presenter below
+  voiceover  a synthetic VO as the spine (Assets/vo.wav, registered) + a broll: track of drawn clips cut on the words
+  music      no voice: a synthetic 100 BPM track drives the cut; the broll: track comes from `cves autocut` (on the bars)
+  broll      a shot-led edit: drawn clips with their own (synthetic ambient) sound + a music bed
+The drawn B-roll clips (Assets/broll_*) cover what real footage throws at the engine: landscape, portrait, a phone clip
+stored landscape with a 90 degree rotation flag, 25 fps next to 30 fps, and a still for ken burns.
+
+The aroll kind writes:
 
   Raw/demo.mp4                  a drawn "presenter" (head, eyes, a mouth that moves with the voice) on a lit wall
   Edit/plate/<seg>.mkv          lossless plates (ffv1, the same format ingest writes)
@@ -25,7 +35,8 @@ HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "engine"))
 from cves import config as C   # noqa: E402
 
-W, H = 1080, 1920
+W, H = 1080, 1920      # the canvas (--size); the presenter geometry scales by K = min(W / 1080, H / 1920)
+K = 1.0
 SR = 48000
 SCRIPT = [   # (clip id, beat, sentence)
     ("01_hook", "H", "Most videos lose people in two seconds."),
@@ -91,22 +102,22 @@ def draw(k, fps, mouth_open, sway_seed=0, look=0.0):
     """one presenter frame (RGB uint8) + matte (uint8) + face box/landmarks in plate pixels"""
     t = k / fps
     yy, xx, wall = _grid()
-    cx = W / 2 + 22 * math.sin(2 * np.pi * .23 * t + sway_seed) + look; cy = 760 + 10 * math.sin(2 * np.pi * .31 * t + sway_seed)
-    hw, hh = 190, 250
+    cx = W / 2 + K * (22 * math.sin(2 * np.pi * .23 * t + sway_seed) + look); cy = H * (760 / 1920) + K * 10 * math.sin(2 * np.pi * .31 * t + sway_seed)
+    hw, hh = 190 * K, 250 * K
     head = ((xx - cx) / hw) ** 2 + ((yy - cy) / hh) ** 2 <= 1
-    neck = (np.abs(xx - cx) < 85) & (yy > cy + hh * .7) & (yy < cy + hh + 120)
-    tors = ((xx - cx) / 470) ** 2 + ((yy - (cy + hh + 640)) / 620) ** 2 <= 1
+    neck = (np.abs(xx - cx) < 85 * K) & (yy > cy + hh * .7) & (yy < cy + hh + 120 * K)
+    tors = ((xx - cx) / (470 * K)) ** 2 + ((yy - (cy + hh + 640 * K)) / (620 * K)) ** 2 <= 1
     hair = (((xx - cx) / (hw * 1.05)) ** 2 + ((yy - (cy - hh * .35)) / (hh * .78)) ** 2 <= 1) & (yy < cy - hh * .25)
     img = wall.copy()
     img[tors] = (64, 78, 52); img[neck | head] = (196, 142, 112); img[hair] = (32, 26, 24)
     shade = np.clip(1 - .25 * ((xx - cx) / hw), .7, 1.15)[..., None]
     img = np.where((head | neck)[..., None], img * shade, img)
-    le, re = (cx - 70, cy - 30), (cx + 70, cy - 30); nose = (cx, cy + 40); ml, mr = (cx - 62, cy + 120), (cx + 62, cy + 120)
+    le, re = (cx - 70 * K, cy - 30 * K), (cx + 70 * K, cy - 30 * K); nose = (cx, cy + 40 * K); ml, mr = (cx - 62 * K, cy + 120 * K), (cx + 62 * K, cy + 120 * K)
     for ex, ey in (le, re):
-        img[((xx - ex) / 24) ** 2 + ((yy - ey) / 12) ** 2 <= 1] = (245, 240, 235)
-        img[((xx - ex) / 10) ** 2 + ((yy - ey) / 10) ** 2 <= 1] = (40, 28, 22)
-    mh = 6 + 34 * mouth_open
-    img[((xx - cx) / 64) ** 2 + ((yy - (cy + 120)) / mh) ** 2 <= 1] = (110, 40, 40)
+        img[((xx - ex) / (24 * K)) ** 2 + ((yy - ey) / (12 * K)) ** 2 <= 1] = (245, 240, 235)
+        img[((xx - ex) / (10 * K)) ** 2 + ((yy - ey) / (10 * K)) ** 2 <= 1] = (40, 28, 22)
+    mh = (6 + 34 * mouth_open) * K
+    img[((xx - cx) / (64 * K)) ** 2 + ((yy - (cy + 120 * K)) / mh) ** 2 <= 1] = (110, 40, 40)
     matte = (head | neck | tors | hair).astype(np.uint8) * 255
     face = [cx - hw * .82, cy - hh * .72, hw * 1.64, hh * 1.62, *le, *re, *nose, *ml, *mr]
     return np.clip(img, 0, 255).astype(np.uint8), matte, [round(float(v), 1) for v in face]
@@ -114,14 +125,24 @@ def draw(k, fps, mouth_open, sway_seed=0, look=0.0):
 def ff(args):
     subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", *args], check=True)
 
-def pipe_writer(out, fps, pix_in, pix_out, codec_args, size=(W, H)):
+def pipe_writer(out, fps, pix_in, pix_out, codec_args, size=None):
+    size = size or (W, H)                     # the canvas at call time (--size)
     return subprocess.Popen([C.get("ffmpeg"), "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", pix_in, "-s", f"{size[0]}x{size[1]}",
                              "-r", str(fps), "-i", "-", *codec_args, "-pix_fmt", pix_out, out], stdin=subprocess.PIPE)
 
 def main():
+    global W, H, K
     ap = argparse.ArgumentParser(); ap.add_argument("out"); ap.add_argument("--fps", type=int, default=30)
     ap.add_argument("--small", action="store_true", help="fewer words (CI speed)")
+    ap.add_argument("--kind", choices=("aroll", "voiceover", "music", "broll"), default="aroll", help="the timeline spine (docs/FORMATS.md)")
+    ap.add_argument("--size", default=None, help="canvas WxH (even numbers), e.g. 1920x1080; default 1080x1920")
     a = ap.parse_args(); fps = a.fps; out = os.path.abspath(a.out)
+    if a.size:
+        try: W, H = (int(v) for v in a.size.lower().split("x"))
+        except ValueError: raise SystemExit("--size WxH, e.g. 1920x1080")
+        if W % 2 or H % 2: raise SystemExit("--size: width and height must be even")
+        K = min(W / 1080, H / 1920)
+    if a.kind != "aroll": return build_spine(a, out, fps)
     import soundfile as sf
     if os.path.exists(out): shutil.rmtree(out)
     for d in ("Raw", "Inspirations", "Brand", "Music", "Edit/plate", "Edit/matte", "Moodboard", "Export", "Assets"): os.makedirs(os.path.join(out, d), exist_ok=True)
@@ -168,7 +189,7 @@ def main():
     en = lambda cid: bounds[[c[0] for c in script].index(cid) + 1]
     edit = {
         "project": {"client": "Demo", "title": "CVES demo", "raw": "Raw/demo.mp4", "language": "en"},
-        "style": {},
+        "style": {} if (W, H) == (1080, 1920) else {"canvas": {"size": [W, H]}},
         "captions": {"auto": True},
         "music": {"file": "Music/demo_bed.wav", "drop_track": 9.6, "drop_cut": round(st(script[2][0]), 2)},
         "qc": {"topic_keywords": ["videos"], "brand_tail": [], "duration": [5, 60]},
@@ -190,6 +211,142 @@ def merge_demo(edit, tmpl, st, en):
     t = res(tmpl)
     for k, v in t.items(): edit[k] = v
     return edit
+
+# ------------------------------------------------------------------ the other spines (voiceover / music / broll)
+def _rotate_flag(src, dst, deg):
+    """copy src to dst with a display-rotation flag (a phone clip stored landscape, shown portrait). deg: counter-clockwise,
+    as ffprobe reports it (an upright phone clip stored on its side is -90); old ffmpeg: the legacy clockwise `rotate` tag"""
+    try: ff(["-display_rotation:v:0", str(deg), "-i", src, "-c", "copy", dst])
+    except subprocess.CalledProcessError: ff(["-i", src, "-c", "copy", "-metadata:s:v:0", f"rotate={(-deg) % 360}", dst])
+
+def drawn_clip(path, w, h, fps, seconds, seed, audio=None):
+    """a drawn, moving B-roll clip (no real media): a lit gradient, drifting discs and a sweeping bar, mid-tone colours
+    (nothing near black or white). audio: optional mono float array muxed as AAC (the clip's own sound)."""
+    rng = np.random.default_rng(seed); n = int(round(seconds * fps))
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32); u = min(w, h)
+    base = np.array(rng.uniform(70, 150, 3), np.float32); tint = np.array(rng.uniform(40, 90, 3), np.float32)
+    discs = [(rng.uniform(.1, .9), rng.uniform(.1, .9), rng.uniform(.06, .16), rng.uniform(-.25, .25), rng.uniform(-.2, .2), rng.uniform(90, 200, 3)) for _ in range(4)]
+    tmp = path + ".v.mkv"; pw = pipe_writer(tmp, fps, "rgb24", "yuv420p", ["-c:v", "libx264", "-crf", "18", "-preset", "veryfast"], size=(w, h))
+    for k in range(n):
+        t = k / fps
+        img = base + tint * (yy / h)[..., None] + 18 * np.sin(2 * np.pi * (xx / w * 1.3 + t * .4))[..., None]
+        for (dx, dy, r, vx, vy, col) in discs:
+            cx, cy = ((dx + vx * t) % 1) * w, ((dy + vy * t) % 1) * h
+            m = ((xx - cx) ** 2 + (yy - cy) ** 2) <= (r * u) ** 2
+            img[m] = img[m] * .35 + np.array(col, np.float32) * .65
+        bx = ((.15 + .3 * t + seed * .1) % 1.2 - .1) * w
+        img[:, max(0, int(bx)):max(0, int(bx + .05 * w))] *= 1.18
+        pw.stdin.write(np.clip(img, 24, 226).astype(np.uint8).tobytes())
+    pw.stdin.close(); pw.wait()
+    if audio is not None:
+        import soundfile as sf
+        wav = path + ".a.wav"; sf.write(wav, audio, SR)
+        ff(["-i", tmp, "-i", wav, "-c:v", "copy", "-c:a", "aac", "-shortest", path]); os.remove(wav)
+    else: ff(["-i", tmp, "-c", "copy", path])
+    os.remove(tmp)
+
+def drawn_still(path, w, h, seed):
+    from PIL import Image
+    rng = np.random.default_rng(seed); yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    img = np.stack([90 + 60 * (xx / w), 80 + 70 * (yy / h), 120 + 40 * np.sin(xx / w * 6 + yy / h * 3)], -1)
+    for _ in range(6):
+        cx, cy, r = rng.uniform(0, w), rng.uniform(0, h), rng.uniform(.05, .18) * min(w, h)
+        img[((xx - cx) ** 2 + (yy - cy) ** 2) <= r * r] = rng.uniform(80, 210, 3)
+    Image.fromarray(np.clip(img, 24, 226).astype(np.uint8)).save(path)
+
+def ambience(seconds, seed):
+    """a quiet room-tone / street bed for a clip's own sound"""
+    rng = np.random.default_rng(seed); n = int(seconds * SR); t = np.arange(n) / SR
+    y = rng.normal(0, .05, n) * (1 + .3 * np.sin(2 * np.pi * .3 * t)) + .08 * np.sin(2 * np.pi * (180 + 40 * seed) * t) * np.exp(-((t % 1.7) * 3))
+    return (y / (np.abs(y).max() + 1e-9) * .4).astype(np.float32)
+
+def _even(x): return max(2, int(math.ceil(x / 2)) * 2)
+
+def broll_set(out, fps, seconds, audio=False):
+    """drawn clips sized to cover the canvas without upscaling (a fill crop never goes above 1.0x source pixels):
+    16:9 landscape, 9:16 portrait, a phone clip stored landscape with a -90 degree rotation flag, a 25 fps clip, a 3:2 still"""
+    A = os.path.join(out, "Assets")
+    lh = _even(max(H, W * 9 / 16)); land = (_even(lh * 16 / 9), lh)
+    pw = _even(max(W, H * 9 / 16)); port = (pw, _even(pw * 16 / 9))
+    sh = _even(max(H, W / 1.5) * 1.1); still = (_even(sh * 1.5), sh)          # 10% headroom for the ken burns zoom
+    specs = [("broll_city", land, fps, 1), ("broll_portrait", port, fps, 2), ("broll_phone_raw", (port[1], port[0]), fps, 3), ("broll_pal", land, 25, 4)]
+    files = {}
+    for name, (w, h), r, seed in specs:
+        p = os.path.join(A, name + ".mp4")
+        if name == "broll_phone_raw":       # drawn upright, stored on its side (as phones store portrait video; transpose=2 = 90 deg CCW)
+            tmp = os.path.join(A, "_upright.mp4"); drawn_clip(tmp, port[0], port[1], r, seconds, seed, ambience(seconds, seed) if audio else None)
+            ff(["-i", tmp, "-vf", "transpose=2", "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-c:a", "copy", p]); os.remove(tmp)
+        else: drawn_clip(p, w, h, r, seconds, seed, ambience(seconds, seed) if audio else None)
+        files[name] = p
+    _rotate_flag(files["broll_phone_raw"], os.path.join(A, "broll_phone.mp4"), -90); os.remove(files.pop("broll_phone_raw"))
+    files["broll_phone"] = os.path.join(A, "broll_phone.mp4")
+    drawn_still(os.path.join(A, "broll_still.png"), still[0], still[1], 5); files["broll_still"] = os.path.join(A, "broll_still.png")
+    return files
+
+def build_spine(a, out, fps):
+    import soundfile as sf, yaml
+    if os.path.exists(out): shutil.rmtree(out)
+    for d in ("Raw", "Inspirations", "Brand", "Music", "Edit", "Moodboard", "Export", "Assets"): os.makedirs(os.path.join(out, d), exist_ok=True)
+    E = os.path.join(out, "Edit"); dump = lambda name, d: json.dump(d, open(os.path.join(E, name), "w", encoding="utf-8"), indent=1)
+    kind = a.kind; script = SCRIPT[:3] + SCRIPT[-1:] if a.small else SCRIPT
+    edit = {"project": {"client": "Demo", "title": f"CVES {kind} demo", "language": "en"}, "spine": kind,
+            "style": {} if (W, H) == (1080, 1920) else {"canvas": {"size": [W, H]}}, "captions": {"auto": True}}
+    if kind == "voiceover":
+        words = word_times(script); dur = words[-1][1] + .35
+        vo = voice(words, dur)
+        sf.write(os.path.join(out, "Assets", "vo.wav"), vo, SR)
+        sf.write(os.path.join(E, "voice_final.wav"), vo, SR); sf.write(os.path.join(E, "voice_raw.wav"), vo, SR)
+        dump("words.json", [w[:3] for w in words])
+        dump("voice_chain.json", {"steps": [{"name": "synthetic demo voice", "generative": False, "params": {"tool": "tools/make_demo.py"}}]})
+        files = broll_set(out, fps, 5.0)
+        starts = [w[0] for w in words]; sent = [next(w[0] for w in words if w[3] == cid) for cid, _, _ in script]
+        cuts = sorted(set([0.0, .9] + [round(t - .05, 2) for t in sent[1:]] + [round((x + y) / 2, 2) for x, y in zip(sent[1:-1], sent[2:])]))
+        cuts = [c for c in cuts if c < dur - .6] + [round(dur, 3)]
+        order = ["broll_city", "broll_portrait", "broll_still", "broll_phone", "broll_pal"]
+        frame = {"broll_portrait": "fit"}
+        track = []
+        for k, (x, y) in enumerate(zip(cuts[:-1], cuts[1:])):
+            nm = order[k % len(order)]; sh = {"asset": nm, "start": round(x, 3), "end": round(y, 3)}
+            if not nm.endswith("still"): sh["in"] = round(.3 * (k % 4), 2)
+            if nm in frame: sh["framing"] = frame[nm]
+            if nm == "broll_pal": sh["speed"] = 0.75
+            track.append(sh)
+        edit.update(voiceover={"asset": "vo"}, broll=track,
+                    cutaways=[{"id": "t1", "template": "title_card", "start": round(sent[2] - .05, 2), "end": round(sent[3] - .05, 2) if len(sent) > 3 else round(dur, 2),
+                               "snap": False, "params": {"lines": ["Ninety percent", "keep watching"], "accent": ["ninety"], "at": round(sent[2], 2)}}],
+                    music={"file": "Music/demo_bed.wav", "drop_track": 9.6, "drop_cut": round(sent[2], 2)},
+                    qc={"topic_keywords": ["videos"], "brand_tail": [], "duration": [5, 60]})
+        sf.write(os.path.join(out, "Music", "demo_bed.wav"), music(dur + 12, drop=4 * 2.4), SR)
+        assets = {"vo": ("Assets/vo.wav", "elevenlabs", "Most videos lose people in two seconds.")}
+    else:
+        dur = 8.0 if a.small else 12.0
+        files = broll_set(out, fps, 5.0, audio=(kind == "broll"))
+        sf.write(os.path.join(out, "Music", "demo_bed.wav"), music(dur + 6), SR)
+        edit.update(music={"file": "Music/demo_bed.wav"}, qc={"topic_keywords": [], "brand_tail": [], "duration": [5, 60]}, duration=dur)
+        assets = {}
+        if kind == "broll":
+            seq = [("broll_city", 0, 2.2, {"audio": True}), ("broll_phone", 2.2, 3.9, {}), ("broll_still", 3.9, 5.4, {}),
+                   ("broll_portrait", 5.4, 6.8, {"framing": "fit", "audio": True}), ("broll_pal", 6.8, dur, {"speed": 1.5})]
+            edit["broll"] = [dict({"asset": n, "start": x, "end": y, **({"in": .3} if not n.endswith("still") else {})}, **kw) for n, x, y, kw in seq]
+            edit["cutaways"] = [{"id": "t1", "template": "title_card", "start": 0.0, "end": 0.9, "snap": False, "params": {"lines": ["Shot-led edit"], "at": 0.0, "reveal": "none"}}]
+            edit["music"]["bed_lu"] = -10
+    for nm, p in files.items(): assets[nm] = (os.path.relpath(p, out).replace(os.sep, "/"), "render", None)
+    edit["assets"] = {k: {"path": v[0], "licence": "synthetic (tools/make_demo.py)"} for k, v in assets.items()}
+    yaml.safe_dump(edit, open(os.path.join(E, "edit.yaml"), "w", encoding="utf-8"), sort_keys=False, allow_unicode=True)
+    sys.path.insert(0, os.path.join(ROOT, "engine"))
+    from cves import project, assets as AS, spines as SP
+    pr = project.Project(out)
+    for k, (path, src, prompt) in assets.items():
+        AS.add(pr, k, os.path.join(out, path), source=src, prompt=prompt, licence="synthetic (tools/make_demo.py)")
+    SP.sync_edl(pr, force=True)
+    if kind == "music":       # the cut comes from the music: autocut on the bars, cycling through the drawn clips
+        track, info = SP.autocut(pr, every="downbeats", min_shot=1.0, folder="Assets")
+        E_ = pr.edit; E_["broll"] = track; pr.save_edit(E_)
+        E_["cutaways"] = [{"id": "t1", "template": "title_card", "start": 0.0, "end": 0.9, "snap": False,       # a text card, then the cut
+                            "params": {"lines": ["On the beat"], "at": 0.0, "reveal": "none"}}]
+        pr.save_edit(E_)
+    print(f"demo project ({kind}, {W}x{H}): {out}  ({SP.duration(pr, kind):.1f} s at {fps} fps, {len(pr.edit.get('broll') or [])} B-roll shots)")
+
 
 if __name__ == "__main__":
     main()

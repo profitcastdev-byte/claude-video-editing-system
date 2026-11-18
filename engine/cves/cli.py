@@ -25,7 +25,11 @@
   cves learn note|rate|approve|reject|results|mine|list|show|promote|forget|study ...   self-learning (docs/LEARNING.md)
   cves critique [vNNN|master]                           review pack: contact sheet + energy timeline + CRITIQUE.md rubric
 
-  cves motion list | preview <piece> [--params JSON] [--size WxH] [--out f.png|f.mp4]   HTML motion pieces (docs/MOTION.md)"""
+  cves motion list | preview <piece> [--params JSON] [--size WxH] [--out f.png|f.mp4]   HTML motion pieces (docs/MOTION.md)
+
+  -- formats + spines (docs/FORMATS.md) --
+  cves ingest                                           on a voiceover spine: tighten + transcribe the VO; music / broll: edl.json (rate, canvas)
+  cves autocut [--every beats|downbeats|bars] [--bars 2] [--min-shot S] [--folder Raw] [--apply]   a broll: track cut on the music grid"""
 import argparse, os, sys, json, subprocess
 
 def _project(a):
@@ -71,6 +75,15 @@ def main(argv=None):
     lrn = sp.add_parser("learn", help="note | rate | approve | reject | results | journal | mine | list | show | promote | forget | study (docs/LEARNING.md)", add_help=False); lrn.add_argument("rest", nargs=argparse.REMAINDER)
     crq = sp.add_parser("critique", help="[vNNN|master]: contact sheet + energy timeline + CRITIQUE.md rubric -> Edit/critique/"); crq.add_argument("which", nargs="?", default="master")
     # ---- end WS E ----
+    # ---- formats + spines (WS C, docs/FORMATS.md) ----
+    ac = sp.add_parser("autocut", help="[PROJECT]: propose a broll: track whose cuts land on the music grid (Edit/beats.json)")
+    ac.add_argument("dir", nargs="?"); ac.add_argument("--every", choices=["beats", "downbeats", "bars"], help="grid (default: style autocut.every)")
+    ac.add_argument("--bars", type=int, help="with --every bars: cut every N bars (default: style autocut.bars)")
+    ac.add_argument("--min-shot", type=float, help="skip grid points closer than this to the previous cut (s; default: style autocut.min_shot_s)")
+    ac.add_argument("--folder", default="Raw", help="clips to cycle through (project-relative, default Raw)")
+    ac.add_argument("--apply", action="store_true", help="write the track into edit.yaml broll: (backup kept); else print it")
+    ac.add_argument("--json", action="store_true")
+    # ---- end formats + spines ----
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
         if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion"): a.rest = list(getattr(a, "rest", [])) + extra
@@ -98,7 +111,7 @@ def main(argv=None):
         from .export.__main__ import main as xmain; sys.exit(xmain(["selftest"] + list(a.rest)))
     if a.cmd == "beats" and a.dir: a.project = a.dir
     if a.cmd == "control" and a.dir: a.project = a.dir
-    if a.cmd in ("validate", "inspire") and a.dir: a.project = a.dir
+    if a.cmd in ("validate", "inspire", "autocut") and a.dir: a.project = a.dir
     if a.cmd == "import-edits" and len(a.paths) > 1: a.project = a.paths[0]
     pr = _project(a)
     if a.cmd == "control":       # control mode: re-render named layers in Export/control + refresh layers.json
@@ -123,6 +136,26 @@ def main(argv=None):
         inspire.run(pr, refs=a.refs, dry_run=a.dry_run, max_s=a.max_s, mix=a.mix, refresh=a.refresh, min_conf=a.min_conf); return
     if a.cmd == "beats":
         from . import beats; sys.exit(beats.report(pr, a.sync, a.apply, a.file, a.json, a.refresh))
+    # ---- formats + spines (WS C, docs/FORMATS.md) ----
+    if a.cmd in ("ingest", "select", "prep"):
+        from . import spines as SP
+        sp_ = SP.spine_of(pr.edit)
+        if sp_ != "aroll":
+            if a.cmd != "ingest": raise SystemExit(f"`cves {a.cmd}` is for A-roll: the {sp_} spine needs only `cves ingest`")
+            print(json.dumps(SP.ingest_spine(pr), indent=1)); return
+    if a.cmd == "autocut":
+        from . import spines as SP, style as STY
+        S_ = STY.load(pr)
+        track, info = SP.autocut(pr, every=a.every or S_.get("autocut.every", "downbeats"), min_shot=a.min_shot if a.min_shot is not None else S_.get("autocut.min_shot_s"),
+                                 folder=a.folder, bars=a.bars or S_.get("autocut.bars", 2))
+        if a.apply: SP.write_broll(pr, track)
+        if a.json: print(json.dumps({"broll": track, "info": info}, indent=1))
+        else:
+            import yaml
+            print(yaml.safe_dump({"broll": track}, sort_keys=False).rstrip())
+            print(f"# {info['shots']} shots on {info['every']} ({info['grid']} grid points, min shot {info['min_shot']} s)" + (" -> written to edit.yaml" if a.apply else " (--apply writes it to edit.yaml)"))
+        return
+    # ---- end formats + spines ----
     if a.cmd == "ingest":
         from . import ingest; ingest.run_all(pr, a.steps.split(",")); print(f"read {pr.e('raw_transcript.txt')} and write {pr.e('selects.yaml')}")
     elif a.cmd == "select":
@@ -136,7 +169,11 @@ def main(argv=None):
     elif a.cmd == "plan":
         from . import templates as T
         E = pr.edit
-        if not any(k in E for k in ("cutaways", "roto", "chest", "end_card")):      # first run: skeleton to fill in
+        from . import spines as SP
+        if SP.spine_of(E) != "aroll" and not any(k in E for k in ("cutaways", "broll", "end_card")):   # voiceover / music / broll: no A-roll keys
+            E.update({"broll": [], "captions": {"auto": True, "hide": [], "fixes": {}}, "cutaways": [], "sfx": {"auto": True, "extra": []}})
+            pr.save_edit(E); print("wrote skeleton Edit/edit.yaml: fill broll: (docs/FORMATS.md; `cves autocut` on a music spine) and cutaways from `cves templates`")
+        if not any(k in E for k in ("cutaways", "roto", "chest", "end_card", "broll")):      # first run: skeleton to fill in
             E.update({"edl": "edl.json", "aroll": {"zoom": {}, "creep": 0.015, "snap": None, "exposure_match": True},
                       "captions": {"auto": True, "max_chars": 34, "hide": [], "fixes": {}},
                       "cutaways": [], "roto": [], "chest": [],
@@ -149,7 +186,7 @@ def main(argv=None):
         for k in ("roto", "chest"):
             for c in E.get(k, []):
                 if c.get("template") not in T.REGISTRY: errs.append(f"{k} {c.get('segment')}: unknown template {c.get('template')}")
-        segs = {s["id"] for s in pr.json("edl.json", {"segments": []})["segments"]}
+        segs = {s["id"] for s in (pr.json("edl.json", {}) or {}).get("segments", [])}
         for k in ("roto", "chest"):
             for c in E.get(k, []):
                 for sid in ([c["segment"]] if isinstance(c["segment"], str) else c["segment"]):
