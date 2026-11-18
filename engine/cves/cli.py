@@ -4,7 +4,7 @@
   cves select                                           selects.yaml -> tightened edl.json + clean voice (DeepFilterNet + chain)
   cves prep                                             words + plate + matte + faces (after select)
   cves story                                            print the raw transcript (Claude writes Edit/selects.yaml from it) and the current segments
-  cves inspire [--refs DIR] [--dry-run]                 reference edits (Inspirations/) -> measured style profile Edit/style.yaml
+  cves inspire [--refs DIR] [--dry-run] [--mix grade=refA,pacing=refB]   reference edits (Inspirations/) -> Edit/style.yaml + Edit/inspire/REPORT.md
   cves validate                                         check edit.yaml / selects.yaml / style keys (render and build run it first)
   cves assets add|list|check|todo ...                   images, B-roll, overlays, generated media -> Assets/ + provenance (docs/MEDIA.md)
   cves plan                                             first run: write a skeleton edit.yaml; then validate it (`cves templates` lists params)
@@ -54,6 +54,11 @@ def main(argv=None):
     dr = sp.add_parser("doctor"); dr.add_argument("rest", nargs=argparse.REMAINDER); sp.add_parser("templates")
     vl = sp.add_parser("validate", help="[PROJECT]: check edit.yaml, selects.yaml and style keys (types, templates, times, ids, paths)"); vl.add_argument("dir", nargs="?"); vl.add_argument("--json", action="store_true")
     isp = sp.add_parser("inspire", help="[PROJECT] [--refs DIR] [--dry-run]: measure reference edits -> Edit/style.yaml (docs/STYLE.md)"); isp.add_argument("dir", nargs="?"); isp.add_argument("--refs"); isp.add_argument("--dry-run", action="store_true"); isp.add_argument("--max-s", type=float, default=90, help="seconds analysed per reference video")
+    # ---- WS B (Inspire v2): mix-and-match flags for `cves inspire` (docs/STYLE.md "How cves inspire fills it")
+    isp.add_argument("--mix", help='force the source per dimension, e.g. "grade=refA,captions=refB,pacing=refC" (grade palette captions pacing sound motion structure)')
+    isp.add_argument("--refresh", action="store_true", help="re-measure every reference (ignore Edit/inspire/cache)")
+    isp.add_argument("--min-conf", type=float, default=.5, help="keys below this confidence are not written (default 0.5)")
+    # ---- end WS B
     asx = sp.add_parser("assets", help="add | list | check | todo | resolve (media assets + provenance, docs/MEDIA.md)", add_help=False); asx.add_argument("rest", nargs=argparse.REMAINDER)
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
@@ -92,7 +97,8 @@ def main(argv=None):
         from . import schema; e_, w_ = schema.validate(pr)
         print(json.dumps({"errors": e_, "warnings": w_}, indent=1) if a.json else schema.report(e_, w_)); sys.exit(1 if e_ else 0)
     if a.cmd == "inspire":
-        from . import inspire; inspire.run(pr, refs=a.refs, dry_run=a.dry_run, max_s=a.max_s); return
+        from . import inspire   # WS B: --mix / --refresh / --min-conf
+        inspire.run(pr, refs=a.refs, dry_run=a.dry_run, max_s=a.max_s, mix=a.mix, refresh=a.refresh, min_conf=a.min_conf); return
     if a.cmd == "beats":
         from . import beats; sys.exit(beats.report(pr, a.sync, a.apply, a.file, a.json, a.refresh))
     if a.cmd == "ingest":

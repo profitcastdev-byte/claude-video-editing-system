@@ -3,6 +3,25 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Added
+- **Inspire v2: see, hear, feel, mix and match** (WS B; docs/STYLE.md "How `cves inspire` fills it").
+  - **Hear** (`inspire_audio.py`): voice vs music (syllable-rate modulation, no model), bed level under the words, ducking, tempo and beat grid (via `beats.analyse`), SFX density, drop-outs, music energy curve → `sound.bed_lu`, `sound.duck_other_db`, `rhythm.*`.
+  - **Feel** (`inspire_feel.py`): cut-on-beat ratio vs chance, cut-rate curve and shape, hook timing, pattern-interrupt gaps, loop seam, energy arc, duration → `rhythm.*`, `structure.*`, and `music.sync: cuts` when the references cut on the beat.
+  - **See** (`inspire_see.py`): a contact sheet per reference (`Edit/inspire/<ref>-sheet.jpg`, 12 labelled frames at shot middles) and measured grain, tone curve, saturation, temperature, vignette, letterbox, aspect and motion blur (notes in `_inspire.aesthetics`); `Edit/inspire/aesthetic-review.md` is the rubric Claude fills by looking at the sheets.
+  - **Mix and match** (`inspire_mix.py`): every reference is measured on its own; per dimension (grade, palette, captions, pacing, sound, motion, structure) the source is forced (`--mix`), an authority from `Inspirations/refs.yaml` (`rank`, `weight`, `kind`, `use`, `notes`), pooled when the references agree, else the single strongest ranked reference. No more averaging of looks that disagree.
+  - `Edit/inspire/REPORT.md`: see / hear / feel per reference and the chosen mix, written for a human editor (also on `--dry-run`).
+  - `cves inspire --mix "dim=ref,..." --refresh --min-conf`; `--dry-run` prints a per-dimension table (candidates per ref, chosen value, source, confidence). Per-reference measurements are cached in `Edit/inspire/cache/`.
+  - Style sections `rhythm:` and `structure:` (plan-time targets, neutral `null` defaults). Thresholds in knowledge-base/DECISIONS.md "Inspire v2".
+- `tests/test_inspire_v2.py` on synthetic references (`tests/_inspire_refs.py`: a click track cut on the beat that loops, the same cut half a beat late, a voice over a bed).
+
+### Changed
+- `sound.bed_lu` from inspire uses the HEAR bed estimate instead of ebur128 p8 vs p60.
+
+### Fixed
+- `cves inspire` in a project without `Raw/` no longer crashes looking for footage to compare the grade with.
+
 ## [0.2.0] - 2026-11-18
 The engine becomes a general autonomous editor: no look, client or footage format is hard-coded.
 

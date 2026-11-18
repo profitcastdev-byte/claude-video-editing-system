@@ -98,3 +98,15 @@ These are the open conflicts that need your call, most important first. They wer
 - **No automatic "lift" reframing.** Anchoring the punch-in at the frame bottom to make room under the chin cropped the head and forehead (rejected on the moodboard). It is opt-in only (`aroll.lift: true`), for loose framings.
 - **Punch-in levels** come from style `framing.zoom_levels` (default 1.0 / 1.18 / 1.38). Every direct cut steps ≥ `framing.min_step` (default 1.15×) with creep counted, and stays below the 1.4× "extreme" line (FRAME-09 allows exactly one).
 - **Captions** (default `captions.position: chin`) sit just under the chin, inside the Reels zone where the framing allows; when it doesn't, they WARN rather than move over the face.
+
+## Inspire v2 thresholds (2026-11-19, builder's call for v0.3 WS B; measurements only, no gate reads them yet)
+The owner asked for v0.3 to be built without further questions, so these are the builder's starting values, checked on
+synthetic references (tests/test_inspire_v2.py) and on four real reference reels. Change them here first, then in the code.
+- **Cut on the beat** = within ±2 frames of a beat of the reference's own music (`inspire_feel.BEAT_TOL_F`). `music.sync: cuts` is written when the share is ≥ 0.6 **and** ≥ 2× the chance level for that tempo (`SYNC_CUTS_MIN`).
+- **Speech** = 1 s windows whose voice-band harmonic envelope has ≥ 2.2 dB of 3–8 Hz modulation (`inspire_audio.VOICE_MOD_DB`); a reference has a voice when that covers ≥ 1.5 s and ≥ 15% of its audible time.
+- **Music bed** = median of the 0.5 s window minima under speech + the min-to-mean offset measured on the same reference's music-only stretches, else 6 dB (`BED_BIAS_DB`). Music counts as present under the voice when that bed is within 35 dB of the voice.
+- **Silence / drop-out** = ≥ 25 dB under the running 2 s median for ≥ 0.15 s, ignoring the first and last 0.3 s (`SILENCE_DROP_DB`). **SFX** = onsets off the beat and half-beat grid by > 60 ms (`ONBEAT_S`), above p75 of the onsets (p95 of the onset strength inside speech).
+- **Loop** = the last-vs-first frame difference (the cut detector's metric) is < 0.15 and ≤ 3× the reference's median frame step (floor 0.03) (`LOOP_*`). **Zoom jump** = face height changes ≥ 8% between samples without a cut (`SCALE_JUMP`).
+- **Mix and match**: a dimension whose references agree at consistency ≥ 0.6 is pooled; below that ONE reference is picked (rank × weight × distinctiveness × confidence) instead of an average (`inspire_mix.AGREE`). A pick the person forced (`--mix`, `refs.yaml use:`) is written down to confidence 0.2 (`FORCED_MIN_CONF`).
+- **Aesthetics** (grain, tone curve, saturation, temperature, vignette, letterbox, aspect) are notes in `_inspire.aesthetics`, not style keys: no added grain stays the rule (above), and the canvas is the brief's call.
+
