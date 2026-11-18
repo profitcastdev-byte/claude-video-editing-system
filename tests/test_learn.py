@@ -95,11 +95,11 @@ def test_promote_applies_only_in_scope_and_forget_reverts(env):
     assert L["scopes"]["goal:viral"]["transitions"]["in"] == "whip"
     viral = _proj(env, "Acme Bakery", "Viral one", goal="viral"); ad = _proj(env, "Acme Bakery", "Ad one", goal="ad"); plain = _proj(env, "Acme Bakery", "Plain")
     S = STY.load(viral); assert S.get("transitions.in") == "whip" and "learned:personal" in S["_sources"]
-    assert S["_sources"].index("learned:personal") == 1                            # right after default, before preset/inspire/brand/edit
+    src = S["_sources"]; assert src[0] == "default" and src.index("learned:personal") == 1 + ("goal:viral" in src)   # after default (+ the viral goal layer), before preset/inspire/brand/edit
     for p in (ad, plain):
         S = STY.load(p); assert S.get("transitions.in") == "cut" and "learned:personal" not in S["_sources"]
     E = viral.edit; E["style"] = {"preset": "profitcast-dark"}; viral.save_edit(E)   # the preset beats the learned layer
-    S = STY.load(viral); assert S["_sources"][:3] == ["default", "learned:personal", "preset:profitcast-dark"]
+    S = STY.load(viral); assert [x for x in S["_sources"] if x != "goal:viral"][:3] == ["default", "learned:personal", "preset:profitcast-dark"]
     with pytest.raises(SystemExit): learn.promote(cid)            # already promoted
     learn.forget(cid)
     assert "learned:personal" not in STY.load(viral)["_sources"]
