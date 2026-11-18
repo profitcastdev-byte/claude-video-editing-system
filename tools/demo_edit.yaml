@@ -1,0 +1,33 @@
+# The demo edit (tools/make_demo.py). "{start:<clip>+0.3}" / "{end:<clip>}" resolve to cut times of that clip's segment.
+# Uses only generic templates, so it doubles as a worked example of edit.yaml.
+chest:
+  - {segment: 01_hook_0, template: lower_third, params: {name: "Alex Demo", role: "Synthetic presenter", at: "{start:01_hook+0.4}"}}
+cutaways:
+  - id: c1
+    template: checklist
+    start: "{start:02_problem+0.25}"
+    end: "{end:02_problem}"
+    params:
+      title: "Why people swipe"
+      mark: cross
+      at: "{start:02_problem+0.25}"
+      items:
+        - {text: "Long intros", at: "{start:02_problem+0.45}"}
+        - {text: "Slow cuts", at: "{start:02_problem+1.0}"}
+        - {text: "Tiny text", at: "{start:02_problem+1.6}"}
+  - id: c2
+    template: stat
+    start: "{start:03_proof+0.3}"
+    end: "{end:03_proof}"
+    params:
+      value: 90
+      suffix: "%"
+      count: ["{start:03_proof+0.5}", 1.2]
+      label: "keep watching"
+      label_at: "{start:03_proof+0.6}"
+roto:
+  - {segment: 05_cta_0, template: kinetic_caption_emphasis, params: {word: "TODAY", at: "{start:05_cta+0.75}"}}
+end_card:
+  template: end_card
+  duration: 2.0
+  params: {headline: "Edit with CVES", button: "TRY THE DEMO", handle: "github.com/profitcastdev-byte/claude-video-editing-system", icon: link}

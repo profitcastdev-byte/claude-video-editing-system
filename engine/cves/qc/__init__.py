@@ -1,0 +1,300 @@
+"""QC runner: every gate from knowledge-base/QC-GATES.md measurable on the delivered file, stems, word timings, face
+landmarks, the timeline and the renderer element log. Writes Edit/QC-REPORT.txt (one line per gate; details on failures).
+Statuses: FAIL blocks delivery; WARN needs an eye; PASS. Gate ids match QC-GATES.md."""
+import os, re, json, subprocess, tempfile
+import numpy as np, cv2, soundfile as sf
+from .. import config as C
+from . import audio_gates as AG
+
+# every threshold below comes from the style profile (cves.style; docs/STYLE.md). The QC gates judge the edit against
+# the look the client asked for, not a fixed house look. Platform constants (safe zone, delivery size) live in `platform:`.
+
+def run(pr, video, fast=False, stage=None):
+    R = []; tmp = tempfile.mkdtemp()
+    def gate(gid, ok, summary, details="", status=None): R.append((gid, status or ("PASS" if ok else "FAIL"), summary, details))
+    def sh(cmd, text=True): return subprocess.run(cmd, capture_output=True, text=text)
+    def lufs(path):
+        r = sh([C.get("ffmpeg"), "-hide_banner", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"]).stderr
+        I = re.findall(r"I:\s+(-?[\d.]+) LUFS", r); P = re.findall(r"Peak:\s+(-?[\d.inf]+) dBFS", r)
+        return (float(I[-1]) if I else float("nan")), (float(P[-1]) if P else float("nan"))
+    from .. import style as STY
+    S = STY.load(pr); E = pr.edit; Q = E.get("qc", {}) or {}; TLm = pr.json("timeline.json", {})
+    FPS = TLm.get("fps") or 30.0; FR = TLm.get("fps_rational")
+    PW, PH = TLm.get("size") or S.get("platform.size")
+    META_ZONE = tuple(S.get("platform.safe_zone") or (0, 0, PW, PH)); HOUSE_MARGIN = S.get("platform.margin", 60)
+    G_ = S.get("grammar") or {}
+    faces = pr.json("faces.json", {})
+
+    # ---------------- delivery
+    pj = json.loads(sh([C.get("ffprobe"), "-v", "error", "-show_entries", "stream=codec_type,width,height,sample_aspect_ratio,r_frame_rate,avg_frame_rate,codec_name,profile,pix_fmt,color_space,color_primaries,color_transfer,color_range,sample_rate,bit_rate:format=duration,size", "-of", "json", video]).stdout)
+    v = next(s for s in pj["streams"] if s["codec_type"] == "video"); a = next((s for s in pj["streams"] if s["codec_type"] == "audio"), {})
+    gate("DEL-01", (v.get("width"), v.get("height")) == (PW, PH) and v.get("sample_aspect_ratio", "1:1") in ("1:1", "N/A"), f"{v.get('width')}x{v.get('height')}")
+    want = f"{FR[0]}/{FR[1]}" if FR else None
+    from fractions import Fraction as _F
+    rr = v.get("r_frame_rate", "0/1"); same = rr == v.get("avg_frame_rate") and (want is None or _F(rr) == _F(want))
+    gate("DEL-02", same, f"{rr} (timeline {want or FPS}); constant frame rate")
+    head = open(video, "rb").read(300000); fast_start = (head.find(b"moov") < head.find(b"mdat")) if b"mdat" in head else True
+    ok3 = v.get("codec_name") == "h264" and v.get("profile") == "High" and v.get("pix_fmt") == "yuv420p" and a.get("codec_name") == "aac" and a.get("sample_rate") == "48000" and int(a.get("bit_rate") or 0) >= 128000 and fast_start
+    gate("DEL-03", ok3, f"{v.get('codec_name')} {v.get('profile')} {v.get('pix_fmt')} | {a.get('codec_name')} {a.get('sample_rate')} | faststart {fast_start}")
+    dur = float(pj["format"]["duration"]); lo, hi = Q.get("duration") or S.get("platform.duration") or [0, 1e9]
+    gate("DEL-04", lo <= dur <= hi, f"{dur:.2f} s (brief {lo}-{hi} s)")
+    m = re.search(rb"x264 - core .{0,3000}?options: (.{0,1500}?)\x00", open(video, "rb").read(4_000_000), re.S); opts = m.group(1).decode(errors="ignore") if m else ""
+    gate("DEL-05", "crf=16" in opts and "tune=film" not in opts, "x264 crf 16, no tune=film" if "crf=16" in opts else opts[:80])
+    tags = (v.get("color_space"), v.get("color_primaries"), v.get("color_transfer"), v.get("color_range"))
+    gate("COL-01", tags == ("bt709", "bt709", "bt709", "tv"), "/".join(map(str, tags)))
+
+    # ---------------- picture (decode once small)
+    cap = cv2.VideoCapture(video); small = []
+    while True:
+        ok, fr = cap.read()
+        if not ok: break
+        small.append(cv2.resize(fr, (270, 480), interpolation=cv2.INTER_AREA))
+    N = len(small); T = N / FPS
+    gray = [cv2.cvtColor(f, cv2.COLOR_BGR2GRAY).astype(np.float32) for f in small]
+    diff = np.array([0] + [float(np.mean(np.abs(gray[i] - gray[i - 1]))) for i in range(1, N)])
+    det = cv2.FaceDetectorYN.create(C.get("yunet"), "", (270, 480), .7, .3, 5000); face = np.zeros(N, bool)
+    for i in range(0, N, 2):
+        _, f = det.detect(small[i]); face[i] = f is not None and len(f) > 0
+        if i + 1 < N: face[i + 1] = face[i]
+    if G_.get("face_on_first_frame"): gate("RET-13", face[0] and gray[0].mean() > 16, f"face at frame 0: {bool(face[0])}, luma {gray[0].mean():.0f}")
+    else: gate("RET-13", gray[0].mean() > 16, f"frame 0 not black (luma {gray[0].mean():.0f}); face {bool(face[0])} (style does not require one)")
+    ev = np.where(diff > max(6.0, np.median(diff[1:]) * 4))[0]; first_ev = ev[0] / FPS if len(ev) else T
+    gate("RET-09", first_ev <= 1.0, f"first visual event {first_ev:.2f} s")
+    gate("RET-10", diff[1:16].mean() >= 3 * max(.05, np.percentile(diff[1:], 5)), f"frame-1 motion {diff[1:16].mean():.2f}")
+    runs, cur = [], 0
+    for x in face: cur = 0 if x else cur + 1; runs.append(cur)
+    body = int(TLm.get("a_frames", N)); share = 1 - face[:body].mean(); nf = max(runs[:body] or [0]) / FPS   # body only: the end card is not a cutaway
+    mx = G_.get("max_cutaway_s", 8); band = G_.get("cutaway_share")
+    in_band = band is None or band[0] <= share <= band[1]
+    gate("RET-22", nf <= mx and in_band, f"longest without face {nf:.1f} s (max {mx}); cutaway share {share:.0%}" + (f" (style {band[0]:.0%}-{band[1]:.0%})" if band else ""),
+         status=None if nf <= mx else "FAIL") if any(face) else gate("RET-22", True, "no presenter in this edit: face pacing not applicable", status="PASS")
+    bd = sh([C.get("ffmpeg"), "-hide_banner", "-i", video, "-vf", "blackdetect=d=0.03:pix_th=0.10", "-an", "-f", "null", "-"]).stderr
+    blk = [(float(x), float(y)) for x, y in re.findall(r"black_start:([\d.]+) black_end:([\d.]+)", bd)]
+    gate("PLAT-12", not [b for b in blk if b[0] < .5 or b[1] > T - 1], f"{len(blk)} black runs")
+    Y = np.frombuffer(sh([C.get("ffmpeg"), "-v", "error", "-i", video, "-vf", "select='not(mod(n,12))',extractplanes=y", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"], text=False).stdout, np.uint8)
+    pct = float(((Y < 16) | (Y > 235)).mean() * 100); ext = int(((Y < 5) | (Y > 246)).sum())
+    gate("COL-02", pct <= .5 and ext / max(1, Y.size) < 1e-5, f"{pct:.2f}% luma outside 16-235")
+
+    # ---------------- timeline + element log gates
+    segs = TLm.get("segments", []); cuts = TLm.get("cutaways", []); zoom = TLm.get("zoom", {}); creep = TLm.get("creep", 0.0)
+    step_min = S.get("framing.min_step", 1.15)
+    in_cut = lambda t: any(c["start"] <= t < c["end"] for c in cuts)
+    steps = []
+    for x, y in zip(segs[:-1], segs[1:]):
+        if in_cut(y["t0"] + .5 / FPS) or in_cut(x["t1"] - .5 / FPS): continue
+        za, zb = zoom.get(x["id"], 1) * (1 + creep), zoom.get(y["id"], 1); r = max(za, zb) / min(za, zb)
+        if r < step_min - 1e-6: steps.append(f"{x['id']} -> {y['id']}: {r:.3f}x")
+    gate("CUT-05", not steps, f"punch-in step >= {step_min}x at every direct A-roll cut", "\n".join(steps))
+    snap = TLm.get("snap"); big = [k for k, z in zoom.items() if z >= 1.4] + (["snap"] if snap and snap[2] >= 1.4 else [])
+    xm = S.get("framing.extreme_max", 1); gate("FRAME-09", len(big) <= xm, f"{len(big)} extreme punch-in(s) (max {xm})")
+    # FRAME-11: upscale factor actually applied to source pixels. ingest records the plate scale (source px -> canvas px);
+    # without it we derive it from the source's short side vs the canvas width (a vertical crop of a landscape source).
+    ing = pr.json("ingest.json", {}) or {}
+    try:
+        st0 = json.loads(sh([C.get("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=height,width", "-of", "json", pr.raw]).stdout)["streams"][0]
+        sw, shh = int(st0.get("width", PW)), int(st0.get("height", PH))
+    except Exception: sw, shh = PW, PH
+    plate = ing.get("plate_scale") or max(PW / max(min(sw, shh) if sw > shh else sw, 1), PH / max(shh if shh >= sw else max(sw, shh), 1))
+    zmax = max(list(zoom.values()) + [snap[2] if snap else 1]) * (1 + creep); up = zmax * plate
+    gate("FRAME-11", up <= 1.0, f"max zoom {zmax:.2f}x x plate scale {plate:.2f} = {up:.2f}x of native source pixels",
+         "above 1.0 the punch-in is upscaled: soft detail. Shoot 4K or cap framing.zoom_levels", status="PASS" if up <= 1.0 else ("WARN" if up <= 1.5 else "FAIL"))
+    els = [json.loads(l) for l in open(pr.e("elements.jsonl"), encoding="utf-8")] if os.path.exists(pr.e("elements.jsonl")) else []
+    if els:
+        seg_by_f = {}
+        for s in segs:
+            for k in range(s["n"]): seg_by_f[s["f0"] + k] = (s["id"], k)
+        over, zone_bad, early, margin_bad = [], [], [], []
+        first_seen = {}
+        for e in els:
+            first_seen.setdefault(e["id"], e)
+            x0, y0, x1, y1 = e["bbox"]
+            if e["role"] in ("caption", "chest") and e["f"] in seg_by_f:
+                sid, k = seg_by_f[e["f"]]; fb = faces.get(sid, [[0] * 14])[min(k, len(faces.get(sid, [0])) - 1)]
+                t = e["f"] / FPS; s = next(q for q in segs if q["id"] == sid)
+                z = zoom.get(sid, 1) * (1 + creep * min(1, max(0, (t - s["t0"]) / max(.5, s["t1"] - s["t0"]))))
+                if snap and snap[0] <= t < snap[1]: z = snap[2]
+                cx, cy = fb[0] + fb[2] / 2, (PH if sid in TLm.get("lift", []) else fb[1] + fb[3] / 2 - fb[3] * .05)
+                tx = min(0, max(PW - z * PW, cx - z * cx)); ty = min(0, max(PH - z * PH, cy - z * cy))
+                fx0, fy0, fx1, fy1 = fb[0] * z + tx, fb[1] * z + ty, (fb[0] + fb[2]) * z + tx, (fb[1] + fb[3]) * z + ty
+                pad = .1 * (fx1 - fx0)
+                if x0 < fx1 + pad and x1 > fx0 - pad and y0 < fy1 + pad * .5 and y1 > fy0 - pad:
+                    over.append(f"f{e['f']} {e['id']} '{(e.get('text') or '')[:30]}' bbox {e['bbox']} vs face {[round(fx0), round(fy0), round(fx1), round(fy1)]}")
+            if e["role"] in ("caption", "chest", "cutaway", "end") and e.get("text"):
+                if min(x0, y0) < HOUSE_MARGIN or x1 > PW - HOUSE_MARGIN or y1 > PH - HOUSE_MARGIN: margin_bad.append(f"f{e['f']} {e['id']} {e['bbox']}")
+                if (x0 < META_ZONE[0] or y0 < META_ZONE[1] or x1 > META_ZONE[2] or y1 > META_ZONE[3]): zone_bad.append((e["id"], e["bbox"], e["role"]))
+        gate("FRAME-01", not over, f"text/graphics vs face on {len(els)} element-frames", "\n".join(over[:12]))
+        gate("PLAT-01", not margin_bad, f"all text inside the {HOUSE_MARGIN} px margin", "\n".join(margin_bad[:8]))
+        # CTA, prices, pills and end-card elements must sit inside the Reels zone. An on-chest brand logo under a close framing
+        # cannot fit between chin and y 1248; it warns (the end card carries the in-zone logo). DECISIONS.md #2
+        key_roles = [z for z in zone_bad if any(k in z[0] for k in ("price", "pill", "end."))]
+        others = sorted(set(z[0] for z in zone_bad if z not in key_roles))
+        gate("PLAT-02", not key_roles, f"platform safe zone {META_ZONE}: {len(set(z[0] for z in key_roles))} key elements outside, {len(others)} other text elements outside",
+             "\n".join(sorted(set(f"{z[0]} {z[1]}" for z in key_roles))[:8]) + ("\nother (warn): " + ", ".join(others[:10]) if others else ""),
+             status=None if key_roles else ("WARN" if others else "PASS"))
+        for i_, e in first_seen.items():
+            if e.get("t_key") is not None and e["role"] in ("cutaway", "chest", "roto") and e["f"] / FPS < e["t_key"] - .25:
+                early.append(f"{i_} shown at {e['f'] / FPS:.2f}s, its word at {e['t_key']:.2f}s")
+        gate("GFX-01", not early, "nothing shown before it is said (<= 0.25 s lead for entries)", "\n".join(early[:10]), status=None if not early else "WARN")
+        icons = [e for e in els if e.get("asset") and "/" in str(e["asset"]) and e.get("role") != "media"
+                 and not str(e["asset"]).startswith(("assets/icons", "Brand", "assets/logos", "Assets/"))]
+        gate("GFX-23", not icons, "icons only from the Material set")
+    else:
+        gate("ELEMENT-LOG", False, "Edit/elements.jsonl missing: render with `cves render` first", status="WARN")
+    holds = sorted(set([round(s["t0"], 2) for s in segs] + [round(x / FPS, 2) for x in ev] + [round(T, 2)]))
+    worst = max((b - a, a) for a, b in zip(holds[:-1], holds[1:]))
+    ms = G_.get("max_shot_s", 4.0); gate("RET-16", worst[0] <= ms, f"longest visual hold {worst[0]:.2f} s at {worst[1]:.2f} s", "frame-diff misses small graphic events: check by eye", status=None if worst[0] <= ms else "WARN")
+
+    # ---------------- sound
+    I, P = lufs(video); LT = S.get("sound.master_lufs", -14); TP = S.get("sound.true_peak", -1.0)
+    gate("SND-01", LT - .5 <= I <= LT + .5, f"{I:.1f} LUFS (target {LT})", status=None if not (LT - .5 <= I <= LT + .5) else ("WARN" if I > LT else "PASS"))
+    gate("SND-02", P <= TP, f"true peak {P:.1f} dBTP (max {TP})")
+    if os.path.exists(pr.e("stems", "voice.wav")):
+        vo, sr = sf.read(pr.e("voice_final.wav")); vo = vo.mean(1) if vo.ndim > 1 else vo
+        mu, _ = sf.read(pr.e("stems", "music.wav")); mu = mu.mean(1) if mu.ndim > 1 else mu
+        sx, _ = sf.read(pr.e("stems", "sfx.wav")); n = min(len(vo), len(mu), len(sx))
+        sf.write(os.path.join(tmp, "bed.wav"), mu[:n] + sx[:n], sr); sf.write(os.path.join(tmp, "vo.wav"), sf.read(pr.e("stems", "voice.wav"))[0][:n], sr)
+        lu = lufs(os.path.join(tmp, "bed.wav"))[0] - lufs(os.path.join(tmp, "vo.wav"))[0]
+        bed = (E.get("music") or {}).get("bed_lu", S.get("sound.bed_lu", -10))
+        gate("SND-04", bed - 2.5 <= lu <= bed + 3, f"music+SFX bed {lu:+.1f} LU vs voice (target {bed})")
+        pm, _ = sf.read(pr.e("mix_premaster.wav")); clip = int((np.abs(pm) >= .999).sum())
+        gate("SND-03", clip == 0, f"{clip} clipped samples")
+        h = int(.02 * sr); dbv = 20 * np.log10(np.array([np.sqrt(np.mean(vo[i:i + h] ** 2)) for i in range(0, len(vo) - h, h)]) + 1e-9)
+        gate("SND-19", np.percentile(dbv, 5) <= -60, f"voice floor (p5) {np.percentile(dbv, 5):.1f} dBFS")
+        onset = next((i * .02 for i, x in enumerate(dbv) if x > dbv.max() - 30), 99); gate("RET-03", onset <= .25, f"first speech {onset:.2f} s")
+        last = (len(dbv) - next(i for i, x in enumerate(dbv[::-1]) if x > dbv.max() - 30)) * .02
+        gate("PLAT-11", T - last <= 3.0, f"{T - last:.2f} s after the last word (end card <= 3 s)")
+    g = AG.gaps(pr.e("voice_final.wav")); gate("CUT-02", not g, f"{len(g)} gaps > 0.25 s", "\n".join(f"gap at {a:.2f}s {b:.2f}s" for a, b in g))
+    vc = pr.json("voice_chain.json")           # written by ingest: the processors actually run on this voice
+    if vc is None: gate("SND-30", False, "Edit/voice_chain.json missing: re-run `cves ingest`", status="WARN")
+    else:
+        gen = [p for p in vc.get("steps", []) if p.get("generative")]
+        gate("SND-30", not gen, "voice chain: " + " -> ".join(p.get("name", "?") for p in vc.get("steps", [])), "generative steps: " + ", ".join(p["name"] for p in gen))
+
+    # ---------------- words, hook, sign-off (whisper)
+    Wd = pr.json("words.json", []); words = [re.sub(r"[^a-z0-9']", "", w[2].lower()) for w in Wd]
+    kws = Q.get("topic_keywords", [])
+    if kws:
+        kw_t = next((Wd[i][0] for i, w in enumerate(words) if any(k.split()[0] in w for k in kws)), 99)
+        gate("RET-01", kw_t <= 2.0, f"first topic keyword {kw_t:.2f} s", status=None if kw_t <= 3 else "FAIL")
+    hd = " ".join(w[2] for w in Wd if w[0] < 3).lower()
+    bans = [p for p in [r"craziest", r"won'?t believe", r"watch till the end", r"wait for it", r"stay till the end", r"^\s*(hi|hello|hey) (guys|everyone)"] if re.search(p, hd)]
+    gate("RET-08", not bans, "no banned openers in the first 3 s", ", ".join(bans))
+    tail = Q.get("brand_tail", [])
+    if tail:
+        tw_ = os.path.join(tmp, "tail.wav"); sh([C.get("ffmpeg"), "-v", "error", "-y", "-sseof", "-6", "-i", pr.e("voice_final.wav"), "-ac", "1", "-ar", "16000", tw_])
+        tt = re.sub(r"[^a-z ]", " ", AG._whisper(tw_, lang=__import__("cves.ingest", fromlist=["x"]).whisper_language(pr)).lower()).split(); joined = "".join(tt[-6:])
+        gate("STORY-10", all(t in joined for t in tail), f"sign-off heard: {' '.join(tt[-5:])}")
+        gate("STORY-09", bool(tt) and any(t in tt[-1] for t in tail), f"last spoken word: {tt[-1] if tt else '?'}")
+    if not fast:
+        r, bad, ok = AG.words(pr.e("voice_final.wav"), pr.e("voice_raw.wav"))
+        gate("CUT-01", ok, f"voice stem vs raw: match {r:.3f}", "\n".join(bad))
+        st = AG.stutters(pr); gate("CUT-03", not st, f"{len(pr.json('edl.json')['segments'])} kept segments checked verbatim", "\n".join(st))
+    from .extra import run_extra; run_extra(pr, video, gate)
+    try:
+        from ..assets import qc_assets; qc_assets(pr, gate)          # AST-01: every asset registered, unchanged, with provenance
+    except ImportError: pass
+
+    order = {"FAIL": 0, "WARN": 1, "PASS": 2}; R.sort(key=lambda x: (order.get(x[1], 3), x[0]))
+    nf, nw, npass = (sum(r[1] == s for r in R) for s in ("FAIL", "WARN", "PASS"))
+    lines = [f"QC REPORT  {os.path.basename(video)}  ({T:.2f} s)", f"{nf} FAIL   {nw} WARN   {npass} PASS   of {len(R)} gates", ""]
+    for gid, st_, summ, det_ in R:
+        lines.append(f"[{st_:4s}] {gid:10s} {summ}")
+        if st_ != "PASS" and det_: lines += ["             " + l for l in det_.splitlines() if l.strip()]
+    open(pr.e("QC-REPORT.txt"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
+    write_stamp(pr, video, R, fast=fast)     # Edit/qc.json: the machine-readable stamp `cves deliver` and the hook check
+    return nf, "\n".join(lines)
+
+
+def sha256(path, bs=1 << 20):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(bs), b""): h.update(b)
+    return h.hexdigest()
+
+
+def write_stamp(pr, video, R, fast=False, out=None):
+    """qc.json = {video, sha256, fail, warn, pass, gates: [{id, status, summary}], created, cves_version, fast}.
+    `cves deliver` refuses unless fail == 0 AND sha256 matches the master it is about to deliver (docs/DELIVERY.md)."""
+    import datetime
+    from .. import __version__
+    d = {"video": os.path.abspath(video), "sha256": sha256(video), "size": os.path.getsize(video),
+         "fail": sum(r[1] == "FAIL" for r in R), "warn": sum(r[1] == "WARN" for r in R), "pass": sum(r[1] == "PASS" for r in R),
+         "gates": [{"id": g, "status": s, "summary": m} for g, s, m, _ in R],
+         "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"), "cves_version": __version__, "fast": bool(fast)}
+    with open(out or pr.e("qc.json"), "w", encoding="utf-8") as f: json.dump(d, f, indent=1, ensure_ascii=False)
+    return d
+
+
+def run_stage(pr, stage):
+    """early gates that need no render. story: after `cves select` (voice + edl). plan: after edit.yaml is filled."""
+    R = []
+    def gate(gid, ok, summary, details="", status=None): R.append((gid, status or ("PASS" if ok else "FAIL"), summary, details))
+    from .. import style as STY
+    S = STY.load(pr); G_ = S.get("grammar") or {}; Q = pr.edit.get("qc", {}) or {}; step_min = S.get("framing.min_step", 1.15)
+    if stage == "story":
+        g = AG.gaps(pr.e("voice_final.wav")); gate("CUT-02", not g, f"{len(g)} gaps > 0.25 s", "\n".join(f"gap at {a:.2f}s {b:.2f}s" for a, b in g))
+        st = AG.stutters(pr); gate("CUT-03", not st, f"{len(pr.json('edl.json')['segments'])} kept segments checked verbatim", "\n".join(st))
+        tail = Q.get("brand_tail", [])
+        if tail:
+            tmp = tempfile.mkdtemp(); tw_ = os.path.join(tmp, "tail.wav")
+            subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", "-sseof", "-6", "-i", pr.e("voice_final.wav"), "-ac", "1", "-ar", "16000", tw_])
+            tt = re.sub(r"[^a-z ]", " ", AG._whisper(tw_, lang=__import__("cves.ingest", fromlist=["x"]).whisper_language(pr)).lower()).split(); joined = "".join(tt[-6:])
+            gate("STORY-10", all(t in joined for t in tail), f"sign-off heard: {' '.join(tt[-5:])}")
+            gate("STORY-09", bool(tt) and any(t in tt[-1] for t in tail), f"last spoken word: {tt[-1] if tt else '?'}")
+        import soundfile as _sf; dur = _sf.info(pr.e("voice_final.wav")).duration; lo, hi = Q.get("duration") or S.get("platform.duration") or [0, 1e9]
+        gate("DEL-04", lo <= dur <= hi, f"cut length {dur:.1f} s (brief {lo}-{hi} s)")
+        # story structure from the beat tags in selects.yaml / edl.json (H P A PR O C; X = cut)
+        edl = pr.json("edl.json"); beat_of = {c["id"]: c.get("beat") for c in edl["clips"]}
+        F = edl["fps"]; t = 0.0; spans = []
+        for s in edl["segments"]:
+            L = round((s["out"] - s["in"]) * F) / F; spans.append((beat_of.get(s["clip"]), t, t + L)); t += L
+        T = t; tagged = [b for b, _, _ in spans if b]
+        if not tagged:
+            gate("STORY-01", False, "no beat tags: add `beat:` (H/P/A/PR/O/C) to each clip in selects.yaml", status="WARN")
+        else:
+            order = list(G_.get("beats") or ["H", "P", "A", "PR", "O", "C"]); run = []
+            for b in tagged:
+                if not run or run[-1] != b: run.append(b)
+            present = [b for b in order if b in run]; rank = [order.index(b) for b in run if b in order]
+            ok_order = all(x <= y for x, y in zip(rank[:-1], rank[1:])) or (rank and rank[0] == order.index("PR") and all(x <= y for x, y in zip(rank[1:-1], rank[2:])))
+            gate("STORY-01", set(order) <= set(run) and ok_order, f"beats in order: {' > '.join(run)}", "" if set(order) <= set(run) else f"missing: {', '.join(b for b in order if b not in run)}")
+            first = lambda b: next((a for x, a, _ in spans if x == b), None)
+            pS, prS, oS, cS = first("P"), first("PR"), first("O"), first("C")
+            if pS is not None: gate("STORY-13", pS <= .25 * T, f"problem starts at {pS:.1f} s = {pS / T:.0%} of runtime (<= 25%)")
+            if prS is not None: gate("STORY-05", prS <= .50 * T, f"proof starts at {prS:.1f} s = {prS / T:.0%} (<= 50%)", status=None if prS <= .5 * T else "WARN")
+            if prS is not None and oS is not None: gate("STORY-07", oS > prS, f"offer/price after the proof ({oS:.1f} s > {prS:.1f} s)")
+            if cS is not None: gate("STORY-09b", cS >= .80 * T, f"CTA starts at {cS:.1f} s = {cS / T:.0%} (target >= 85%, CALIBRATE)", status="PASS" if cS >= .85 * T else "WARN")
+    else:
+        from ..render import Timeline
+        from .. import templates as T
+        TL = Timeline(pr); FPS = TL.FPS
+        bad = [c.get("id") for c in TL.cuts if c.get("template") not in T.REGISTRY]
+        gate("PLAN-00", not bad, "every template exists", ", ".join(map(str, bad)))
+        steps = []
+        for x, y in zip(TL.segs[:-1], TL.segs[1:]):
+            if TL.in_cut(y["t0"] + .5 / FPS) or TL.in_cut(x["t1"] - .5 / FPS) or x["id"] not in TL.zoom or y["id"] not in TL.zoom: continue
+            za, zb = TL.zoom[x["id"]] * (1 + TL.creep), TL.zoom[y["id"]]; r = max(za, zb) / min(za, zb)
+            if r < step_min - 1e-6: steps.append(f"{x['id']} -> {y['id']}: {r:.3f}x")
+        gate("CUT-05", not steps, f"punch-in step >= {step_min}x at every direct A-roll cut", "\n".join(steps))
+        big = [k for k, z in TL.zoom.items() if z >= 1.4] + (["snap"] if TL.snap and TL.snap[2] >= 1.4 else [])
+        xm = S.get("framing.extreme_max", 1); gate("FRAME-09", len(big) <= xm, f"{len(big)} extreme punch-in(s) (max {xm})")
+        rm = G_.get("roto_max", 4); gate("GFX-25", len(TL.roto) <= rm, f"{len(TL.roto)} roto moments (max {rm})")
+        share = sum(c["end"] - c["start"] for c in TL.cuts) / max(TL.T_END, 1e-6); band = G_.get("cutaway_share")
+        if band: gate("RET-22", band[0] <= share <= band[1], f"cutaway share {share:.0%} of the body (style {band[0]:.0%}-{band[1]:.0%})")
+        else: gate("RET-22", True, f"cutaway share {share:.0%} (style sets no band)")
+        cut_t = sorted([(c["start"], c["end"]) for c in TL.cuts]); longest, last = 0, 0.0
+        for a, b in cut_t: longest = max(longest, b - a); last = b
+        mx = G_.get("max_cutaway_s", 8); gate("RET-22b", longest <= mx, f"longest cutaway {longest:.1f} s (face back within {mx} s)")
+        early = []
+        for c in TL.cuts:
+            for k, v in (c.get("params") or {}).items():
+                if k.endswith("_at") and isinstance(v, (int, float)) and v < c["start"] - .3: early.append(f"{c['id']}.{k} {v} < cutaway start {c['start']:.2f}")
+        gate("GFX-01", not early, "no element keyed before its cutaway starts", "\n".join(early), status=None if not early else "WARN")
+    order = {"FAIL": 0, "WARN": 1, "PASS": 2}; R.sort(key=lambda x: (order.get(x[1], 3), x[0]))
+    nf = sum(r[1] == "FAIL" for r in R)
+    lines = [f"QC ({stage} stage)  {nf} FAIL  {sum(r[1] == 'WARN' for r in R)} WARN  {sum(r[1] == 'PASS' for r in R)} PASS", ""]
+    for gid, st_, summ, det_ in R:
+        lines.append(f"[{st_:4s}] {gid:10s} {summ}")
+        if st_ != "PASS" and det_: lines += ["             " + l for l in det_.splitlines() if l.strip()]
+    return nf, "\n".join(lines)

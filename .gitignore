@@ -1,0 +1,67 @@
+# ---- Python / venvs --------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+venv-*/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# ---- models and installed tools (they live in ~/.cves, never in the repo) ---------------------------
+/models/
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.bin
+*.safetensors
+.cves/
+
+# ---- media: no footage, renders, stems or frames ------------------------------------------------------
+*.mov
+*.MOV
+*.mp4
+*.MP4
+*.m4v
+*.mkv
+*.avi
+*.mxf
+*.wav
+*.WAV
+*.aif
+*.aiff
+*.flac
+frames/
+**/Edit/frames/
+**/Moodboard/frames/
+# (client folders Raw/ Edit/ Export/ live outside the repo; no case-insensitive Export/ rule here: it would
+#  hide engine/cves/export/ on macOS)
+# licensed sound assets and examples ARE committed (with their CREDITS.md)
+!assets/sfx/**
+!examples/**/*.wav
+
+# ---- secrets ---------------------------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+secrets.*
+config.local.yaml
+
+# ---- OS / editors ------------------------------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.part
+
+# third-party YouTube transcripts: fetch locally, never commit (copyright)
+knowledge-base/transcripts/

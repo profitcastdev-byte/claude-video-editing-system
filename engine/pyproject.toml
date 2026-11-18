@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cves"
+version = "0.2.0"
+description = "Claude Video Editing System: edit.yaml-driven talking-head ad editor with automated QC"
+requires-python = ">=3.11"
+dependencies = ["numpy", "opencv-python", "av", "pillow", "soundfile", "scipy", "librosa", "pyyaml", "torch", "opentimelineio"]
+
+[project.scripts]
+cves = "cves.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cves*"]
+
+[tool.setuptools.package-data]
+cves = ["styles/*.yaml", "styles/*.md"]
+
+[project.optional-dependencies]
+test = ["pytest"]

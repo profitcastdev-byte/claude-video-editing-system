@@ -1,0 +1,19 @@
+{
+  "_doc": "Claude Code plugins and skills the system uses. install_skills.py installs every entry with method plugin/git/npx. Entries with method 'manual' cannot be redistributed (paid licence or unknown source): each teammate gets them from the owner. Keep in sync with TOOLS-REGISTRY.md.",
+  "plugins": [
+    {"name": "superpowers", "marketplace": "claude-plugins-official", "marketplace_repo": "anthropics/claude-plugins-official", "why": "brainstorming / planning / verification workflow skills", "status": "core"},
+    {"name": "lemo-opuscar", "marketplace": "lemolab", "marketplace_repo": "lemomo-ai/lemo-opuscar", "why": "video tooling skill (evaluated)", "status": "optional"}
+  ],
+  "skills": [
+    {"name": "effects", "method": "git", "repo": "https://github.com/Vibha-Ramprakash/claude-video-effects", "path": ".", "why": "51 talking-head effects; its YuNet face model", "status": "core"},
+    {"name": "motionmaxxing", "method": "git", "repo": "https://github.com/Tejashmakwana/motionmaxxing", "path": ".", "why": "launch-film motion design, GSAP/HyperFrames", "status": "optional"},
+    {"name": "threejs-*", "method": "git", "repo": "https://github.com/cloudai-x/threejs-skills", "path": "skills", "why": "three.js scenes for 3D cutaways", "status": "optional"},
+    {"name": "hypit", "method": "git", "repo": "https://github.com/hypit-ai/hypit", "path": "skills/hypit", "why": "Hypit video direction (needs its own runtime)", "status": "optional"},
+    {"name": "remotion-*", "method": "npx", "cmd": ["npx", "-y", "skills", "add", "remotion-dev/skills", "--global"], "why": "Remotion skills (code-built motion)", "status": "optional"},
+    {"name": "hadi-got-motion", "method": "manual", "why": "motion-graphics studio. PAID personal licence (max 3 own computers, non-transferable): each teammate buys their own", "status": "optional"},
+    {"name": "real-sfx", "method": "manual", "why": "real SFX bank. Source/licence not recorded: ask the repo maintainer for the source, then switch to git", "status": "optional"},
+    {"name": "real-sound", "method": "manual", "why": "soundtrack design. Source/licence not recorded: ask the repo maintainer", "status": "optional"},
+    {"name": "business-motion-film", "method": "manual", "why": "business launch films. Source/licence not recorded: ask the repo maintainer", "status": "optional"},
+    {"name": "earshot (skill)", "method": "manual", "why": "the earshot CLI is installed by install_mac.sh/.ps1; its Claude skill folder's source is not recorded: ask the repo maintainer", "status": "optional"}
+  ]
+}

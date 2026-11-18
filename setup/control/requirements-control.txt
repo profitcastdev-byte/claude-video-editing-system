@@ -1,0 +1,5 @@
+# Control-mode exporters (engine/cves/export). Installed into the CVES venv (dev: ~/.cves/venv-dev).
+# layers.py writes timeline.otio; selftest.py reads timeline.fcpxml back through OTIO's FCPXML adapter
+# as an independent parser. resolve.py / kdenlive.py themselves need only the standard library.
+OpenTimelineIO==0.18.1
+otio-fcpx-xml-adapter==1.0.0

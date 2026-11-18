@@ -1,0 +1,187 @@
+# Neutral defaults. No brand, no house look: `cves inspire` (Edit/style.yaml) or a preset replaces these per client.
+# Schema: docs/STYLE.md. Every key here is read by the engine; nothing visual is hard-coded elsewhere.
+name: default
+platform:
+  size: [1080, 1920]          # master canvas (design space for templates is 1080x1920; other ratios via `cves deliver` reframes)
+  fps: source                 # "source" = keep the footage rate; or e.g. [30000, 1001], 25, 30
+  safe_zone: [65, 269, 1015, 1248]   # x0 y0 x1 y1 kept free of platform UI (Meta Reels norm); null to disable
+  margin: 60
+  duration: [15, 90]          # seconds the brief allows
+stage: {background: "#0B0B0D", glow_bottom: "#2A2A33", dot_grid: "#8A8A99", dots: true, glow: true}
+colors: {accent: "#4C8DFF", accent_dark: "#2A5BB8", text: "#FFFFFF", card: "#16161B", card_border: "#34343F", icon_well: "#24243A", gold: "#D6B26C",
+         star: "#FFC446", negative: "#E5484D"}   # rating stars; negative marks (comparison crosses). muted / surface / line are derived unless set
+font_files: {medium: Poppins-Medium.ttf, semibold: Poppins-SemiBold.ttf, bold: Poppins-Bold.ttf, extrabold: Poppins-ExtraBold.ttf, serif: CormorantGaramond.ttf,
+  # per-language caption/title font for scripts the brand font lacks (cves.scripts.font_for_language); weight is swapped by name
+  script_fallback: {hi: NotoSansDevanagari-SemiBold.ttf, mr: NotoSansDevanagari-SemiBold.ttf, ne: NotoSansDevanagari-SemiBold.ttf, sa: NotoSansDevanagari-SemiBold.ttf,
+                    ta: NotoSansTamil-SemiBold.ttf, te: NotoSansTelugu-SemiBold.ttf, kn: NotoSansKannada-SemiBold.ttf, ml: NotoSansMalayalam-SemiBold.ttf,
+                    bn: NotoSansBengali-SemiBold.ttf, as: NotoSansBengali-SemiBold.ttf, gu: NotoSansGujarati-SemiBold.ttf}}
+grade:
+  relight: false              # subject-matte background darkening (needs a presenter)
+  background_stops: 0.0       # how far the wall is pulled down when relight is on (negative = darker)
+  background_saturation: 1.0
+  background_tint: [1.0, 1.0, 1.0]
+  subject_tint: [1.0, 1.0, 1.0]
+  gamma: 1.0
+  gain: 1.0
+  vignette: 0.0               # 0..1
+  shoulder: 0.0               # filmic highlight roll-off
+  shoulder_gain: 1.0          # output scale after the shoulder (keeps white below clip when shoulder > 0)
+  black_lift: [0.0, 0.0, 0.0]
+  exposure_match: true        # per-shot skin balance across cuts
+  exposure_mode: rgb          # rgb: luminance gain + a small per-channel trim so skin colour also matches across cuts | luma
+  exposure_chroma_max: 0.06   # cap on the per-channel trim (log units, ~6 %)
+  exposure_gain_range: [0.85, 1.18]   # clamp on the per-shot balance gain
+  exposure_anchor_weight: 0.15        # pull of each shot median to the common median vs matching neighbours at the cut (0..1)
+  edge_alpha_range: [0.2, 0.8]  # relight edge: matte alpha <= lo is wall, >= hi is subject (narrower = crisper edge, no ring)
+  edge_decontaminate: true    # relight edge: un-mix the wall from edge pixels before re-compositing over the darkened wall
+  edge_wall_sigma: 6.0        # px: neighbourhood the wall colour behind an edge pixel is estimated from
+  edge_dehalo_px: 10.0        # px: wall this close to the subject is clamped to the wall level just beyond (camera sharpening ring); 0 = off
+captions:
+  style: word_reveal          # word_reveal | one_word | highlight | box | karaoke | pop | bounce | none
+  font: semibold
+  size: 50
+  color: "#FFFFFF"
+  highlight_color: accent     # colour name from `colors` or hex
+  box_color: "#000000B0"
+  case: sentence              # sentence | upper | lower | as_spoken
+  max_lines: 2
+  max_chars: 34
+  position: chin              # chin (just under the face) | lower_third | center | y:<px>
+  shadow: true                # soft drop shadow (+ a legibility bed when the colour needs it, see `legibility`)
+  legible: true               # add the auto-darkened bed under captions when contrast vs `legibility.video_bg` is short
+  outline: 0                  # stroke width in px (0 = off); a stroke instead of / with the shadow
+  outline_color: "#000000"
+  language: en                # also picks `font_files.script_fallback` for non-Latin captions
+  emoji: true                 # colour emoji when a colour-emoji font exists (emoji_font or a system one), else skipped
+  emoji_font: null            # path to a colour-emoji font; null = auto-detect
+  emphasis: {words: [], color: accent, scale: 1.15, numbers: true}   # keyword emphasis; numbers auto-emphasised
+  highlight_mode: text        # highlight style: text (colour the word) | pill (accent pill behind the word)
+  pad_x: 85                   # side padding inside platform.safe_zone (line wrap width = safe width - 2 * pad_x)
+  pad_bottom: 20              # gap kept above the safe zone bottom
+  chin_gap: 70                # preferred gap under the chin (position chin)
+  chin_min_gap: 72            # never closer to the (smoothed) chin: raw face boxes reach ~15 px lower and FRAME-01 pads 5 % of face width
+  lower_third_y: 0.68         # position lower_third: top as a fraction of the canvas height
+  line_height: 1.32
+  lead_s: 0.03                # a word shows this long before its spoken start
+  reveal_s: 0.0               # word_reveal fade-in per word (0 = crisp)
+  pop_s: 0.16                 # pop / bounce / one_word entry duration per word
+  karaoke_dim: 0.55           # unspoken words in karaoke, as a fraction of the text colour
+  per_style:                  # max_chars / max_lines / size_scale per caption style (override the values above)
+    one_word: {max_chars: 1, max_lines: 1, size_scale: 1.5}
+    pop: {max_chars: 24, max_lines: 2}
+    bounce: {max_chars: 24, max_lines: 2}
+transitions:
+  in: cut                     # default transition into a cutaway: cut | whip | glitch | fade
+  out: cut
+  whip_s: 0.15
+  glitch_s: 0.10
+  fade_s: 0.20
+framing:
+  zoom_levels: [1.0, 1.18, 1.38]
+  min_step: 1.15              # every direct A-roll cut changes scale by at least this (hides jump cuts)
+  creep: 0.0                  # slow push per shot
+  extreme_max: 1                # extreme punch-ins (>= 1.4x) allowed per video
+  lift: false
+grammar:                      # pacing rules the QC gates enforce; null = not enforced for this client
+  cutaway_share: null         # e.g. [0.40, 0.55]
+  max_cutaway_s: 8
+  max_shot_s: 4
+  roto_max: 4
+  face_on_first_frame: false
+  topic_by_s: 2.0
+  beats: [H, P, A, PR, O, C]   # story beat order the story gates expect (hook problem agitate proof offer cta)
+sound:
+  bed_lu: -10                 # music+SFX bed vs voice while speaking
+  duck_voice_band_db: -8
+  duck_other_db: -3
+  duck_lookahead_s: 0.12
+  sfx_offset_db: -3           # non-reveal cues sit this far back
+  master_lufs: -14
+  true_peak: -1.0
+  transition_sfx: {whip: whoosh, glitch: swipe, cut: null, fade: null}   # sound per transition kind (null = none); a whoosh is placed by its peak on the cut (SND-08)
+  repeat_pitch_st: 1          # SND-09: an identical back-to-back cue is pitched +/- this many semitones (alternating, deterministic)
+  repeat_gain_db: 1.5         # ... and its gain moved by -/+ this much
+music:                        # beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these per video
+  sync: "off"                 # off | drop | cuts | full (cumulative: cuts = drop + cut points on the beat; full = cuts + SFX peaks on the beat)
+  fit: bars                   # bars (trim / loop on bar lines, end on a downbeat with a one-bar tail) | none (legacy: offset + 0.9 s fade)
+  beats_per_bar: 4
+  tempo_range: [60, 150]      # BPM range the detected tempo is folded into (double/half-time fix); e.g. [120, 190] for drum & bass
+  snap_tolerance_s: 0.12      # cuts mode: a cut point / graphic entry moves only to a beat this close
+  drop_beats: [PR, O]         # default drop moment: first clip tagged with one of these story beats (music.drop_cut > 0 wins)
+  drop_pick: auto             # auto (strongest drop candidate that needs no silent lead-in) | an index into beats.json drops
+  drop_min_rise_db: 3.0       # a drop candidate's next 2 bars are this much louder than the 4 before
+  loop_xfade_s: 0.08          # equal-power crossfade on a loop seam (seams sit on downbeats)
+  loop_min_bars: 4            # a loop jumps back at least this many bars
+  end_min_tail_s: 0.5         # the last downbeat leaves at least this much tail before the video ends
+  end_tail_bars: 1            # the tail fades over this many bars after the last downbeat
+  gfx_lead_s: 0.25            # GFX-01: a beat move never shows a graphic more than this before its word
+  min_aroll_s: 0.5            # a moved cutaway edge never leaves an A-roll piece shorter than this
+  sfx_snap: [whoosh, hit, boom, riser]   # full mode: cues whose name contains one of these are nudged to the beat
+  sfx_snap_max_f: 1           # full mode: max nudge in frames (SND-07 keeps every SFX within 1 frame of its picture event)
+motion: {entry_s: 0.28, overshoot: 1.6, slide_px: 50, stagger_s: 0.12, drift: 0.025}
+delivery:                     # `cves encode` / `cves deliver` (docs/DELIVERY.md). Encoder settings for every delivered file
+  video: {codec: libx264, crf: 16, preset: slow, profile: high, pix_fmt: yuv420p, tune: null, x264_params: null}   # no tune=film (DEL-05)
+  audio: {codec: aac, sample_rate: 48000, bitrate: 256k}
+  faststart: true             # moov atom before mdat (DEL-03)
+  color: bt709                # matrix conversion AND stream tags (COL-01)
+  cover:                      # thumbnail: best face + sharpness frame in the first window_s (edit.yaml delivery.cover_t overrides)
+    window_s: 3.0
+    quality: 92               # JPEG quality
+    title_font: extrabold     # font_files key; title text comes from edit.yaml delivery.cover_title
+    title_size: 104
+    title_color: text         # colour name from `colors` or hex
+    title_accent: accent      # colour of words wrapped in *stars*
+    title_y: 0.16             # top of the title block, fraction of the frame height
+    title_max_chars: 16       # per line
+    title_shadow: true
+  reframe:                    # 4:5 / 1:1 / 16:9 variants from the 9:16 master
+    face_y: 0.40              # face centre sits this far down the new frame
+    margin: 24                # px kept around the face box and the caption box
+    smooth_s: 0.40            # crop-path smoothing (only on shots where one static crop cannot hold face + captions)
+    wide_fg: "4:5"            # 16:9: the foreground crop placed on the blurred fill
+    fill_blur: 40             # px (at output size) Gaussian blur of the 16:9 fill
+    fill_dim: 0.55            # fill brightness multiplier
+  cutdown: {keep: [H, C], compress: [P, A, PR, O], tolerance_s: 0.5}   # beat tags kept whole / compressed first
+media:                        # image / video_broll / screen_rec / pip / split / overlay_render templates (docs/MEDIA.md)
+  frame: bleed                # default framing of a picture: bleed (full screen) | card (rounded card on the stage)
+  card_box: [100, 300, 980, 1200]   # card rect x0 y0 x1 y1 in the 1080x1920 design space (inside platform.safe_zone)
+  radius: 36                  # card / pane / bubble corner radius px
+  border: 3                   # card outline px (colour = colors.card_border); 0 = none
+  shadow: 0.5                 # drop-shadow opacity under cards and the pip bubble; 0 = none
+  entry: rise                 # card entry when it lands after the cutaway starts: rise | scale | fade | none (timing: motion.*)
+  ken_burns: [1.0, 1.08]      # image zoom from -> to over the shot when `zoom` is not given ([1, 1] = static)
+  zoom_s: 0.6                 # screen_rec zoom-to-region ease time, s
+  cursor_size: 26             # screen_rec cursor-highlight radius px (colour = colors.accent)
+  device_box: {phone: [300, 330, 780, 1250], browser: [60, 420, 1020, 1060]}   # screen_rec frames x0 y0 x1 y1
+  pip: {corner: br, size: 360, shape: circle, margin: 60, ring: 6, face_zoom: 2.4, cutout_scale: 0.55}   # presenter bubble
+  split: {gap: 12, ratio: 0.5, radius: 0}   # two-pane layout
+  sfx_in: swipe               # cue for a card / pane / bubble that enters after the cutaway starts ("" = none)
+  sfx_click: button           # screen_rec cursor click cue ("" = none)
+ingest:                       # how any footage is conformed to the master canvas (docs/INGEST.md)
+  reframe: face               # source aspect != canvas: face = YuNet-steered crop (centre when no face) | center
+  face_crop:
+    sample_fps: 2             # face detections per second of source that steer the crop
+    smooth_s: 1.0             # gaussian smoothing of the crop path, seconds
+    anchor: [0.5, 0.4]        # where the face centre sits inside the crop (x, y fractions)
+    static_tolerance: 0.04    # crop path moving less than this fraction of the crop is locked (no micro-pans)
+  hdr:
+    tonemap: hable            # HDR (PQ / HLG) -> SDR BT.709 operator: hable | mobius | reinhard | clip
+    npl: 100                  # nominal peak luminance (nits) used to linearise
+  whisper:
+    chunk_over_s: 600         # audio longer than this is transcribed in chunks split on silences
+    chunk_s: 300              # longest chunk, seconds
+legibility:                   # text over video (captions, chest, roto): WCAG targets and the auto bed (GFX-15)
+  min_contrast: 4.5           # small text
+  large_contrast: 3.0         # text >= large_px
+  large_px: 48
+  video_bg: "#B4B4B4"         # assumed background behind text on video; darker beds read as a second "ink" class in GFX-15
+  plate_max: 0.85             # strongest bed opacity
+  bed_spread: 0.18            # bed reach around glyphs, as a fraction of the type size
+  wordmark_bed: 0.72          # darkness of the soft bed behind a chest wordmark
+  margin: 1.15                # aim this much above the target (anti-aliasing, the grade and entry fades eat into it)
+type:
+  sep_gap_em: 0.32            # drawn spacing either side of a separator (" · ", " | "): never repeated spaces (GFX-17)
+locale:
+  grouping: intl              # number grouping in stat / counter / chart: intl (1,234,567) | indian (12,34,567) | none
+  thousands: ","
+  decimal: "."

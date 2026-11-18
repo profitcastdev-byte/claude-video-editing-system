@@ -1,0 +1,30 @@
+# CVES main venv (Python 3.12): matting, render, mix, QC, export.
+# Pins are taken from the working Mac toolchain (~/apps/matting/.venv, 2026-11-17) where the package was
+# installed there; the rest (librosa, opentimelineio + adapters, opencv-python instead of -headless) are the
+# versions uv resolved against those pins on 2026-11-18 for macOS 14 arm64 AND Windows x64 (both resolve).
+#
+# torch:  Mac -> the PyPI wheel (has MPS; needs macOS 14+).
+#         Windows -> install_windows.ps1 installs torch/torchvision FIRST from
+#         https://download.pytorch.org/whl/cu132 (NVIDIA) or /whl/cpu; "2.15.0+cu132" satisfies the pin below.
+torch==2.15.0
+torchvision==0.29.2
+
+numpy==2.5.5
+scipy==1.18.1
+opencv-python==5.0.0.93        # this machine has opencv-python-headless 5.0.0.93; engine/pyproject asks for opencv-python
+onnxruntime==1.32.0            # YuNet face detector fallback / ONNX models
+av==19.0.2                     # PyAV
+pillow==13.0.0
+soundfile==0.14.0
+librosa==1.0.1
+pyyaml==6.0.3
+requests==2.34.2
+
+# Timeline export (control mode): OTIO core + the adapters split out of it since 0.16
+opentimelineio==0.18.1
+otio-kdenlive-adapter==0.0.3
+otio-fcpx-xml-adapter==1.0.0
+
+# Voice venv (Python 3.11, ~/.cves/venv-voice) is NOT installed from this file; the installers pin it inline:
+#   deepfilternet==0.5.6 torch==2.1.1 torchaudio==2.1.1 numpy==1.26.2 soundfile==0.12.1
+# (deepfilternet 0.5.6 needs torch<2.2 and numpy<2, which is why it has its own venv.)

@@ -1,0 +1,22 @@
+# Preset "profitcast-dark": the look measured from one agency's own reference edits (dark stage, mint accent, warm moody A-roll).
+# Just data: a preset like any other. Per-client looks come from `cves inspire` (Edit/style.yaml), not from this file.
+name: profitcast-dark
+stage: {background: "#040706", glow_bottom: "#105C3C", dot_grid: "#5AE6AA", dots: true, glow: true}
+colors: {accent: "#19E6A0", accent_dark: "#0E7856", text: "#FFFFFF", card: "#0C1612", card_border: "#2C4E3F", icon_well: "#12382A", gold: "#D6B26C"}
+grade:
+  relight: true
+  background_stops: -1.32       # wall x0.40
+  background_saturation: 0.75
+  background_tint: [1.0, 0.93, 0.86]
+  subject_tint: [1.02, 0.985, 0.95]
+  gamma: 1.12
+  gain: 0.97
+  vignette: 0.55
+  shoulder: 0.25
+  shoulder_gain: 0.96
+  black_lift: [0.010, 0.007, 0.004]
+captions: {style: word_reveal, size: 50, case: sentence, position: chin, max_chars: 34}
+transitions: {in: whip, out: glitch, whip_s: 0.15, glitch_s: 0.10}
+framing: {zoom_levels: [1.0, 1.18, 1.38], min_step: 1.15, creep: 0.015, extreme_max: 1}
+grammar: {cutaway_share: [0.40, 0.55], max_cutaway_s: 8, max_shot_s: 4, roto_max: 4, face_on_first_frame: true, topic_by_s: 2.0}
+sound: {bed_lu: -7, duck_voice_band_db: -8, duck_other_db: -3, duck_lookahead_s: 0.12, sfx_offset_db: -3}

@@ -1,0 +1,3 @@
+# Applied to both MCP server venvs (pip -c). Both servers target the 1.x MCP Python SDK
+# (mcp.server.fastmcp.FastMCP); 2.x is a new major version neither has been tested against.
+mcp>=1.26,<2
