@@ -15,6 +15,7 @@ Target: `$ARGUMENTS` (the current project's final MP4 by default). Follow the `v
 - Read `QC-REPORT.txt` once. For each FAIL, look up only that gate's row in `QC-GATES.md` (grep its id) to see the metric and the threshold.
 - Find the cause upstream first (RULEBOOK §11): a late card is usually a keyword time in `edit.yaml`; a jump cut is a zoom step or a snap boundary; a quiet bed is `music.bed_lu`.
 - Fix it in `edit.yaml` (or the selects), re-render only what changed (`cves render --only <id>`, then `cves mix && cves encode`), and re-run `cves qc`. Repeat until there are **0 FAILs**.
+- Retention gates (RET-24 to RET-32, `docs/VIRAL.md`): a late hook is a missing interrupt in the first second (a snap, a title card, a cut); a long interrupt gap needs a cut, a zoom step or a graphic; effect soup means removing effects, not adding; dead air (RET-31, FAIL for `goal: viral`) is a pause or a missing bed; RET-30 FAIL means the post is longer than the platform allows; RET-32 means cuts off the guide beat (`cves beats --sync cuts --apply`). With `music.slot: platform`, SND-04 FAILs if any music reached the master.
 - Never edit a threshold, skip a gate or mark a FAIL as a WARNING. A threshold changes only through `DECISIONS.md` and a PR.
 - If a FAIL needs something you can't make (a pickup shot, client proof, an engine bug), stop and report it.
 - Then do the single contact-sheet QA pass with `QA-REVIEW.md`, and tick `CHECKLISTS.md` §10.

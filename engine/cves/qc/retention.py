@@ -72,8 +72,10 @@ def element_entries(els, fps):
 
 def timeline_events(tl):
     """[(t, label)] edits from timeline.json: A-roll cuts (with their zoom step), cutaway in / out, transitions, the snap"""
-    ev = [(s["t0"], f"cut to {s['id']}") for s in (tl.get("segments") or [])[1:]]
-    for c in tl.get("cutaways") or []: ev += [(c["start"], f"{c.get('id')} in"), (c["end"], f"{c.get('id')} out")]
+    cw = tl.get("cutaways") or []
+    hidden = lambda t: any(c["start"] + 1e-3 < t < c["end"] - 1e-3 for c in cw)          # an A-roll cut under a cutaway is not seen
+    ev = [(s["t0"], f"cut to {s['id']}") for s in (tl.get("segments") or [])[1:] if not hidden(s["t0"])]
+    for c in cw: ev += [(c["start"], f"{c.get('id')} in"), (c["end"], f"{c.get('id')} out")]
     ev += [(float(t), f"{k} transition") for t, k in (tl.get("transitions") or [])]
     if tl.get("snap"): ev += [(tl["snap"][0], "snap punch-in"), (tl["snap"][1], "snap release")]
     return ev
@@ -266,7 +268,8 @@ def run_retention(pr, video, gate, S=None):
 
     # RET-32 cuts vs the guide beat (music.slot: platform), or vs the music beat (rhythm.cut_on_beat)
     tl = M["tl"]; cuts = sorted(set([round(s["t0"], 4) for s in (tl.get("segments") or [])[1:]] + [round(c[k], 4) for c in tl.get("cutaways") or [] for k in ("start", "end")]))
-    cuts = [c for c in cuts if 0 < c < T]
+    hidden = lambda t: any(c["start"] + 1e-3 < t < c["end"] - 1e-3 for c in tl.get("cutaways") or [])    # an A-roll cut under a cutaway is not seen
+    cuts = [c for c in cuts if 0 < c < T and not hidden(c)]
     from .. import beats as BT
     tol = float(BT.cfg(pr, S).get("snap_tolerance_s", 0.12)); need = float(R.get("guide_on_beat_min", 0.6)); grid = None; what = None
     if GD.is_slot(pr):

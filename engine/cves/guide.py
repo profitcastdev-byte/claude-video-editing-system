@@ -150,7 +150,7 @@ def posting_md(pr, S, master_name, guide_name, T, g, cuts=()):
           f"| Loop | {'yes: the end flows back into the start, keep the sound looping' if S.get('structure.loop') else 'no'} |",
           f"| Guide stem | `{guide_name}`: the reference the edit was cut to. For checking sync only; do not upload it |", "",
           "## In the app", "",
-          "1. Upload the master. Keep its original audio at 100 % (the voice and SFX are mixed to -14 LUFS).",
+          f"1. Upload the master. Keep its original audio at 100 % (the voice and SFX are mixed to {S.get('sound.master_lufs', -14):g} LUFS).",
           f"2. Add the sound above{' and trim its start to ' + _mmss(g['offset']) if (g.get('offset') or 0) > 0 else ''}.",
           "3. Set the added sound low enough that every word stays clear: about 25-40 % on TikTok / Reels / Shorts sliders.",
           "4. Play it once with sound on: the first cut and the drop should land on the beat. If they drift, re-trim the start.", ""]

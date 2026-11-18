@@ -70,6 +70,7 @@ claude-video-editing-system/
 
 ## 4. edit.yaml (the single source of truth for a video)
 ```yaml
+goal: ad                                     # ad (default) | viral: goal layer, retention QC profile, music slot rules (docs/VIRAL.md)
 project: {client: "Client", title: "Video Title", raw: "Raw/take.MP4"}   # fps and size come from the source / style profile
 style: {preset: null, captions: {position: lower_third}}   # optional preset + inline per-video overrides (§9)
 edl: edl.json                                # segments (raw in/out, frame-snapped) from `cves story`
@@ -86,6 +87,7 @@ roto:   [{segment: "05_every_day_0", template: big_words, params: {words: [["EVE
 chest:  [{segment: "08a", template: wordmark, params: {lines: ["Client", "Name"], sub: "TAGLINE", at: 21.80}}]
 end_card: {template: logo_end, duration: 1.25, params: {label: "SERVICE NAME", pill: "OFFER"}}
 music: {file: "Music/track.wav", drop_track: 38.70, drop_cut: 31.13, credits: "..."}   # bed_lu omitted = style sound.bed_lu
+# organic post on a trending sound: music: {slot: platform, guide: 128, sound: "..."}  -> no music in the master (docs/VIRAL.md §4)
 sfx: {auto: true, extra: [{t: 31.12, name: boom, gain: -16}]}   # templates emit their own cues
 qc: {topic_keywords: [topic, words], brand_tail: [brand, name], duration: [30, 60]}   # duration omitted = style platform.duration
 ```

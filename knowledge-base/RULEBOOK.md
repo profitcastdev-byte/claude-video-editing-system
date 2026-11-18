@@ -145,6 +145,16 @@ Read this file first in every editing session, together with `knowledge-base/EDI
 - Don't re-cut what already passed. Change only failed gates or noted items. [6.6]
 - Recalibrate the CALIBRATE gates on the inspiration edits, then on Meta retention and hold-rate data. Re-baseline the colour gates whenever a client's look is re-approved. [4.4, 6 B.7#8, 9 B.7#9, 8 B.5]
 
+## 12. Organic / viral posts (`edit.yaml goal: viral`)
+Everything in §0 still applies. The goal changes defaults and adds gates; it never loosens one. Full rules:
+[`modules/viral-playbook.md`](modules/viral-playbook.md); engine side: `docs/VIRAL.md`. [VIRAL]
+- Set `goal: viral` and `platform.target` (reels, tiktok, shorts, youtube, meta_feed, meta_stories) in the brief. The `viral` style layer then gives faster pacing, punchier captions and a 1 s hook; the client's inspirations still win over it (§0.1).
+- Pick one **hook type** (curiosity gap, pattern break, bold claim, visual question, in media res, "wait for it" shown, never said) and one **structure** (loop, list, story arc, before/after, tutorial) before cutting. Design the hook first, the payoff second, the middle last.
+- A visual change by 1.0 s and on-screen text or a strong subject by 1.0 s (RET-24, RET-25). The payoff lands in the last 20 % (RET-29). A loop's last 0.3 s flows into its first 0.3 s (RET-28).
+- Budget the pattern interrupts: one every ≤ `rhythm.interrupt_max_s`, never a sustained run closer than `rhythm.interrupt_min_s` (RET-26, RET-27). Effect soup is a fault.
+- No dead air over 0.6 s (RET-31 blocks for viral). Text stays inside the platform's safe zone and caption line (PLAT-02); the length stays under the platform maximum (RET-30).
+- A trending sound is never baked into the file: `music: {slot: platform, guide: ..., sound: ...}` delivers a music-free master, a guide stem and POSTING.md. **Ads never use the slot** (§0.12).
+
 ---
 
 ## Never do

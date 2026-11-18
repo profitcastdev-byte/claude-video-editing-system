@@ -14,10 +14,13 @@ S.get("captions.style", "word_reveal")   # dotted lookup with a default
 
 **Merge order** (later wins):
 1. `engine/cves/styles/default.yaml`, the neutral defaults;
+   - `engine/cves/styles/viral.yaml` when `edit.yaml goal: viral` (the goal layer, [VIRAL.md](VIRAL.md));
 2. the preset named by `edit.yaml style.preset`;
 3. `PROJECT/Edit/style.yaml`, written by `cves inspire`;
 4. `PROJECT/Brand/style.yaml`;
 5. inline keys under `edit.yaml style:`.
+
+After the merge, `platform.target` fills `platform.safe_zone`, `sound.master_lufs` and `sound.true_peak` from `styles/platforms.yaml` unless a layer set them. Platform boxes are fractions of the frame: compute pixels from the real frame size (`platforms.safe_zone(S, w, h)`), never from a fixed canvas.
 
 Every key the engine reads must exist in `default.yaml`, with a neutral value and a comment. The schema is documented in [STYLE.md](STYLE.md).
 
@@ -50,6 +53,7 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `style.yaml` | `cves inspire` | measured style profile + `_evidence` |
 | `edit.yaml` | Claude / human | the edit (cutaways, roto, chest, end_card, captions, music, sfx, assets, variants) |
 | `assets.json` | `cves assets` | registry: id → path, kind, source (file/magnific/elevenlabs/stock/url), prompt, licence, sha256 |
+| `stems/guide.wav` | mix | only with `music.slot: platform`: the guide the edit is cut to (reference track or click track), never mixed into the master ([VIRAL.md](VIRAL.md) §4) |
 | `beats.json` | `cves beats` | music analysis in track seconds: tempo, beats, downbeats, bars, sections, energy, drop candidates, last sync plan ([MUSIC.md](MUSIC.md)) |
 | `timeline.json` | render | resolved timeline (zoom, cutaways, transitions, fps_rational, size) |
 | `IMPORT-REPORT.md` | `cves import-edits` | editor changes mapped onto edit.yaml / selects.yaml (backups `*.bak-<time>`), and what could not be mapped. `Export/control/layers.json` (schema in CONTROL-MODE.md §3) is the reference it compares against |

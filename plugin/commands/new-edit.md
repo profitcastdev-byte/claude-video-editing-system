@@ -16,6 +16,7 @@ Follow the `video-editor` skill. Resolve `CVES_ROOT`, `cves` and the project (sk
 - **Inspirations**: 1-3 reference edits for this client. These are the style spec. For an existing client, reuse `<projects root>/<Client>/STYLE.md` and its style profile, and ask only whether this video should differ.
 - **Brand**: logo (png/svg), colours, approved claims (a client name plus a number for the proof), wordmark.
 - **Mode**: vibe (default) or control.
+- **Goal**: a paid **ad** (default) or an organic **viral** post. For viral, also ask the hook type, the structure, the platform (`platform.target`), whether it loops, and the trending sound if any (skill §5b, `knowledge-base/modules/viral-playbook.md`).
 
 Don't continue without a raw file. Missing inspirations, brand or proof is not a blocker; carry it forward as a flag.
 
@@ -27,6 +28,7 @@ Don't continue without a raw file. Missing inspirations, brand or proof is not a
 ## You decide
 - **The brief**, written to `Edit/NOTES.md`: the ad's emotion in one line; the viewer's want plus obstacle; the proof (client name plus number), or "MISSING: ask the client"; the sound moments (hook hit, first cutaway, offer, CTA).
 - **STYLE, for a new client only** (`<projects root>/<Client>/STYLE.md` plus the style profile). Run `cves inspire` to measure the inspirations into `PROJECT/Edit/style.yaml`, and put brand tokens (logo colours, fonts) in `PROJECT/Brand/style.yaml`. Study the inspirations as text first: their transcripts and the `ffprobe` facts. Then look at **one** contact sheet of their key frames, not frame by frame. Write the palette, type, card style, transitions, caption style, music feel and pacing in `STYLE.md`, and check each one is reflected in the style profile (docs/STYLE.md). Name a `style.preset` only if one genuinely matches; the default is neutral, and no preset is a house look. Never replace the inspirations' look with your own pick (RULEBOOK §0.1).
+- **Goal and platform.** Write `goal: viral` into `edit.yaml` for organic posts (the viral style layer then applies), and the target under `style: {platform: {target: <platform>}}`. For viral, the brief also records the hook type, the structure, the loop choice and the trending sound (`music: {slot: platform, guide: ..., sound: ...}`; ads never use the slot).
 - Tick `CHECKLISTS.md` §1.
 
 ## Show the user
