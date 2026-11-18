@@ -185,3 +185,8 @@ locale:
   grouping: intl              # number grouping in stat / counter / chart: intl (1,234,567) | indian (12,34,567) | none
   thousands: ","
   decimal: "."
+creative:                     # restraint budget (knowledge-base/CREATIVE.md); `cves critique` reports usage against it (advisory, not a QC gate)
+  signature_per_30s: 1        # signature moments (the one extreme punch-in, a hero motion piece, a hard music hit) per 30 s of runtime
+  transition_kinds_max: 2     # distinct transition kinds in one video (cut not counted)
+  motion_pieces_per_30s: 6    # animated graphics (cutaways, roto, chest, motion pieces, end card) per 30 s of runtime
+  accent_colors_max: 1        # accent colours beyond the text colour and the stage (colour discipline)

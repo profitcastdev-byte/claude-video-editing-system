@@ -14,10 +14,18 @@ S.get("captions.style", "word_reveal")   # dotted lookup with a default
 
 **Merge order** (later wins):
 1. `engine/cves/styles/default.yaml`, the neutral defaults;
-2. the preset named by `edit.yaml style.preset`;
-3. `PROJECT/Edit/style.yaml`, written by `cves inspire`;
-4. `PROJECT/Brand/style.yaml`;
-5. inline keys under `edit.yaml style:`.
+2. `knowledge-base/taste/learned.yaml`, the repo's learned layer (team taste, shared through git);
+3. `~/.cves/taste/learned.yaml`, the personal learned layer (`$CVES_TASTE`);
+4. the preset named by `edit.yaml style.preset`;
+5. `PROJECT/Edit/style.yaml`, written by `cves inspire`;
+6. `PROJECT/Brand/style.yaml`;
+7. inline keys under `edit.yaml style:`.
+
+The learned layers (2, 3) hold `scopes: {global | goal:<x> | platform:<x> | client:<x>: {style keys}}` and apply only the
+sections whose scope matches the project (`edit.yaml goal:`, `platform.target`, `project.client`; absent keys match only
+unscoped sections), general before specific. They are written only by `cves learn promote` (a person approves every
+entry) and may hold only keys that exist in `default.yaml`. `S["_sources"]` lists `learned:repo` / `learned:personal`
+when they applied. See [LEARNING.md](LEARNING.md).
 
 Every key the engine reads must exist in `default.yaml`, with a neutral value and a comment. The schema is documented in [STYLE.md](STYLE.md).
 
@@ -55,6 +63,9 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `IMPORT-REPORT.md` | `cves import-edits` | editor changes mapped onto edit.yaml / selects.yaml (backups `*.bak-<time>`), and what could not be mapped. `Export/control/layers.json` (schema in CONTROL-MODE.md §3) is the reference it compares against |
 | `elements.jsonl` | render | one record per drawn element per frame (id, role, bbox, text, t_key, asset, font) |
 | `QC-REPORT.txt` / `qc.json` | `cves qc` | gate results; `qc.json` is machine-readable and carries the hash of the file it judged |
+| `journal.jsonl` | `cves` (build, encode, qc, deliver, import-edits, critique) + `cves learn` | append-only events `{t, event, cves, style_hash, ...}` for self-learning ([LEARNING.md](LEARNING.md)); `journal.last_edit.yaml` is the edit.yaml of the last build |
+| `DIRECTION.md` | Claude | creative direction: concept, arc, the one signature moment, motif, what we will not do (knowledge-base/CREATIVE.md) |
+| `critique/` | `cves critique` | `contact_sheet.jpg`, `timeline.png`, `critique.json`, `CRITIQUE.md` (rubric Claude fills) |
 
 Client folders live outside the repo. Their root is `$CVES_CLIENTS`, else the `clients_root` config key, else `~/CVES Projects`.
 

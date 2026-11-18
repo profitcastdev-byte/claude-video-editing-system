@@ -8,6 +8,9 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 
 Notes: `$ARGUMENTS`. Follow the `video-editor` skill (§5 vibe mode, §6 notes become rules).
 
+## First, journal them
+Log each note **verbatim**, before you change anything: `cves learn note "<the user's exact words>"` (add `--version vNNN` when it is about a delivered version). The next build journals the edit.yaml change you make for it, so `cves learn mine` can spot what keeps being corrected.
+
 ## You decide
 1. Split the notes into separate items. For each one, write the `edit.yaml` change it needs: which id, which param, from what to what. Read `edit.yaml` and `elements.jsonl` (with `grep`/`jq`) as text to find the right element and time. Don't open frames.
 2. If a note is ambiguous ("make it punchier"), choose the most likely reading that agrees with the RULEBOOK and STYLE. State it in one line. Ask only if two readings would give clearly different cuts.
@@ -25,8 +28,11 @@ For each note that would apply to future videos, write it as a general rule and 
 - Taste for this client only → the client's `STYLE.md`.
 If you can't open a PR, put the diff in `Edit/NOTES.md` and say it still needs merging.
 
+## Before you show it
+Run `/cves:critique` on the new master (0 FAIL first): score it, fix anything below 7 that the notes didn't forbid, log the scores.
+
 ## Show the user
-The new MP4 path (after 0 FAILs), one line per note (what you changed), the WARNINGs, and the rules or PR you created.
+The new MP4 path (after 0 FAILs), one line per note (what you changed), the WARNINGs, and the rules or PR you created. If `cves learn mine` has new candidates touching these notes, offer them (`/cves:learn`).
 
 ## Stop?
 Wait for more notes.
