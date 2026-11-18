@@ -37,6 +37,7 @@ def test_voiceover_ingest_tightens_pauses(tmp_path):
     assert not AG.gaps(pr.e("voice_final.wav"))
     edl = pr.json("edl.json"); assert edl["spine"] == "voiceover" and edl["segments"] == [] and abs(edl["duration"] - sf.info(pr.e("voice_final.wav")).duration) < .01
     assert [s["name"] for s in pr.json("voice_chain.json")["steps"]][:2] == ["extract", "pause_tighten"]
+    assert "skipped" in SP.ingest_voiceover(pr, words=False)                 # unchanged inputs: nothing redone
 
 
 def test_music_spine_cuts_land_on_beats(spine_demo, tmp_path):
@@ -83,3 +84,21 @@ def test_aroll_spine_takes_broll_from_the_track(demo_copy):
     roles = {r["role"] for r in recs}
     assert "media" in roles and "caption" in roles, roles                     # B-roll picture + the captions continue over it
     assert img.shape[:2] == (1920, 1080)
+
+
+def test_voiceover_ingest_is_idempotent(spine_demo, tmp_path):
+    """regression: `cves ingest` again on a voiceover project changes nothing (same voice_final, words, edl, timeline),
+    so the broll: track still fits and CUT-01 still compares the voice stem against the recorded VO"""
+    import hashlib
+    from cves import cli, render
+    d = str(tmp_path / "vo"); shutil.copytree(spine_demo("voiceover", "480x270"), d); pr = project.Project(d)
+    sha = lambda f: hashlib.sha256(open(pr.e(f), "rb").read()).hexdigest()
+    before = {f: sha(f) for f in ("voice_final.wav", "voice_raw.wav", "words.json")}; T0 = render.Timeline(pr).T_END
+    for _ in range(2): cli.main(["--project", d, "ingest"])
+    assert {f: sha(f) for f in before} == before
+    assert render.Timeline(pr).T_END == T0 and not schema.validate(pr)[0]
+    if shutil.which(C.get("whisper")) or os.path.exists(C.get("whisper")):    # CUT-01 needs whisper (not on CI)
+        from cves.qc import audio_gates as AG
+        r, bad, ok = AG.words(pr.e("voice_final.wav"), pr.e("voice_raw.wav")); assert ok, (r, bad)
+    E = pr.edit; E["voiceover"]["tighten"] = False; pr.save_edit(E)            # a changed setting is redone
+    assert "skipped" not in SP.ingest_voiceover(pr, words=False)

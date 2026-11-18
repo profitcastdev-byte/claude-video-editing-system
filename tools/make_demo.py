@@ -338,7 +338,10 @@ def build_spine(a, out, fps):
     pr = project.Project(out)
     for k, (path, src, prompt) in assets.items():
         AS.add(pr, k, os.path.join(out, path), source=src, prompt=prompt, licence="synthetic (tools/make_demo.py)")
-    SP.sync_edl(pr, force=True)
+    edl = SP.sync_edl(pr, force=True)
+    if kind == "voiceover":   # the state `cves ingest` leaves: the VO is already tight, so re-running ingest skips it
+        edl["vo_sig"] = SP.vo_signature(pr); edl["clips"] = [{"id": "vo", "in": 0.0, "out": round(dur, 5), "src": "Assets/vo.wav"}]
+        pr.save_json("edl.json", edl)
     if kind == "music":       # the cut comes from the music: autocut on the bars, cycling through the drawn clips
         track, info = SP.autocut(pr, every="downbeats", min_shot=1.0, folder="Assets")
         E_ = pr.edit; E_["broll"] = track; pr.save_edit(E_)
