@@ -119,7 +119,7 @@ QC gates for motion (MOT-*), graphics (GFX-*), captions (PLAT-*), safe zones and
 
 ## 7. Control mode export contract (`Export/control/`)
 ```
-media/aroll/<seg>.mov        graded A-roll per segment, ProRes 422 HQ, zoom baked, 1080x1920
+media/aroll/<seg>.mov        graded A-roll per segment (B-roll shot on a non-aroll spine), ProRes 422 HQ, zoom baked, canvas size
 media/cutaways/<id>.mov      full-frame cutaway incl. its in/out transition, ProRes 422 HQ
 media/overlays/<id>.mov      chest/roto foreground elements with alpha, ProRes 4444 (roto shots: plate+behind+person baked as A-roll)
 media/audio/voice.wav  music.wav  sfx.wav   48 kHz stems (mix levels as rendered)

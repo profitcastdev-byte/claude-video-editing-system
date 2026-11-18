@@ -142,7 +142,7 @@ def contrast(a, b):
 
 def need_contrast(size_px):
     """WCAG target for text of this pixel size (style `legibility`)"""
-    big = size_px >= sget("legibility.large_px", 48)
+    big = size_px >= sget("legibility.large_px", 48) * U          # large_px is at a 1080 short side
     return sget("legibility.large_contrast", 3.0) if big else sget("legibility.min_contrast", 4.5)
 
 def legible_bed(im, fg, size_px, bg=None, force=0.0):

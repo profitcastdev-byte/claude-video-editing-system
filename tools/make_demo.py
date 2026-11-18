@@ -125,7 +125,8 @@ def draw(k, fps, mouth_open, sway_seed=0, look=0.0):
 def ff(args):
     subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", *args], check=True)
 
-def pipe_writer(out, fps, pix_in, pix_out, codec_args, size=(W, H)):
+def pipe_writer(out, fps, pix_in, pix_out, codec_args, size=None):
+    size = size or (W, H)                     # the canvas at call time (--size)
     return subprocess.Popen([C.get("ffmpeg"), "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", pix_in, "-s", f"{size[0]}x{size[1]}",
                              "-r", str(fps), "-i", "-", *codec_args, "-pix_fmt", pix_out, out], stdin=subprocess.PIPE)
 

@@ -634,9 +634,9 @@ def gates_graphics(cx, gate):
                 dl = abs(ba[0] - bb[0]); dc = abs((ba[0] + ba[2]) / 2 - (bb[0] + bb[2]) / 2)
                 if min(dl, dc) <= 2: continue          # aligned on one axis: a near miss on the other is a coincidence
                 for kind, dv in (("left", dl), ("centre", dc)):
-                    if 2 < dv <= 12: mis[(ia.key, ib.key, kind)].append(dv)
+                    if 2 * max(1, U_) < dv <= 12 * U_: mis[(ia.key, ib.key, kind)].append(dv)     # px at a 1080 short side
     pairs = [f"{a} / {b}: {kind} {'edges' if kind == 'left' else 'axes'} {np.median(v):.0f} px apart ({len(v)} frames)" for (a, b, kind), v in mis.items()]
-    gate("GFX-08", not pairs, f"{len(static)} frames with static graphics; {len(pairs)} near-aligned pairs (2-12 px off one axis)", "\n".join(sorted(pairs)[:12]))
+    gate("GFX-08", not pairs, f"{len(static)} frames with static graphics; {len(pairs)} near-aligned pairs ({2 * max(1, U_):.0f}-{12 * U_:.0f} px off one axis)", "\n".join(sorted(pairs)[:12]))
     # GFX-15 text contrast (WCAG, worst case over the shot) on the delivered frames
     cm = cx._results["contrast"]; per = collections.defaultdict(list)
     for key, f, res in cm:
@@ -645,7 +645,7 @@ def gates_graphics(cx, gate):
     kcls = {i.key: i.cls for i in ins}; clsh = collections.defaultdict(list)
     for key, L in per.items(): clsh[kcls[key]] += [h for _, res in L for _, h in res]
     for key, L in per.items():      # type size per element class (all captions share one size): p90 glyph height ~ ascender ~0.74 em
-        hs = [h for _, res in L for _, h in res]; ch = clsh[kcls[key]]; fpx = np.percentile(ch, 90) / .74 if ch else 0; need = 3.0 if fpx >= 48 else 4.5
+        hs = [h for _, res in L for _, h in res]; ch = clsh[kcls[key]]; fpx = np.percentile(ch, 90) / .74 if ch else 0; need = 3.0 if fpx >= 48 * U_ else 4.5
         worst_f, worst_c = None, 99
         for f, res in L:
             c = float(np.percentile([r for r, _ in res], 10))
