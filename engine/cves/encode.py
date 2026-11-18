@@ -23,8 +23,8 @@ def stream_params(pr):
             import cv2
             im = cv2.imread(first, cv2.IMREAD_UNCHANGED); size = [im.shape[1], im.shape[0]]
         else:
-            size = STY.load(pr).get("platform.size", None)
-            if not size: raise SystemExit("no canvas size in Edit/timeline.json: run `cves render` first")
+            from . import gfx as G
+            size = G.canvas_of(STY.load(pr), pr)
     return f"{int(fr[0])}/{int(fr[1])}", (int(size[0]), int(size[1]))
 
 

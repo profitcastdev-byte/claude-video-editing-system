@@ -9,7 +9,7 @@ Pool = _mp.get_context("spawn").Pool   # same on every OS; fork deadlocks once t
 from PIL import Image, ImageFilter
 from fractions import Fraction
 from . import gfx as G, templates as TPL, style as STY, captions as CAP
-from .gfx import W, H, prog, clamp
+from .gfx import prog, clamp          # the canvas is G.W / G.H, read at call time (set per process by Timeline)
 from .look import grade
 
 # Templates that need the graded A-roll frame under them (media templates such as `pip` and `split`): they get
@@ -32,12 +32,16 @@ def refresh_needs_aroll():
 class Timeline:
     def __init__(self, pr):
         self.pr = pr; E = pr.edit; self.E = E
-        self.S = STY.load(pr); self.style = self.S; G.apply_style(self.S)     # the ONLY source of look (docs/STYLE.md)
+        self.S = STY.load(pr); self.style = self.S
+        G.apply_style(self.S, canvas=G.canvas_of(self.S, pr))              # the ONLY source of look (docs/STYLE.md) + the canvas (docs/FORMATS.md)
         TPL.load_dir(pr.p("Brand", "templates"), "project")                  # per-client templates, if any
         refresh_needs_aroll()
         edl = pr.json("edl.json"); self.FPS = edl["fps"]; self.faces = pr.json("faces.json", {})
         G.FPS = self.FPS                                                     # cue / animation quantisation in templates (MOT-07)
-        self.size = (W, H)                                                      # the frame canvas the renderer writes
+        self.size = (G.W, G.H)                                                  # the frame canvas the renderer writes
+        if edl.get("size") and tuple(edl["size"]) != self.size and edl.get("segments"):
+            raise SystemExit(f"the canvas is {self.size[0]}x{self.size[1]} (style canvas.size) but the plates were made at {edl['size'][0]}x{edl['size'][1]}: "
+                             "re-run `cves select` + `cves prep` (or set canvas.size back)")
         fr = edl.get("fps_rational"); self.fps_rational = tuple(fr) if fr else (Fraction(self.FPS).limit_denominator(1001).numerator, Fraction(self.FPS).limit_denominator(1001).denominator)
         self.segs = []; f0 = 0
         for s in edl["segments"]:
@@ -279,16 +283,17 @@ def skin_lab(bgr, f):
 
 def affine(s, cx, cy, clamp_cover):
     tx, ty = cx - s * cx, cy - s * cy
-    if clamp_cover: tx = min(0, max(W - s * W, tx)); ty = min(0, max(H - s * H, ty))
+    if clamp_cover: tx = min(0, max(G.W - s * G.W, tx)); ty = min(0, max(G.H - s * G.H, ty))
     return np.float32([[s, 0, tx], [0, s, ty]])
 
 def warp(img, M, interp=cv2.INTER_LINEAR):
     if abs(M[0, 0] - 1) < 1e-4 and abs(M[0, 2]) < .01 and abs(M[1, 2]) < .01: return img
-    return cv2.warpAffine(img, M, (W, H), flags=interp, borderMode=cv2.BORDER_REPLICATE)
+    return cv2.warpAffine(img, M, (G.W, G.H), flags=interp, borderMode=cv2.BORDER_REPLICATE)
 
-def zoom_blur(img, e, cx=W / 2, cy=H * .4, n=6):
+def zoom_blur(img, e, cx=None, cy=None, n=6):
     """radial (zoom) blur for whips: average of progressively scaled copies (the house spec calls for zoom-blur)"""
     if e <= .02: return img
+    cx = G.W / 2 if cx is None else cx; cy = G.H * .4 if cy is None else cy
     acc = img.copy()
     for k in range(1, n):
         acc += warp(img, affine(1 + .06 * e * k, cx, cy, False))
@@ -298,11 +303,11 @@ def glitch(img, e, seed):
     if e <= 0: return img
     rng = random.Random(seed); out = img.copy()
     for _ in range(int(6 + 14 * e)):
-        y0 = rng.randrange(0, H - 10); hh = rng.randrange(6, int(20 + 120 * e)); dx = int(rng.uniform(-1, 1) * 160 * e)
+        y0 = rng.randrange(0, G.H - 10); hh = rng.randrange(6, int((20 + 120 * e) * G.U) or 7); dx = int(rng.uniform(-1, 1) * 160 * e * G.U)
         out[y0:y0 + hh] = np.roll(out[y0:y0 + hh], dx, axis=1)
     sh = int(14 * e) + 1
     out[..., 0] = np.roll(out[..., 0], sh, axis=1); out[..., 2] = np.roll(out[..., 2], -sh, axis=1)
-    lines = (np.arange(H) % 4 < 1)[:, None, None].astype(np.float32)
+    lines = (np.arange(G.H) % 4 < 1)[:, None, None].astype(np.float32)
     return np.clip(out * (1 - .25 * e * lines) + np.array([.1, .9, .6], np.float32) * .12 * e * lines, 0, 1)
 
 def caption_el(TL, t, chin):
@@ -319,7 +324,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         els = fn(t, e.get("params", {}), TL.ctx(TL.T_END, TL.T_END + TL.END))
         img = G.stage().copy()
         for el in els: img = G.over(img, el.im)
-        sc = 1 + TL.S.get('motion.drift', .025) * clamp((t - TL.T_END) / 6); M = affine(sc, W / 2, 900, False); img = warp(img, M)
+        sc = 1 + TL.S.get('motion.drift', .025) * clamp((t - TL.T_END) / 6); M = affine(sc, G.W / 2, G.H * .46875, False); img = warp(img, M)
     elif cut and mode != "aroll":
         fn = TPL.get(cut["template"])[0]; cx_ = TL.ctx(cut["start"], cut["end"])
         if cut["template"] in NEEDS_AROLL and P is not None and s is not None:     # media templates (pip, split)
@@ -327,7 +332,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         els = fn(t, cut.get("params", {}), cx_)
         img = G.stage().copy()
         for el in els: img = G.over(img, el.im)
-        sc = 1 + TL.S.get('motion.drift', .025) * clamp((t - cut["start"]) / 6); M = affine(sc, W / 2, 900, False); img = warp(img, M)
+        sc = 1 + TL.S.get('motion.drift', .025) * clamp((t - cut["start"]) / 6); M = affine(sc, G.W / 2, G.H * .46875, False); img = warp(img, M)
         if mode in ("overlay", "chest"): img = None
     else:
         sid = s["id"]; f = TL.faces[sid][min(k, len(TL.faces[sid]) - 1)]
@@ -347,7 +352,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
                     img = img * (1 - a) + person * a; els += rels
         z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
         if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
-        M = affine(z, cx, H if sid in TL.lift else cy - fh * .05, True)    # lift: anchor at the frame bottom raises the face
+        M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # lift: anchor at the frame bottom raises the face
         if img is not None: img = warp(img, M, cv2.INTER_CUBIC)
         _, scy, sfh = smooth_face(TL, sid, k, r=12)                         # smoothed: raw boxes made chest graphics shake (MOT-03)
         chin = (scy + sfh / 2) * M[1, 1] + M[1, 2]
@@ -364,7 +369,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
             if not front and not snapped and mode != "chest":     # chest mode: graphics only, captions go to subtitles
                 ce = caption_el(TL, t, cap_chin)
                 if ce: front.append(ce)
-            if img is None: img = np.zeros((H, W, 4), np.float32); ov = True
+            if img is None: img = np.zeros((G.H, G.W, 4), np.float32); ov = True
             else: ov = False
             for el in front:
                 if ov:
@@ -375,7 +380,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
     if mode == "final" and img is not None:
         kind, e, after = trans_strength(TL, t)
         if kind == "whip":
-            z = 1 + (.22 if after else .35) * e ** 1.5; img = zoom_blur(warp(img, affine(z, W / 2, H * .4, False)), e ** 1.2)
+            z = 1 + (.22 if after else .35) * e ** 1.5; img = zoom_blur(warp(img, affine(z, G.W / 2, G.H * .4, False)), e ** 1.2)
         elif kind == "glitch": img = glitch(img, e, i)
         elif kind == "fade": img = img * (1 - e)          # dip through black
     return img, log_records(i, els, M)
@@ -388,7 +393,7 @@ def aroll_frame(TL, s, k, t, P, A):
     img = grade(np.clip(P * g, 0, 1) if np.any(g != 1) else P, A, (cx, cy), TL.S.get("grade"))
     z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
     if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
-    M = affine(z, cx, H if sid in TL.lift else cy - fh * .05, True)
+    M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)
     return warp(img, M, cv2.INTER_CUBIC), warp(A.astype(np.float32) / 255, M)
 
 def smooth_face(TL, sid, k, r=6):

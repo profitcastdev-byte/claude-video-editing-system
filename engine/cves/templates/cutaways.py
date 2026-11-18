@@ -8,6 +8,7 @@ from .. import gfx as G
 from ..gfx import prog, ease_out, back, W, H
 
 KIND = "cutaway"
+DESIGN = True             # fixed 1080x1920 layout: fitted into the canvas safe zone on other canvases (templates._canvas_render)
 def _el(): from . import El, faded; return El, faded
 def _t(ctx): F = G.fps_of(ctx); return F, (lambda v: G.q(v, F))
 

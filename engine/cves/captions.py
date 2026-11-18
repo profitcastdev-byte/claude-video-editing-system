@@ -5,7 +5,9 @@ spoken words fill in) | pop (each word pops in with a scale overshoot) | bounce 
 Flags: `outline` (stroke px instead of / as well as the shadow), `shadow`, `emphasis` (keywords + numbers bigger, in a colour),
 `emoji` (colour emoji when a colour-emoji font exists, else skipped), `per_style` (max_chars / max_lines / size_scale per style).
 Position: chin (just under the face; never over it - FRAME-01 wins over the safe zone) | lower_third | center | y:<px>.
-Width: lines wrap by measured width inside `platform.safe_zone` minus `captions.pad_x`.
+With no presenter on screen (B-roll, voiceover / music / broll spines) `chin` sits low in the safe zone (a lower third).
+Width: lines wrap by measured width inside the canvas safe zone (gfx.safe_zone) minus `captions.pad_x`.
+Px values (size, gaps, pads) are designed for a 1080 short side and scale by gfx.U on other canvases (docs/FORMATS.md).
 Scripts: non-Latin text uses `font_files.script_fallback` (language code or script -> font); RTL never crashes (visual order
 without libraqm). Lessons baked in: never cross a sentence end; break before natural joining words; sentence case; fixed
 line breaks and fixed word positions (words never shift while the line builds)."""
@@ -32,12 +34,12 @@ def _case(w, mode, first):
     return w
 
 def _avail(cfg, S=None):
-    z = (S.get("platform.safe_zone") if S is not None else None) or G.sget("platform.safe_zone")
-    x0, x1 = (z[0], z[2]) if z else (G.sget("platform.margin", 60), G.W - G.sget("platform.margin", 60))
-    return max(200., (x1 - x0) - 2 * cfg.get("pad_x", 85)), (x0 + x1) / 2
+    z = G.safe_zone(S)
+    x0, x1 = (z[0], z[2]) if z else (G.margin(S), G.W - G.margin(S))
+    return max(200. * G.U, (x1 - x0) - 2 * cfg.get("pad_x", 85) * G.U), (x0 + x1) / 2
 
 def _font(cfg, text, scale=1.0):
-    size = cfg.get("size", 50) * cfg.get("size_scale", 1.0) * scale
+    size = cfg.get("size", 50) * cfg.get("size_scale", 1.0) * scale * G.U
     return G.tfont(SHORT.get(cfg.get("font", "semibold"), cfg.get("font", "sb")), int(round(size)), text, cfg.get("language")), size
 
 def build(words, cfg, t_end):
@@ -154,11 +156,15 @@ def element(TL, t, chin, events, S):
             lines = lines[:maxl]
         if rtl: lines = [ln[::-1] for ln in lines]
         sz = size * scale; lh = sz * cfg.get("line_height", 1.32)
-        safe = S.get("platform.safe_zone") or [0, 0, G.W, G.H]
+        safe = G.safe_zone(S) or (0, 0, G.W, G.H); u = G.U
         block = (len(lines) - 1) * lh + sz; block_max = (maxl - 1) * lh + sz
-        pos = str(cfg.get("position", "chin")); pad_b = cfg.get("pad_bottom", 20)
-        gap, min_gap = cfg.get("chin_gap", 70), cfg.get("chin_min_gap", 72)
-        if pos == "chin":
+        pos = str(cfg.get("position", "chin")); pad_b = cfg.get("pad_bottom", 20) * u
+        gap, min_gap = cfg.get("chin_gap", 70) * u, cfg.get("chin_min_gap", 72) * u
+        if chin is None:          # no presenter on screen (B-roll): chin / lower_third sit low in the safe zone
+            chin = -1e9
+            if pos == "chin": pos = "low"
+        if pos == "low": top = safe[3] - pad_b - block_max; top = min(top, safe[3] - pad_b - block)
+        elif pos == "chin":
             top = max(chin + gap, safe[3] - pad_b - block_max)       # sit low in the safe zone, under the chin
             halo = sz * G.sget("legibility.bed_spread", .18) if cfg.get("legible", True) and cfg.get("shadow", True) else 0
             top = min(top, safe[3] - pad_b - block); top = max(top, chin + min_gap + halo)   # the bed / shadow never reaches the face (FRAME-01)
@@ -215,9 +221,9 @@ def element(TL, t, chin, events, S):
         layers = []
         if cfg.get("shadow", True) and style != "box":
             al = np.asarray(im)[..., 3]
-            sh = Image.fromarray(al).filter(ImageFilter.GaussianBlur(cfg.get("shadow_blur", 7)))
+            sh = Image.fromarray(al).filter(ImageFilter.GaussianBlur(cfg.get("shadow_blur", 7) * G.U))
             base = Image.new("RGBA", (G.W, G.H), (0, 0, 0, 0))
-            base.paste(Image.new("RGBA", (G.W, G.H), (0, 0, 0, 255)), (0, int(cfg.get("shadow_dy", 3))), sh.point(lambda v: int(v * cfg.get("shadow_alpha", .7))))
+            base.paste(Image.new("RGBA", (G.W, G.H), (0, 0, 0, 255)), (0, int(round(cfg.get("shadow_dy", 3) * G.U))), sh.point(lambda v: int(v * cfg.get("shadow_alpha", .7))))
             layers.append(base)
             if cfg.get("legible", True):
                 bed = G.legible_bed(im, col[:3], sz)

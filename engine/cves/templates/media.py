@@ -12,7 +12,7 @@ import os, sys, math, functools, collections
 import numpy as np, cv2
 from PIL import Image, ImageDraw, ImageOps
 from .. import gfx as G
-from ..gfx import prog, ease_out, ease_in, ease_io, back, clamp, W, H
+from ..gfx import prog, ease_out, ease_in, ease_io, back, clamp
 from . import El
 
 KIND = "cutaway"                                  # full-screen pictures; render passes the A-roll only to NEEDS_AROLL templates
@@ -67,9 +67,17 @@ def _asset(ref, ctx):
 
 def _is_still(path): return not os.path.isdir(path) and path.lower().endswith(STILL_EXT)
 
-def _safe(S):
-    z = S.get("platform.safe_zone"); m = S.get("platform.margin", 60)
-    return tuple(z) if z else (m, m, W - m, H - m)
+def _safe(S): return G.safe(S)
+
+def design_box(box):
+    """a style box given in 1080x1920 design px (media.card_box, media.device_box) on the current canvas: as is at
+    1080x1920, scaled on another 9:16 canvas, else fitted (aspect kept) and centred in the canvas safe zone"""
+    x0, y0, x1, y1 = [float(v) for v in box]
+    if G.is_design(): return (x0, y0, x1, y1)
+    if abs(G.W / G.H - 9 / 16) < .01: k = G.W / 1080; return (x0 * k, y0 * k, x1 * k, y1 * k)
+    z = G.safe(); bw, bh = x1 - x0, y1 - y0; k = min((z[2] - z[0]) / bw, (z[3] - z[1]) / bh, G.U)
+    cx, cy = (z[0] + z[2]) / 2, (z[1] + z[3]) / 2
+    return (cx - bw * k / 2, cy - bh * k / 2, cx + bw * k / 2, cy + bh * k / 2)
 
 
 # ------------------------------------------------------------------ sources (cached per process)
@@ -193,17 +201,17 @@ def canvas_layer(box_img, x0, y0, mask=None, opacity=1.0):
         if mask is not None: al = al * mask // 255
         if opacity < 1: al = (al * max(0.0, opacity)).astype(np.uint16)
         a[..., 3] = al.astype(np.uint8)
-    out = np.zeros((H, W, 4), np.uint8); bh, bw = a.shape[:2]; x0, y0 = int(round(x0)), int(round(y0))
-    X0, Y0, X1, Y1 = max(0, x0), max(0, y0), min(W, x0 + bw), min(H, y0 + bh)
+    out = np.zeros((G.H, G.W, 4), np.uint8); bh, bw = a.shape[:2]; x0, y0 = int(round(x0)), int(round(y0))
+    X0, Y0, X1, Y1 = max(0, x0), max(0, y0), min(G.W, x0 + bw), min(G.H, y0 + bh)
     if X1 > X0 and Y1 > Y0: out[Y0:Y1, X0:X1] = a[Y0 - y0:Y1 - y0, X0 - x0:X1 - x0]
     return Image.fromarray(out, "RGBA")
 
 @functools.lru_cache(32)
-def _card_deco(box, r, border, shadow, col_b, kind="card"):
+def _card_deco(box, r, border, shadow, col_b, kind="card", _wh=None):
     """drop shadow + outline for a card at box (cached: static per box)"""
     x0, y0, x1, y1 = box
     base = G.layer(lambda d: G.rrect(d, (x0, y0, x1, y1), r, fill=(0, 0, 0, 255)))
-    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    out = Image.new("RGBA", (G.W, G.H), (0, 0, 0, 0))
     if shadow > 0:
         out = G.shadow(base, r=22, alpha=shadow, dy=14); a = np.asarray(out).copy()
         a[..., 3] = (a[..., 3].astype(np.float32) * (1 - np.asarray(base)[..., 3] / 255)).astype(np.uint8)   # keep only the outside
@@ -271,7 +279,7 @@ def _picture_els(t, p, ctx, name, frame, asset_name, has_alpha, default_zoom, fi
     """the shared still / clip layout: bleed or card, Ken Burns, entry, card decoration, label + caption"""
     S = _S(ctx); out = []
     mode = p.get("frame", S.get("media.frame", "bleed"))
-    box = tuple(p.get("box") or (S.get("media.card_box", [100, 300, 980, 1200]) if mode == "card" else (0, 0, W, H)))
+    box = tuple(p.get("box") or (design_box(S.get("media.card_box", [100, 300, 980, 1200])) if mode == "card" else (0, 0, G.W, G.H)))
     at = p.get("at", ctx["start"])
     kind = p.get("enter", S.get("media.entry", "rise") if mode == "card" and at > ctx["start"] + .05 else "none")
     dx, dy, sc, op = _entry(t, at, p.get("out_at"), S, kind)
@@ -291,10 +299,10 @@ def _picture_els(t, p, ctx, name, frame, asset_name, has_alpha, default_zoom, fi
     if mode == "card":
         deco_args = (r, int(S.get("media.border", 3)), float(S.get("media.shadow", .5)), tuple(G.CARD_B))
         if abs(sc - 1) < 1e-3:                    # a sliding card: shift the cached rest-position decoration (no re-blur per frame)
-            deco = _card_deco(tuple(round(v_) for v_ in box), *deco_args)
+            deco = _card_deco(tuple(round(v_) for v_ in box), *deco_args, _wh=(G.W, G.H))
             if round(dx) or round(dy):
-                moved = Image.new("RGBA", (W, H), (0, 0, 0, 0)); moved.paste(deco, (int(round(dx)), int(round(dy)))); deco = moved
-        else: deco = _card_deco(tuple(round(v_) for v_ in b), *deco_args)
+                moved = Image.new("RGBA", (G.W, G.H), (0, 0, 0, 0)); moved.paste(deco, (int(round(dx)), int(round(dy)))); deco = moved
+        else: deco = _card_deco(tuple(round(v_) for v_ in b), *deco_args, _wh=(G.W, G.H))
         if op < 1:
             a = np.asarray(deco).copy(); a[..., 3] = (a[..., 3] * op).astype(np.uint8); deco = Image.fromarray(a, "RGBA")
         out.append(El(deco, f"{name}.card", "media"))
@@ -337,7 +345,7 @@ def video_broll_cues(p, ctx): return _entry_cue(p, ctx, _S(ctx)) + _audio_cue(p,
 
 # ------------------------------------------------------------------ screen_rec
 @functools.lru_cache(16)
-def _device(kind, box, url, r):
+def _device(kind, box, url, r, _wh=None):
     """phone / browser frame around the screen area -> (frame layer, screen box)"""
     x0, y0, x1, y1 = box
     if kind == "phone":
@@ -382,13 +390,13 @@ def screen_rec(t, p, ctx):
     S = _S(ctx); at = p.get("at", ctx["start"]); out = []
     if t < at - 1e-6: return out
     dev = p.get("device", "phone")
-    box = tuple(p.get("box") or S.get(f"media.device_box.{dev}", [300, 330, 780, 1250] if dev == "phone" else [60, 420, 1020, 1060]))
+    box = tuple(p.get("box") or design_box(S.get(f"media.device_box.{dev}", [300, 330, 780, 1250] if dev == "phone" else [60, 420, 1020, 1060])))
     kind = p.get("enter", S.get("media.entry", "rise") if at > ctx["start"] + .05 else "none")
     dx, dy, sc, op = _entry(t, at, p.get("out_at"), S, kind)
     if op <= 0: return out
     b = tuple(round(v) for v in _scaled_box(box, sc, dx, dy))
     r = int(p.get("radius", S.get("media.radius", 36)) * (1.6 if dev == "phone" else 1))
-    frame_l, scr, rs = _device(dev, b, p.get("url", ""), r)
+    frame_l, scr, rs = _device(dev, b, p.get("url", ""), r, (G.W, G.H))
     fr, name, al = media_frame(t, p, ctx, at, p.get("after", "hold"))
     if fr is None: return out
     sh, sw = fr.shape[:2]; bw, bh = int(scr[2] - scr[0]), int(scr[3] - scr[1])
@@ -434,10 +442,10 @@ _WARNED = set()
 def face_from_matte(matte):
     """(cx, cy, h) of the head from a framed matte: top of the person, centroid of the head band (no face track needed)"""
     m = matte > .5; rows = np.where(m.mean(1) > .01)[0]
-    if not len(rows): return W / 2, H * .38, H * .18
-    top = rows[0]; band = m[top + int(H * .03):top + int(H * .09)]; ys, xs = np.nonzero(band)     # the skull, above the ears
-    w = (np.percentile(xs, 97) - np.percentile(xs, 3)) if len(xs) else W * .3
-    h = min(H * .4, max(H * .06, w * 1.3)); return (float(xs.mean()) if len(xs) else W / 2), top + h * .5, h
+    if not len(rows): return G.W / 2, G.H * .38, G.H * .18
+    top = rows[0]; band = m[top + int(G.H * .03):top + int(G.H * .09)]; ys, xs = np.nonzero(band)     # the skull, above the ears
+    w = (np.percentile(xs, 97) - np.percentile(xs, 3)) if len(xs) else G.W * .3
+    h = min(G.H * .4, max(G.H * .06, w * 1.3)); return (float(xs.mean()) if len(xs) else G.W / 2), top + h * .5, h
 
 def _aroll(ctx):
     """ctx["aroll"] from render: (rgb float HxWx3, matte float HxW) framed like the A-roll shot, a dict {rgb, matte, face},
@@ -471,7 +479,7 @@ def _layer_from_spec(t, spec, ctx, name):
 
 # ------------------------------------------------------------------ pip
 @functools.lru_cache(32)
-def _ring(x0, y0, size, ring, r, shape, shadow, col):
+def _ring(x0, y0, size, ring, r, shape, shadow, col, _wh=None):
     """accent ring + drop shadow behind the bubble (cached: static once the pop has landed)"""
     def rg(d):
         if shape == "circle": d.ellipse((x0 - ring, y0 - ring, x0 + size + ring, y0 + size + ring), fill=col + (255,))
@@ -488,26 +496,26 @@ def pip(t, p, ctx):
     sc = back(pi, S.get("motion.overshoot", 1.6)) * (ease_out(po) if po < 1 else 1)
     sz = _safe(S); m = p.get("margin", D.get("margin", 60)); A = _aroll(ctx)
     if shape == "cutout":                                        # the presenter cut out by the matte, anchored to the bottom corner
-        k = p.get("scale", D.get("cutout_scale", .55)) * sc; bw, bh = int(W * k), int(H * k)
-        x0 = m if corner.endswith("l") else W - m - bw; y0 = H - bh if corner.startswith("b") else sz[1]
+        k = p.get("scale", D.get("cutout_scale", .55)) * sc; bw, bh = int(G.W * k), int(G.H * k)
+        x0 = m if corner.endswith("l") else G.W - m - bw; y0 = G.H - bh if corner.startswith("b") else sz[1]
         if A is None: return out + [El(canvas_layer(np.dstack([np.full((bh, bw, 3), G.CARD, np.uint8), np.full((bh, bw), 200, np.uint8)]), x0, y0), "pip.person", "media", text="aroll hook missing")]
-        src = _aroll_rgba(A, cutout=True); pic = view(src, bw, bh, k, (W / 2, H / 2), alpha=True, clamp_view=False)
+        src = _aroll_rgba(A, cutout=True); pic = view(src, bw, bh, k, (G.W / 2, G.H / 2), alpha=True, clamp_view=False)
         out.append(El(canvas_layer(pic, x0, y0, None, min(1, pi * 2) * po), "pip.person", "media", text="A-roll"))
         return out + _text_els(t, p, (x0, y0, x0 + bw, y0 + bh), S, "pip", po)
     size = int(p.get("size", D.get("size", 360)) * sc)
     if size < 4: return out
-    x0 = m if corner.endswith("l") else W - m - size
+    x0 = m if corner.endswith("l") else G.W - m - size
     y0 = sz[1] + m / 2 if corner.startswith("t") else sz[3] - size
     r = size // 2 if shape == "circle" else int(p.get("radius", S.get("media.radius", 36)))
     if A is None:
         pic = np.dstack([np.full((size, size, 3), G.WELL, np.uint8), np.full((size, size), 255, np.uint8)]); txt = "aroll hook missing"
     else:
-        fx, fy, fh = A["face"]; side = min(min(W, H) * .98, max(32, fh * p.get("face_zoom", D.get("face_zoom", 2.4))))
+        fx, fy, fh = A["face"]; side = min(min(G.W, G.H) * .98, max(32, fh * p.get("face_zoom", D.get("face_zoom", 2.4))))
         pic = view(_aroll_rgba(A), size, size, size / side, (fx, fy + fh * .12)); txt = "A-roll"
     mask = _rmask(size, size, r, "circle" if shape == "circle" else "rounded")
     ring = int(p.get("ring", D.get("ring", 6)))
     if ring:
-        rl = _ring(int(x0), int(y0), size, ring, r, shape, float(S.get("media.shadow", .5)), tuple(G.MINT))
+        rl = _ring(int(x0), int(y0), size, ring, r, shape, float(S.get("media.shadow", .5)), tuple(G.MINT), (G.W, G.H))
         if po < 1:
             a_ = np.asarray(rl).copy(); a_[..., 3] = (a_[..., 3] * po).astype(np.uint8); rl = Image.fromarray(a_, "RGBA")
         out.append(El(rl, "pip.ring", "media"))
@@ -531,21 +539,21 @@ def split(t, p, ctx):
     """two panes. p: layout tb|lr, ratio, gap, radius, panes [{asset, in, out, speed, after, fit, zoom, pan, label} | {aroll: true, zoom, label}], at"""
     S = _S(ctx); D = S.get("media.split") or {}; out = []
     lay = p.get("layout", "tb"); ratio = p.get("ratio", D.get("ratio", .5)); gap = p.get("gap", D.get("gap", 12)); r = p.get("radius", D.get("radius", 0))
-    if lay == "tb": boxes = [(0, 0, W, H * ratio - gap / 2), (0, H * ratio + gap / 2, W, H)]
-    else: boxes = [(0, 0, W * ratio - gap / 2, H), (W * ratio + gap / 2, 0, W, H)]
+    if lay == "tb": boxes = [(0, 0, G.W, G.H * ratio - gap / 2), (0, G.H * ratio + gap / 2, G.W, G.H)]
+    else: boxes = [(0, 0, G.W * ratio - gap / 2, G.H), (G.W * ratio + gap / 2, 0, G.W, G.H)]
     es = S.get("motion.entry_s", .28); sz = _safe(S)
     for j, (pn, bx) in enumerate(zip(p.get("panes", [])[:2], boxes)):
         pat = pn.get("at", p.get("at", ctx["start"]))
         e = 1.0 if pat <= ctx["start"] + .05 else ease_out(prog(t, pat, es))
         if e <= 0: continue
-        off = (1 - e) * (W if lay == "lr" else H) * (.25 if j else -.25)          # panes slide in from their own edge
+        off = (1 - e) * (G.W if lay == "lr" else G.H) * (.25 if j else -.25)          # panes slide in from their own edge
         b = (bx[0] + (off if lay == "lr" else 0), bx[1] + (off if lay == "tb" else 0), bx[2] + (off if lay == "lr" else 0), bx[3] + (off if lay == "tb" else 0))
         bw, bh = int(round(b[2] - b[0])), int(round(b[3] - b[1])); name = f"split.p{j}"
         if pn.get("aroll"):
             A = _aroll(ctx)
             if A is None: pic, nm = np.dstack([np.full((bh, bw, 3), G.WELL, np.uint8), np.full((bh, bw), 255, np.uint8)]), None; txt = "aroll hook missing"
             else:
-                fx, fy, fh = A["face"]; s = max(bw / W, bh / H) * pn.get("zoom", 1.0)
+                fx, fy, fh = A["face"]; s = max(bw / G.W, bh / G.H) * pn.get("zoom", 1.0)
                 pic = view(_aroll_rgba(A), bw, bh, s, (fx, fy + fh * .25)); nm, txt = None, "A-roll"
         else:
             fr, nm, al = media_frame(t, pn, ctx, pat, pn.get("after", "hold"))
@@ -591,7 +599,7 @@ def overlay_render(t, p, ctx):
     if t < at - 1e-6: return out
     fr, name, al = media_frame(t, p, ctx, at, p.get("after", "hide"))
     if fr is None: return out
-    box = tuple(p.get("box") or (0, 0, W, H)); bw, bh = int(box[2] - box[0]), int(box[3] - box[1])
+    box = tuple(p.get("box") or (0, 0, G.W, G.H)); bw, bh = int(box[2] - box[0]), int(box[3] - box[1])
     sh, sw = fr.shape[:2]; s = fit_scale(sw, sh, bw, bh, p.get("fit", "contain"))
     pic = view(_blend_to_over(fr, p.get("blend", "normal")), bw, bh, s, (sw / 2, sh / 2), alpha=True, clamp_view=False)
     out.append(El(canvas_layer(pic, box[0], box[1], None, float(p.get("opacity", 1.0))), p.get("name", "overlay.fx"), "media", asset=name, t_key=at))

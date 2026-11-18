@@ -1,11 +1,19 @@
 # Neutral defaults. No brand, no house look: `cves inspire` (Edit/style.yaml) or a preset replaces these per client.
 # Schema: docs/STYLE.md. Every key here is read by the engine; nothing visual is hard-coded elsewhere.
 name: default
+canvas:                       # the frame the edit is designed, rendered and delivered at (docs/FORMATS.md). Native, not reframed
+  size: [1080, 1920]          # [w, h], even numbers. 9:16 [1080, 1920] | 4:5 [1080, 1350] | 1:1 [1080, 1080] | 16:9 [1920, 1080] | 2.39:1 [1920, 804]
+  safe_zones:                 # text-safe box per aspect (x0 y0 x1 y1, fractions of the canvas); 9:16 uses platform.safe_zone (px) instead
+    "9:16": [0.06, 0.14, 0.94, 0.65]
+    "4:5": [0.06, 0.08, 0.94, 0.86]
+    "1:1": [0.06, 0.07, 0.94, 0.88]
+    "16:9": [0.05, 0.07, 0.95, 0.88]
+    "2.39:1": [0.05, 0.08, 0.95, 0.88]
 platform:
-  size: [1080, 1920]          # master canvas (design space for templates is 1080x1920; other ratios via `cves deliver` reframes)
+  size: null                  # legacy alias of canvas.size (used only when canvas.size is null)
   fps: source                 # "source" = keep the footage rate; or e.g. [30000, 1001], 25, 30
-  safe_zone: [65, 269, 1015, 1248]   # x0 y0 x1 y1 kept free of platform UI (Meta Reels norm); null to disable
-  margin: 60
+  safe_zone: [65, 269, 1015, 1248]   # x0 y0 x1 y1 kept free of platform UI on a 9:16 canvas, in 1080x1920 px (Meta Reels norm; scaled to other 9:16 sizes); null to disable
+  margin: 60                  # px kept free at every edge (scaled by min(w, h) / 1080)
   duration: [15, 90]          # seconds the brief allows
 stage: {background: "#0B0B0D", glow_bottom: "#2A2A33", dot_grid: "#8A8A99", dots: true, glow: true}
 colors: {accent: "#4C8DFF", accent_dark: "#2A5BB8", text: "#FFFFFF", card: "#16161B", card_border: "#34343F", icon_well: "#24243A", gold: "#D6B26C",
@@ -144,7 +152,7 @@ delivery:                     # `cves encode` / `cves deliver` (docs/DELIVERY.md
   cutdown: {keep: [H, C], compress: [P, A, PR, O], tolerance_s: 0.5}   # beat tags kept whole / compressed first
 media:                        # image / video_broll / screen_rec / pip / split / overlay_render templates (docs/MEDIA.md)
   frame: bleed                # default framing of a picture: bleed (full screen) | card (rounded card on the stage)
-  card_box: [100, 300, 980, 1200]   # card rect x0 y0 x1 y1 in the 1080x1920 design space (inside platform.safe_zone)
+  card_box: [100, 300, 980, 1200]   # card rect x0 y0 x1 y1 in the 1080x1920 design space (inside platform.safe_zone); fitted into the safe zone on other canvases
   radius: 36                  # card / pane / bubble corner radius px
   border: 3                   # card outline px (colour = colors.card_border); 0 = none
   shadow: 0.5                 # drop-shadow opacity under cards and the pip bubble; 0 = none
