@@ -4,7 +4,8 @@ No look is hard-coded: grade, captions, transitions, framing levels, pacing and 
 the style's min_step, per-shot exposure balance, face-smoothed punch-ins, a single lossless source path."""
 import os, sys, json, math, random, glob
 import numpy as np, cv2
-from multiprocessing import Pool
+import multiprocessing as _mp
+Pool = _mp.get_context("spawn").Pool   # same on every OS; fork deadlocks once torch/OpenCV threads exist (Linux)
 from PIL import Image, ImageFilter
 from fractions import Fraction
 from . import gfx as G, templates as TPL, style as STY, captions as CAP

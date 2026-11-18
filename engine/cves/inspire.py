@@ -582,7 +582,7 @@ def run(pr, refs=None, dry_run=False, max_s=90.0, min_conf=.5, workers=None):
     print(f"inspire: {len(vids)} video(s), {len(ims)} image(s) from {d}")
     R = []
     if vids:
-        from multiprocessing import Pool
+        import multiprocessing as _mp; Pool = _mp.get_context("spawn").Pool   # no fork: see render.py
         with Pool(workers or max(1, min(len(vids), (os.cpu_count() or 4) // 2))) as pool:
             for r in pool.imap(_job, [(v, max_s) for v in vids]):
                 if r.get("kind") == "error": print(f"  skipped {os.path.basename(r['path'])}: {r['error']}"); continue
