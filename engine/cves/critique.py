@@ -75,10 +75,15 @@ def _env_db(y, sr=8000, hop=0.05):
     k = len(y) // n; rms = np.sqrt((y[:k * n].reshape(k, n) ** 2).mean(1) + 1e-12)
     return 20 * np.log10(rms + 1e-9)
 
+FOOTAGE = {"broll_shot", "video_broll", "image", "screen_rec"}   # media templates that show footage, not designed graphics
+
 def structure(pr, dur, video=None):
     """shots [(t0, t1, label)], graphics [(t0, t1, id, template)], transitions [(t, kind)] from timeline.json / edit.yaml"""
     tl = pr.json("timeline.json") or {}; E = pr.edit or {}
-    gfx = [(float(c["start"]), float(c["end"]), c["id"], c["template"]) for c in tl.get("cutaways") or []]
+    cuts_ = tl.get("cutaways") or []
+    # footage (B-roll shots, clips, stills, screen recordings) are shots, not animated graphics: they count as cuts
+    foot = [(float(c["start"]), float(c["end"])) for c in cuts_ if c.get("template") in FOOTAGE]
+    gfx = [(float(c["start"]), float(c["end"]), c["id"], c["template"]) for c in cuts_ if c.get("template") not in FOOTAGE]
     segs = {s["id"]: (float(s.get("t0", 0)), float(s.get("t1", 0))) for s in tl.get("segments") or [] if "t0" in s}
     for k in ("roto", "chest"):
         for i, r in enumerate(E.get(k) or []):
@@ -93,7 +98,7 @@ def structure(pr, dur, video=None):
             except (TypeError, ValueError): pass
     trans = [(float(t), str(k)) for t, k in tl.get("transitions") or [] if isinstance(t, (int, float))]
     bounds = sorted({0.0, dur} | {round(b[0], 3) for b in segs.values()} | {round(g[0], 3) for g in gfx if g[2].startswith("c") or g[2] == "end_card"}
-                    | {round(g[1], 3) for g in gfx if g[2].startswith("c")})
+                    | {round(g[1], 3) for g in gfx if g[2].startswith("c")} | {round(a, 3) for a, _ in foot} | {round(b, 3) for _, b in foot})
     bounds = [b for b in bounds if 0 <= b <= dur]
     if len(bounds) <= 2:          # no timeline: detect cuts on the picture
         from .learn import _fallback_analyse

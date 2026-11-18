@@ -190,3 +190,17 @@ def test_critique_pack_on_tiny_video(env):
     assert r["facts"]["shots"] >= 3 and learn.read_journal(pr)[-1]["event"] == "critique"
     assert learn.main(["rate", "master", "7", "--by", "claude", "--scores", "hook=7,story=6", "--project", pr.root]) == 0
     assert learn.read_journal(pr)[-1]["scores"] == {"hook": 7.0, "story": 6.0}
+
+
+def test_critique_counts_broll_footage_as_shots_not_graphics():
+    from cves import critique as CR
+
+    class _P:
+        edit = {}
+        def json(self, name, default=None):
+            return {"cutaways": [{"id": "b01", "template": "broll_shot", "start": 0.0, "end": 2.0},
+                                 {"id": "b02", "template": "broll_shot", "start": 2.0, "end": 4.0},
+                                 {"id": "c1", "template": "m_kinetic_title", "start": 1.0, "end": 3.0}]} if name == "timeline.json" else default
+    shots, gfx, _ = CR.structure(_P(), 4.0)[:3]
+    assert [g[2] for g in gfx] == ["c1"]                       # only the designed graphic counts toward the restraint budget
+    assert any(abs(s[0] - 2.0) < 1e-6 for s in shots)          # the B-roll cut at 2.0 s is a shot boundary
