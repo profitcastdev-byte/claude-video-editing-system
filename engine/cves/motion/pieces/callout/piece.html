@@ -47,11 +47,19 @@
       let cx = side === 'right' ? ex + run * 0.8 : ex - run * 0.8 - 0;          // line end
       let lx = side === 'right' ? cx + gap : cx - gap - lw, ly = ey - lh / 2;
       // keep the card inside the safe zone (shift it, and the line end with it)
-      const dx = Math.min(0, sx1 - (lx + lw)) + Math.max(0, sx0 - lx); lx += dx;
-      const dy = Math.min(0, sy1 - (ly + lh)) + Math.max(0, sy0 - ly); ly += dy; ey += dy;
-      if (side === 'right') cx = Math.max(ex + 2 * u, lx - gap); else cx = Math.min(ex - 2 * u, lx + lw + gap);
-      lab.style.left = lx + 'px'; lab.style.top = ly + 'px';
-      ld.setAttribute('d', `M ${px.toFixed(1)} ${(py - 12.5 * u).toFixed(1)} L ${ex.toFixed(1)} ${ey.toFixed(1)} L ${cx.toFixed(1)} ${ey.toFixed(1)}`);
+      const dx = Math.min(0, sx1 - (lx + lw)) + Math.max(0, sx0 - lx);
+      let d;
+      if (Math.abs(dx) > run * 0.6) {
+        // no room beside the pin: stack the card above it, the leader goes straight up
+        side = 'up'; const top = py - 12.5 * u - rise * 1.6;
+        lx = Math.min(Math.max(px - lw / 2, sx0), sx1 - lw); ly = Math.max(sy0, top - gap - lh);
+        d = `M ${px.toFixed(1)} ${(py - 12.5 * u).toFixed(1)} L ${px.toFixed(1)} ${(ly + lh + gap).toFixed(1)}`;
+      } else {
+        lx += dx; const dy = Math.min(0, sy1 - (ly + lh)) + Math.max(0, sy0 - ly); ly += dy; ey += dy;
+        if (side === 'right') cx = Math.max(ex + 2 * u, lx - gap); else cx = Math.min(ex - 2 * u, lx + lw + gap);
+        d = `M ${px.toFixed(1)} ${(py - 12.5 * u).toFixed(1)} L ${ex.toFixed(1)} ${ey.toFixed(1)} L ${cx.toFixed(1)} ${ey.toFixed(1)}`;
+      }
+      lab.style.left = lx + 'px'; lab.style.top = ly + 'px'; ld.setAttribute('d', d);
       geo = { side };
       tl = C.timeline().at('drop', 0, D(0.55)).at('ring', D(0.42), D(1.4)).at('line', D(0.5), D(0.5)).at('lab', D(0.82), D(0.6));
     },
@@ -65,7 +73,7 @@
       [r1, r2].forEach((r, i) => { const p = C.prog(t, tl.t0('ring') + i * D(0.28), D(1.1)); C.set(r, { s: C.easings.outCubic(p) * 1.1, o: p > 0 ? (1 - p) * 0.9 * (1 - ex) : 0 }); });
       C.draw(ld, tl.p('line', t, C.MOVE) * (1 - ex)); ld.style.opacity = tl.raw('line', t) > 0 ? 1 : 0;
       const pl = tl.p('lab', t);
-      C.set(lab, { x: (1 - pl) * (geo.side === 'right' ? -3 : 3) * u, s: 0.92 + 0.08 * pl, o: Math.min(1, tl.raw('lab', t) * 2.5) * (1 - ex), blur: (1 - pl) * 0.6 * u });
+      C.set(lab, { x: geo.side === 'up' ? 0 : (1 - pl) * (geo.side === 'right' ? -3 : 3) * u, y: geo.side === 'up' ? (1 - pl) * 2 * u : 0, s: 0.92 + 0.08 * pl, o: Math.min(1, tl.raw('lab', t) * 2.5) * (1 - ex), blur: (1 - pl) * 0.6 * u });
     },
     cues() { C.cue(D(0.3), 'pop', -17, { pitch: -2 }); C.cue(tl.t0('lab'), 'swipe', -23, { trim: [0, 0.3] }); },
   });
