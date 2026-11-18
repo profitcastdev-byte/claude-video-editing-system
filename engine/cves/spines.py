@@ -186,13 +186,30 @@ def sync_edl(pr, S=None, force=False):
 
 
 # ------------------------------------------------------------------ voiceover ingest
-def ingest_voiceover(pr, words=True):
+VO_INGEST_VERSION = 1
+
+def vo_signature(pr, E=None):
+    """what voice_final.wav was made from: the VO file's sha256 + the voiceover settings. ingest_voiceover skips its work
+    when edl.json records the same signature and the outputs exist (re-running `cves ingest` changes nothing)."""
+    import hashlib
+    E = E if E is not None else pr.edit; V = E.get("voiceover") or {}; src = voiceover_file(pr, E); h = hashlib.sha256()
+    with open(src, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""): h.update(b)
+    return {"version": VO_INGEST_VERSION, "source": os.path.relpath(src, pr.root).replace(os.sep, "/"), "sha256": h.hexdigest(),
+            "denoise": bool(V.get("denoise", False)), "tighten": bool(V.get("tighten", True)), "chain": bool(V.get("chain", True))}
+
+def ingest_voiceover(pr, words=True, force=False):
     """VO file -> Edit/voice_raw.wav (as recorded, 48 kHz mono), voice_final.wav (pauses tightened, optional DeepFilterNet,
     the voice chain), voice_chain.json, words.json (cut time, whisper) and edl.json. edit.yaml voiceover: {file | asset,
     denoise (false), tighten (true), chain (true)}."""
     import numpy as np, soundfile as sf
     from . import ingest as ING, config as C
     E = pr.edit; V = E.get("voiceover") or {}; src = voiceover_file(pr, E); SR = ING.SR
+    sig = vo_signature(pr, E); old = pr.json("edl.json", {}) or {}
+    if not force and old.get("vo_sig") == sig and all(os.path.exists(pr.e(f)) for f in ("voice_final.wav", "voice_raw.wav", "voice_chain.json")):
+        sync_edl(pr)                                 # same VO, same settings: nothing to redo (idempotent)
+        n = ING.words(pr) if words and not os.path.exists(pr.e("words.json")) else None
+        return {"skipped": "voice_final.wav is current (same VO file and voiceover settings)", "words": n}
     raw = pr.e("voice_raw.wav")
     ING.sh([C.get("ffmpeg"), "-v", "error", "-y", "-i", src, "-vn", "-ac", "1", "-ar", str(SR), raw])
     steps = [{"name": "extract", "generative": False, "params": {"rate": SR, "channels": 1, "tool": "ffmpeg", "source": os.path.relpath(src, pr.root)}}]
@@ -225,7 +242,7 @@ def ingest_voiceover(pr, words=True):
     pr.save_json("voice_chain.json", {"steps": steps, "output": "voice_final.wav"})
     edl = sync_edl(pr, force=True)
     edl["clips"] = [{"id": "vo", "in": 0.0, "out": round(dur, 5), "src": os.path.relpath(src, pr.root)}]
-    edl["vo_kept"] = [[round(a, 5), round(b, 5)] for a, b in kept]
+    edl["vo_kept"] = [[round(a, 5), round(b, 5)] for a, b in kept]; edl["vo_sig"] = sig
     pr.save_json("edl.json", edl)
     n = ING.words(pr) if words else None
     return {"vo_s": round(dur, 2), "tight_s": round(sum(b - a for a, b in kept), 2), "pieces": len(kept), "words": n}
