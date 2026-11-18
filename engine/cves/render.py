@@ -469,6 +469,7 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None):
     out_dir = out_dir or pr.e("frames"); os.makedirs(out_dir, exist_ok=True)
     TL = Timeline(pr)    # also computes + caches exposure gains before forking
     if isinstance(only, str): only = TL.frames_for(only)
+    from . import motion as MOT; MOT.prerender(pr, TL)     # motion pieces (HTML) render their frames ONCE here, before the spawn pool: workers only read the cache
     for f in glob.glob(os.path.join(out_dir, "_log_*.jsonl")): os.remove(f)
     want = None if only is None else set(only)
     jobs = [(s["id"], None if want is None else sorted(f for f in range(s["f0"], s["f0"] + s["n"]) if f in want))

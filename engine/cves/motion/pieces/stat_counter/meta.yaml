@@ -1,0 +1,20 @@
+title: Stat counter
+description: One big number counts up on an expo curve with a soft accent glow, its suffix lands with the final digit, a meter fills underneath and the label and caption frame it.
+kinds: [cutaway, overlay]
+hero: true
+duration: 3.0
+params:
+  value: {type: number, required: true, help: the final number}
+  from: {type: number, default: 0, help: where the count starts}
+  prefix: {type: str, default: "", help: "e.g. $ or +"}
+  suffix: {type: str, default: "", help: "e.g. % or x or k"}
+  decimals: {type: int, default: 0}
+  grouping: {type: str, default: intl, help: intl | indian | none}
+  label: {type: str, default: "", help: small tracked label above}
+  caption: {type: str, default: "", help: a line under the number}
+  max: {type: number, default: 0, help: "when > 0 the meter fills to value / max (else it is a full accent rule)"}
+  count_s: {type: number, default: 1.3, help: seconds the count runs}
+preview:
+  params: {label: "Calls from Google", value: 312, prefix: "+", suffix: "%", caption: "in the first 90 days", max: 400}
+cues:
+  - [0.2, riser, -26]

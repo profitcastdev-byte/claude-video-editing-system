@@ -1,0 +1,54 @@
+<div class="safe center">
+  <figure class="q" id="q">
+    <div class="mark" id="mark">&#8220;</div>
+    <blockquote id="bq"></blockquote>
+    <figcaption id="cap"><span class="rule" id="rule"></span><span class="who"><b id="au"></b><small id="ro"></small></span></figcaption>
+  </figure>
+</div>
+<style>
+  .q { width: min(100%, calc(var(--u) * 88)); text-align: left; position: relative; }
+  .mark { font-family: var(--font-serif); font-weight: 700; color: var(--accent); font-size: calc(var(--t-9) * 2.4); line-height: 0.7; height: 0.36em;
+          margin-left: -0.04em; transform-origin: 20% 60%; }
+  blockquote { font-size: var(--t-6); font-weight: 700; line-height: 1.12; letter-spacing: -0.01em; margin-top: var(--s-2); text-wrap: pretty; }
+  blockquote.serif { font-family: var(--font-serif); font-size: calc(var(--t-6) * 1.12); line-height: 1.08; }
+  figcaption { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-5); }
+  figcaption .rule { width: calc(var(--u) * 8); flex: none; }
+  .who { display: flex; flex-direction: column; gap: 0.2em; }
+  .who b { font-size: var(--t-3); font-weight: 700; }
+  .who small { font-size: var(--t-1); font-weight: 600; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+  .wi { will-change: transform, opacity; }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let mark, bq, W, cap, rule, au, ro, tl;
+  C.piece({
+    setup(P, ctx) {
+      mark = document.getElementById('mark'); bq = document.getElementById('bq'); cap = document.getElementById('cap');
+      rule = document.getElementById('rule'); au = document.getElementById('au'); ro = document.getElementById('ro');
+      if (P.serif !== false) bq.classList.add('serif');
+      W = C.words(bq, P.quote);
+      bq.querySelectorAll('.w').forEach((w) => { w.style.overflow = 'visible'; });
+      C.fit(bq, bq.clientWidth, ctx.h * 0.42, 7);
+      if (P.author) { au.textContent = C.plain(P.author); au.dataset.text = au.textContent; } else au.remove();
+      if (P.role) { ro.textContent = C.plain(P.role); ro.dataset.text = ro.textContent; } else ro.remove();
+      if (!P.author && !P.role) cap.remove();
+      const n = W.words.length, each = D(Math.min(0.06, 1.1 / Math.max(1, n)));
+      tl = C.timeline().at('mark', 0, D(0.8)).at('words', D(0.18), D(0.7) + each * (n - 1));
+      tl.at('rule', tl.end('words') - D(0.2), D(0.55)).at('cap', tl.end('words') - D(0.05), D(0.6)); tl.each = each;
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), pm = tl.p('mark', t, 'spring(0.62)');
+      C.set(mark, { s: 0.6 + 0.4 * pm, r: (1 - pm) * -8, o: Math.min(1, tl.raw('mark', t) * 3) * (1 - ex) });
+      W.inners.forEach((wi, i) => {
+        const t0 = tl.t0('words') + i * tl.each, p = C.prog(t, t0, D(0.7));
+        C.set(wi, { y: (1 - C.IN(p)) * 0.35 * wi.offsetHeight - ex * 2 * u, o: C.easings.outCubic(p) * (1 - ex), blur: (1 - C.easings.outCubic(p)) * 0.5 * u });
+      });
+      if (cap.isConnected) {
+        rule.style.transform = `scaleX(${tl.p('rule', t, C.MOVE).toFixed(4)})`; rule.style.opacity = 1 - ex;
+        C.set(cap.querySelector('.who'), { x: (1 - tl.p('cap', t)) * 3 * u, o: tl.raw('cap', t) * (1 - ex) });
+      }
+    },
+    cues(P) { C.cue(0, 'swipe', -24, { trim: [0, 0.3] }); if (P.author || P.role) C.cue(tl.t0('cap'), 'pop', -24, { pitch: -2 }); },
+  });
+})();
+</script>

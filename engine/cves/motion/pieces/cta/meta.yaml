@@ -1,0 +1,15 @@
+title: Call to action
+description: A headline settles, an accent button springs in, a cursor glides to it on a curve and clicks; the button presses, a ripple rings out and the label confirms.
+kinds: [cutaway, overlay, end]
+hero: true
+duration: 3.4
+params:
+  text: {type: str, required: true, help: button label}
+  title: {type: str, default: "", help: "headline above the button; *stars* for accent"}
+  sub: {type: str, default: "", help: small line under the button}
+  done: {type: str, default: "", help: "label the button changes to after the click (empty: keeps its text)"}
+  cursor: {type: bool, default: true}
+preview:
+  params: {title: "Get your *free audit*", text: "Book a call", sub: "Takes 2 minutes", done: "Booked"}
+cues:
+  - [1.4, button, -16]

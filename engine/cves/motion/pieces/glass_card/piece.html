@@ -1,0 +1,59 @@
+<div class="safe center">
+  <div class="glass card" id="card">
+    <div class="sheen" id="sh"></div>
+    <div class="top" id="top"><div class="well" id="well"></div><span class="chip" id="chip"></span></div>
+    <div class="eyebrow bare" id="eb"></div>
+    <h2 class="title" id="tt"></h2>
+    <p class="body" id="bd"></p>
+  </div>
+</div>
+<style>
+  .card { width: min(100%, calc(var(--u) * 86)); padding: calc(var(--u) * 5.2) calc(var(--u) * 5.2) calc(var(--u) * 5.6); text-align: left;
+          display: flex; flex-direction: column; gap: var(--s-2); }
+  .card.c { text-align: center; align-items: center; }
+  .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--s-2); width: 100%; }
+  .card.c .top { justify-content: center; gap: var(--s-3); }
+  .well { width: calc(var(--u) * 11); height: calc(var(--u) * 11); border-radius: calc(var(--r) * 0.8); display: grid; place-items: center;
+          background: linear-gradient(150deg, rgb(var(--accent-rgb) / 0.32), rgb(var(--accent-dark-rgb) / 0.22));
+          border: max(1px, calc(var(--u) * 0.12)) solid rgb(var(--accent-rgb) / 0.42); color: var(--accent); font-size: calc(var(--u) * 5.6); }
+  #tt { font-size: var(--t-6); }
+  #bd { font-size: var(--t-4); text-wrap: pretty; margin-top: var(--s-1); }
+  #eb { color: var(--accent); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let card, sh, well, chip, eb, tt, bd, W, tl;
+  C.piece({
+    setup(P, ctx) {
+      card = document.getElementById('card'); sh = document.getElementById('sh'); well = document.getElementById('well');
+      chip = document.getElementById('chip'); eb = document.getElementById('eb'); tt = document.getElementById('tt'); bd = document.getElementById('bd');
+      if (P.align === 'center') card.classList.add('c');
+      if (P.icon) C.icon(well, P.icon); else well.remove();
+      if (P.chip) { chip.textContent = C.plain(P.chip); chip.dataset.text = chip.textContent; } else chip.remove();
+      if (!P.icon && !P.chip) document.getElementById('top').remove();
+      if (P.eyebrow) { eb.textContent = C.plain(P.eyebrow); eb.dataset.text = eb.textContent; } else eb.remove();
+      if (P.body) { bd.textContent = C.plain(P.body); bd.dataset.text = bd.textContent; } else bd.remove();
+      W = C.words(tt, P.title);
+      C.fit(tt, card.clientWidth - ctx.u * 10.4, ctx.h * 0.3, 3);
+      tl = C.timeline().at('card', 0, D(0.7)).at('sheen', D(0.45), D(0.95)).at('well', D(0.28), D(0.55)).at('chip', D(0.42), D(0.45))
+        .at('eb', D(0.36), D(0.5)).at('tt', D(0.42), D(0.62)).at('bd', D(0.42) + D(0.62) * 0.55 + W.words.length * D(0.035), D(0.6));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, pc = tl.p('card', t), ex = C.exitP(t);
+      C.set(card, { y: (1 - pc) * 7 * u + ex * 3 * u, s: 0.94 + 0.06 * pc - 0.03 * ex, o: Math.min(1, tl.raw('card', t) * 2.2) * (1 - ex),
+                    blur: (1 - C.easings.outCubic(tl.raw('card', t))) * 1.4 * u + ex * 0.8 * u });
+      sh.style.setProperty('--sheen-x', `${(-140 + 420 * tl.p('sheen', t, C.MOVE)).toFixed(2)}%`);
+      if (well.isConnected) C.set(well, { s: 0.4 + 0.6 * tl.p('well', t, 'outBack'), o: Math.min(1, tl.raw('well', t) * 3) });
+      if (chip.isConnected) C.rise(chip, t, tl.t0('chip'), D(0.45), -1.6 * u);
+      if (eb.isConnected) C.rise(eb, t, tl.t0('eb'), D(0.5), 1.6 * u);
+      W.inners.forEach((wi, i) => C.rise(wi, t, tl.t0('tt') + i * D(0.035), D(0.62), wi.offsetHeight));
+      if (bd.isConnected) C.rise(bd, t, tl.t0('bd'), D(0.6), 1.8 * u, { fade: 1.4 });
+    },
+    cues(P) {
+      C.cue(0, 'swipe', -20, { trim: [0, 0.35] });
+      if (P.icon) C.cue(tl.t0('well') + D(0.12), 'pop', -20);
+      if (P.chip) C.cue(tl.t0('chip') + D(0.1), 'pop', -23, { pitch: 3 });
+    },
+  });
+})();
+</script>

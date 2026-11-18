@@ -1,0 +1,50 @@
+<div class="safe center">
+  <div class="wrap" id="wrap"><p class="title hl" id="tx"></p></div>
+</div>
+<style>
+  .wrap { width: min(100%, calc(var(--u) * 104)); }
+  .wrap.plate { background: rgb(var(--card-rgb) / 0.82); border-radius: var(--r); padding: var(--s-4) var(--s-5); }
+  .hl { font-size: var(--t-6); line-height: 1.22; text-align: center; font-weight: 700; }
+  .w { overflow: visible; }
+  .w.accent { position: relative; z-index: 0; }
+  .w.accent .acc { color: inherit; }
+  .mk { position: absolute; left: -0.12em; right: -0.12em; top: 0.08em; bottom: 0.02em; z-index: -1; border-radius: 0.14em;
+        background: var(--accent); transform-origin: left center; transform: scaleX(0); }
+  .style-underline .mk { top: auto; bottom: -0.02em; height: 0.12em; border-radius: 99px; }
+  .style-box .mk { background: transparent; border: 0.06em solid var(--accent); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let W, marks = [], tl, wrap, style;
+  const mix = (a, b, p) => a.map((x, i) => Math.round(x + (b[i] - x) * p));
+  const rgbOf = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim().split(/\s+/).map(Number);
+  let TXT, INK;
+  C.piece({
+    setup(P, ctx) {
+      wrap = document.getElementById('wrap'); const tx = document.getElementById('tx');
+      style = P.style || 'marker'; tx.classList.add('style-' + style); if (P.plate) wrap.classList.add('plate');
+      W = C.words(tx, P.text);
+      C.fit(tx, tx.clientWidth, ctx.h * 0.5, 6);
+      W.words.forEach((w, i) => { if (w.classList.contains('accent')) marks.push({ w, wi: W.inners[i], mk: C.el('span', 'mk', w), i }); });
+      TXT = rgbOf('--text-rgb'); INK = rgbOf('--bg-rgb');
+      const n = W.words.length, each = D(Math.min(0.045, 0.6 / Math.max(1, n)));
+      tl = C.timeline().at('in', 0, D(0.6) + each * (n - 1)); tl.each = each;
+      const h0 = typeof P.highlight_at === 'number' ? P.highlight_at : tl.end('in') + D(0.05);
+      marks.forEach((m, j) => { m.t0 = h0 + j * D(0.42); });
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t);
+      W.inners.forEach((wi, i) => {
+        const p = C.prog(t, i * tl.each, D(0.6));
+        C.set(wi, { y: (1 - C.IN(p)) * 0.4 * wi.offsetHeight - ex * 2 * u, o: C.easings.outCubic(p) * (1 - ex) });
+      });
+      marks.forEach((m) => {
+        const p = C.easings.inOutCubic(C.prog(t, m.t0, D(0.45)));
+        m.mk.style.transform = `scaleX(${p.toFixed(4)})`; m.mk.style.opacity = (1 - ex).toFixed(3);
+        m.w.style.color = style === 'marker' ? `rgb(${mix(TXT, INK, C.prog(p, 0.35, 0.5)).join(' ')})` : `rgb(${mix(TXT, rgbOf('--accent-rgb'), p).join(' ')})`;
+      });
+    },
+    cues() { marks.forEach((m, j) => C.cue(m.t0, 'swipe', -22, { trim: [0, 0.3], pitch: j * 1.2 })); },
+  });
+})();
+</script>

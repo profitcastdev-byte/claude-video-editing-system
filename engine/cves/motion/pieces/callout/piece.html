@@ -1,0 +1,73 @@
+<div class="stage" id="st">
+  <svg class="lines" id="sv" xmlns="http://www.w3.org/2000/svg"><path id="ld" pathLength="1"/></svg>
+  <div class="pin" id="pin"><div class="ring" id="r1"></div><div class="ring" id="r2"></div><div class="shadow" id="shd"></div>
+    <div class="drop" id="drop"><div class="head"><div class="hole"></div></div></div></div>
+  <div class="glass lab" id="lab"><div class="well" id="well"></div><div class="tx"><b id="lt"></b><small id="ls"></small></div></div>
+</div>
+<style>
+  .lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #ld { fill: none; stroke: var(--text); stroke-opacity: 0.85; stroke-linecap: round; stroke-linejoin: round; }
+  .pin { position: absolute; width: 0; height: 0; }
+  .ring { position: absolute; left: 0; top: 0; width: calc(var(--u) * 16); height: calc(var(--u) * 16); margin: calc(var(--u) * -8) 0 0 calc(var(--u) * -8);
+          border-radius: 50%; border: calc(var(--u) * 0.35) solid var(--accent); transform: scale(0); }
+  .shadow { position: absolute; width: calc(var(--u) * 4); height: calc(var(--u) * 1.2); margin: calc(var(--u) * -0.6) 0 0 calc(var(--u) * -2);
+            border-radius: 50%; background: rgb(0 0 0 / 0.45); filter: blur(calc(var(--u) * 0.4)); }
+  .drop { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .head { position: absolute; width: calc(var(--u) * 8); height: calc(var(--u) * 8); left: calc(var(--u) * -4); top: calc(var(--u) * -10.8);
+          background: linear-gradient(160deg, var(--accent), var(--accent-dark)); border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+          box-shadow: 0 calc(var(--u) * 0.6) calc(var(--u) * 2) rgb(0 0 0 / 0.35); border: calc(var(--u) * 0.35) solid var(--text); }
+  .hole { position: absolute; inset: 30%; border-radius: 50%; background: var(--text); }
+  .lab { position: absolute; display: flex; align-items: center; gap: calc(var(--u) * 2); padding: calc(var(--u) * 2.2) calc(var(--u) * 3.4) calc(var(--u) * 2.2) calc(var(--u) * 2.2);
+         border-radius: var(--r); white-space: nowrap; --glass-alpha: 0.9; }
+  .lab .well { width: calc(var(--u) * 6.6); height: calc(var(--u) * 6.6); border-radius: calc(var(--r) * 0.7); display: grid; place-items: center; color: var(--accent);
+               background: rgb(var(--accent-rgb) / 0.18); font-size: calc(var(--u) * 3.6); flex: none; }
+  .tx { display: flex; flex-direction: column; gap: 0.25em; }
+  .tx b { font-size: var(--t-4); font-weight: 700; line-height: 1.05; }
+  .tx small { font-size: var(--t-2); font-weight: 600; color: var(--muted); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let pin, drop, r1, r2, shd, lab, ld, tl, geo;
+  C.piece({
+    setup(P, ctx) {
+      const u = ctx.u, W = ctx.w, H = ctx.h; pin = document.getElementById('pin'); drop = document.getElementById('drop');
+      r1 = document.getElementById('r1'); r2 = document.getElementById('r2'); shd = document.getElementById('shd'); lab = document.getElementById('lab'); ld = document.getElementById('ld');
+      ld.setAttribute('stroke-width', (0.42 * u).toFixed(2));
+      document.getElementById('lt').textContent = C.plain(P.label); lab.dataset.text = C.plain(P.label) + (P.sub ? ' ' + C.plain(P.sub) : '');
+      if (P.sub) document.getElementById('ls').textContent = C.plain(P.sub); else document.getElementById('ls').remove();
+      if (P.icon) C.icon(document.getElementById('well'), P.icon); else document.getElementById('well').remove();
+      const sf = getComputedStyle(document.documentElement), pct = (v) => parseFloat(sf.getPropertyValue(v)) / 100;
+      const sx0 = pct('--safe-l') * W, sy0 = pct('--safe-t') * H, sx1 = W - pct('--safe-r') * W, sy1 = H - pct('--safe-b') * H;
+      const px = C.clamp(+P.x, 0, 1) * W, py = C.clamp(+P.y, 0, 1) * H;
+      pin.style.left = px + 'px'; pin.style.top = py + 'px';
+      const lw = lab.offsetWidth, lh = lab.offsetHeight;
+      const rise = 8 * u, run = 7 * u, gap = 1.2 * u, need = run * 1.8 + gap + lw;
+      let side = P.side === 'left' || P.side === 'right' ? P.side : ((sx1 - px) >= need || (sx1 - px) >= (px - sx0) ? 'right' : 'left');
+      let ex = side === 'right' ? px + run : px - run, ey = py - 12.5 * u - rise;          // elbow
+      let cx = side === 'right' ? ex + run * 0.8 : ex - run * 0.8 - 0;          // line end
+      let lx = side === 'right' ? cx + gap : cx - gap - lw, ly = ey - lh / 2;
+      // keep the card inside the safe zone (shift it, and the line end with it)
+      const dx = Math.min(0, sx1 - (lx + lw)) + Math.max(0, sx0 - lx); lx += dx;
+      const dy = Math.min(0, sy1 - (ly + lh)) + Math.max(0, sy0 - ly); ly += dy; ey += dy;
+      if (side === 'right') cx = Math.max(ex + 2 * u, lx - gap); else cx = Math.min(ex - 2 * u, lx + lw + gap);
+      lab.style.left = lx + 'px'; lab.style.top = ly + 'px';
+      ld.setAttribute('d', `M ${px.toFixed(1)} ${(py - 12.5 * u).toFixed(1)} L ${ex.toFixed(1)} ${ey.toFixed(1)} L ${cx.toFixed(1)} ${ey.toFixed(1)}`);
+      geo = { side };
+      tl = C.timeline().at('drop', 0, D(0.55)).at('ring', D(0.42), D(1.4)).at('line', D(0.5), D(0.5)).at('lab', D(0.82), D(0.6));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), pd = C.prog(t, 0, D(0.55));
+      // the pin falls (accelerating), squashes on impact, springs back
+      const fall = C.easings.inQuad(C.prog(pd, 0, 0.55)), settle = C.easings.spring(0.35)(C.prog(pd, 0.55, 0.45));
+      const y = -(1 - fall) * 14 * u, squash = pd < 0.55 ? 1 : 1 - 0.22 * (1 - settle) * Math.sin(Math.min(1, C.prog(pd, 0.55, 0.45)) * Math.PI);
+      C.set(drop, { y, sx: 2 - squash, sy: squash, o: Math.min(1, pd * 5) * (1 - ex), blur: C.mblur((tt) => -(1 - C.easings.inQuad(C.prog(C.prog(tt, 0, D(0.55)), 0, 0.55))) * 14 * u, t) });
+      C.set(shd, { s: 0.4 + 0.6 * fall, o: fall * (1 - ex) });
+      [r1, r2].forEach((r, i) => { const p = C.prog(t, tl.t0('ring') + i * D(0.28), D(1.1)); C.set(r, { s: C.easings.outCubic(p) * 1.1, o: p > 0 ? (1 - p) * 0.9 * (1 - ex) : 0 }); });
+      C.draw(ld, tl.p('line', t, C.MOVE) * (1 - ex)); ld.style.opacity = tl.raw('line', t) > 0 ? 1 : 0;
+      const pl = tl.p('lab', t);
+      C.set(lab, { x: (1 - pl) * (geo.side === 'right' ? -3 : 3) * u, s: 0.92 + 0.08 * pl, o: Math.min(1, tl.raw('lab', t) * 2.5) * (1 - ex), blur: (1 - pl) * 0.6 * u });
+    },
+    cues() { C.cue(D(0.3), 'pop', -17, { pitch: -2 }); C.cue(tl.t0('lab'), 'swipe', -23, { trim: [0, 0.3] }); },
+  });
+})();
+</script>
