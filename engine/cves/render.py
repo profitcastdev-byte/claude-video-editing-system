@@ -8,7 +8,7 @@ import multiprocessing as _mp
 Pool = _mp.get_context("spawn").Pool   # same on every OS; fork deadlocks once torch/OpenCV threads exist (Linux)
 from PIL import Image, ImageFilter
 from fractions import Fraction
-from . import gfx as G, templates as TPL, style as STY, captions as CAP
+from . import gfx as G, templates as TPL, style as STY, captions as CAP, spines as SP
 from .gfx import prog, clamp          # the canvas is G.W / G.H, read at call time (set per process by Timeline)
 from .look import grade
 
@@ -36,16 +36,24 @@ class Timeline:
         G.apply_style(self.S, canvas=G.canvas_of(self.S, pr))              # the ONLY source of look (docs/STYLE.md) + the canvas (docs/FORMATS.md)
         TPL.load_dir(pr.p("Brand", "templates"), "project")                  # per-client templates, if any
         refresh_needs_aroll()
-        edl = pr.json("edl.json"); self.FPS = edl["fps"]; self.faces = pr.json("faces.json", {})
+        self.spine = SP.spine_of(E); self.aroll = SP.has_aroll(self.spine)          # what drives the timeline (docs/FORMATS.md)
+        edl = pr.json("edl.json")
+        if not self.aroll and (not edl or edl.get("spine") != self.spine): edl = SP.sync_edl(pr, self.S)
+        if not edl: raise SystemExit("Edit/edl.json missing: run `cves select` (A-roll) or `cves ingest` (voiceover / music / broll spines)")
+        self.FPS = edl["fps"]; self.faces = pr.json("faces.json", {}) if self.aroll else {}
         G.FPS = self.FPS                                                     # cue / animation quantisation in templates (MOT-07)
         self.size = (G.W, G.H)                                                  # the frame canvas the renderer writes
         if edl.get("size") and tuple(edl["size"]) != self.size and edl.get("segments"):
             raise SystemExit(f"the canvas is {self.size[0]}x{self.size[1]} (style canvas.size) but the plates were made at {edl['size'][0]}x{edl['size'][1]}: "
                              "re-run `cves select` + `cves prep` (or set canvas.size back)")
         fr = edl.get("fps_rational"); self.fps_rational = tuple(fr) if fr else (Fraction(self.FPS).limit_denominator(1001).numerator, Fraction(self.FPS).limit_denominator(1001).denominator)
+        self.broll = SP.shots(E, self.FPS, self.S)                           # the broll: track, frame-snapped
         self.segs = []; f0 = 0
-        for s in edl["segments"]:
-            n = round((s["out"] - s["in"]) * self.FPS); self.segs.append(dict(s, f0=f0, n=n, t0=f0 / self.FPS, t1=(f0 + n) / self.FPS)); f0 += n
+        if self.aroll:
+            for s in edl["segments"]:
+                n = round((s["out"] - s["in"]) * self.FPS); self.segs.append(dict(s, f0=f0, n=n, t0=f0 / self.FPS, t1=(f0 + n) / self.FPS, kind="aroll")); f0 += n
+        else:                                                                # picture segments = the broll shots (+ gaps)
+            self.segs = SP.tiles(self.broll, SP.duration(pr, self.spine, E), self.FPS); f0 = sum(s["n"] for s in self.segs)
         self.A_FRAMES = f0; self.T_END = f0 / self.FPS
         end = E.get("end_card") or {}; self.END = end.get("duration", 0)
         self.N = self.A_FRAMES + round(self.END * self.FPS)
@@ -55,19 +63,23 @@ class Timeline:
         for c in E.get("cutaways", []):
             sn = c.get("snap", True)    # snap to segment boundaries (hides jump cuts); snap:false for a beat that starts mid-shot
             self.cuts.append(dict(c, start=self.snap_t(c["start"]) if sn else c["start"], end=self.snap_t(c["end"]) if sn else c["end"]))
+        for c in SP.cutaways(self.broll, self.aroll):                       # after the drawn cutaways: those win where they overlap
+            sn = c["snap"]
+            self.cuts.append(dict(c, start=self.snap_t(c["start"]) if sn else c["start"], end=self.snap_t(c["end"]) if sn else c["end"]))
         self.trans = []
         for c in self.cuts:
             self.trans.append((c["start"], c.get("in", self.S.get("transitions.in", "cut")))); self.trans.append((c["end"], c.get("out", self.S.get("transitions.out", "cut"))))
         if self.END: self.trans.append((self.T_END, end.get("in", self.S.get("transitions.in", "cut"))))
         for tr in E.get("transitions", []): self.trans.append((self.snap_t(tr["t"]), tr["kind"]))
-        self.roto = {r["segment"]: r for r in E.get("roto", [])}
+        self.roto = {r["segment"]: r for r in E.get("roto", [])} if self.aroll else {}     # roto / chest need a presenter
         self.chest = {}
-        for c in E.get("chest", []):
+        for c in (E.get("chest", []) if self.aroll else []):
             for sid in ([c["segment"]] if isinstance(c["segment"], str) else c["segment"]): self.chest.setdefault(sid, []).append(c)
         ar = E.get("aroll", {}); self.creep = ar.get("creep", self.S.get("framing.creep", 0.0))
         sn = ar.get("snap"); self.snap = (sn["start"], sn["end"], sn["zoom"]) if sn else None
-        self.zoom = self._auto_zoom(ar.get("zoom", {}))
-        self.gain = self._exposure() if ar.get("exposure_match", self.S.get("grade.exposure_match", True)) else {}
+        self.zoom = self._auto_zoom(ar.get("zoom", {})) if self.aroll else {}
+        if not self.aroll: self.lift = set()
+        self.gain = self._exposure() if self.aroll and ar.get("exposure_match", self.S.get("grade.exposure_match", True)) else {}
         self.caps = self._captions()
         self.root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -268,6 +280,7 @@ class Timeline:
         cfg = {**(self.S.get("captions") or {}), **(self.E.get("captions") or {})}     # style defaults + per-video (fixes, hide)
         self.cap_cfg = cfg; self.cap_hide = [tuple(x) for x in cfg.get("hide", [])]
         if cfg.get("events"): return [(e["start"], e["end"], [tuple(w) for w in e["words"]]) for e in cfg["events"]]
+        if not SP.has_voice(self.spine): return []                           # music / broll spines: text cards are cutaways
         return CAP.build(self.pr.json("words.json", []), cfg, self.T_END)
 
 # ------------------------------------------------------------------ helpers
@@ -332,8 +345,13 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         els = fn(t, cut.get("params", {}), cx_)
         img = G.stage().copy()
         for el in els: img = G.over(img, el.im)
-        sc = 1 + TL.S.get('motion.drift', .025) * clamp((t - cut["start"]) / 6); M = affine(sc, G.W / 2, G.H * .46875, False); img = warp(img, M)
+        if not cut.get("broll"):          # B-roll shots frame themselves (fill / fit / ken burns): no stage drift
+            sc = 1 + TL.S.get('motion.drift', .025) * clamp((t - cut["start"]) / 6); M = affine(sc, G.W / 2, G.H * .46875, False); img = warp(img, M)
         if mode in ("overlay", "chest"): img = None
+        if cut.get("broll") and mode in ("final", "overlay"): img, els = _caption_front(TL, t, img, els)
+    elif s is not None and s.get("kind") in ("broll", "gap"):              # non-aroll timeline: a frame no shot covers
+        img = G.stage().copy() if mode not in ("overlay", "chest") else None
+        if mode in ("final", "overlay"): img, els = _caption_front(TL, t, img, els)
     else:
         sid = s["id"]; f = TL.faces[sid][min(k, len(TL.faces[sid]) - 1)]
         sm = smooth_face(TL, sid, k)
@@ -385,6 +403,16 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         elif kind == "fade": img = img * (1 - e)          # dip through black
     return img, log_records(i, els, M)
 
+def _caption_front(TL, t, img, els):
+    """captions over a frame with no presenter (B-roll, gaps): low in the safe zone; img None = a transparent overlay"""
+    ce = caption_el(TL, t, None)
+    if ce is None: return img, els
+    if img is None:
+        img = np.zeros((G.H, G.W, 4), np.float32); a = np.asarray(ce.im, np.float32) / 255; al = a[..., 3:4]
+        img[..., :3] = a[..., :3] * al; img[..., 3:4] = al
+    else: img = G.over(img, ce.im)
+    return img, els + [(ce, "post")]
+
 def aroll_frame(TL, s, k, t, P, A):
     """the graded, framed A-roll frame of segment s at plate frame k (what the A-roll branch shows, without roto,
     chest or captions) + its matte (float 0..1, framed the same way). Only computed for NEEDS_AROLL templates."""
@@ -430,7 +458,9 @@ def _write(TL, out_dir, i, img, logf):
     t = i / TL.FPS
     if img.shape[2] == 4:
         out = np.clip(img * 255 + .5, 0, 255).astype(np.uint8); cv2.imwrite(f"{out_dir}/{i:05d}.png", cv2.cvtColor(out, cv2.COLOR_RGBA2BGRA), [cv2.IMWRITE_PNG_COMPRESSION, 1]); return
-    if TL.in_cut(t) or t >= TL.T_END: img = img + np.random.default_rng(i).uniform(-.5, .5, img.shape) / 255   # dither the gradient stage only
+    c = TL.in_cut(t); s = TL.seg_at(i)
+    if (c and not c.get("broll")) or t >= TL.T_END or (not c and s is not None and s.get("kind") == "gap"):
+        img = img + np.random.default_rng(i).uniform(-.5, .5, img.shape) / 255   # dither the gradient stage only
     out = np.clip(img * 255 + .5, 0, 255).astype(np.uint8)
     cv2.imwrite(f"{out_dir}/{i:05d}.png", cv2.cvtColor(out, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_PNG_COMPRESSION, 1])
 
@@ -445,7 +475,7 @@ def job_seg(sid, only, out_dir, mode):
     TL = _TL; s = next(x for x in TL.segs if x["id"] == sid)
     frames = set(range(s["f0"], s["f0"] + s["n"])) if only is None else {f for f in only if s["f0"] <= f < s["f0"] + s["n"]}
     if not frames: return 0
-    need = mode == "aroll" or any(not TL.in_cut(f / TL.FPS) or (TL.in_cut(f / TL.FPS) or {}).get("template") in NEEDS_AROLL for f in frames)
+    need = s.get("kind", "aroll") == "aroll" and (mode == "aroll" or any(not TL.in_cut(f / TL.FPS) or (TL.in_cut(f / TL.FPS) or {}).get("template") in NEEDS_AROLL for f in frames))
     Pg = _decode(TL.pr.e("plate", f"{sid}.mkv"), "rgb48le") if need else None
     Ag = _decode(TL.pr.e("matte", f"{sid}.mkv"), "gray") if need else None
     last = max(frames) - s["f0"]
@@ -490,9 +520,9 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None):
             for f in logs:
                 with open(f, encoding="utf-8") as fh:
                     for line in fh: out.write(line)
-        pr.save_json("timeline.json", {"fps": TL.FPS, "fps_rational": list(TL.fps_rational), "size": list(TL.size), "frames": TL.N, "a_frames": TL.A_FRAMES, "zoom": TL.zoom, "lift": sorted(TL.lift), "snap": TL.snap, "creep": TL.creep,
-                                       "cutaways": [{"id": c["id"], "start": c["start"], "end": c["end"], "template": c["template"]} for c in TL.cuts],
+        pr.save_json("timeline.json", {"spine": TL.spine, "fps": TL.FPS, "fps_rational": list(TL.fps_rational), "size": list(TL.size), "frames": TL.N, "a_frames": TL.A_FRAMES, "zoom": TL.zoom, "lift": sorted(TL.lift), "snap": TL.snap, "creep": TL.creep,
+                                       "cutaways": [dict({"id": c["id"], "start": c["start"], "end": c["end"], "template": c["template"]}, **({"broll": True} if c.get("broll") else {})) for c in TL.cuts],
                                        "transitions": TL.trans, "exposure_gain": TL.gain,
-                                       "segments": [{k: s[k] for k in ("id", "in", "out", "f0", "n", "t0", "t1")} for s in TL.segs]})
+                                       "segments": [{k: s.get(k) for k in ("id", "in", "out", "f0", "n", "t0", "t1", "kind")} for s in TL.segs]})
     for f in logs: os.remove(f)
     return n, TL.N

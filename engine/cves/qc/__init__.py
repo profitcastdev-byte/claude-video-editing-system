@@ -1,17 +1,39 @@
 """QC runner: every gate from knowledge-base/QC-GATES.md measurable on the delivered file, stems, word timings, face
 landmarks, the timeline and the renderer element log. Writes Edit/QC-REPORT.txt (one line per gate; details on failures).
-Statuses: FAIL blocks delivery; WARN needs an eye; PASS. Gate ids match QC-GATES.md."""
+Statuses: FAIL blocks delivery; WARN needs an eye; PASS; N/A (the gate cannot apply to this spine: presenter gates on a
+voiceover / music / broll edit, voice gates on a music / broll edit; docs/FORMATS.md). Gate ids match QC-GATES.md."""
 import os, re, json, subprocess, tempfile
 import numpy as np, cv2, soundfile as sf
 from .. import config as C
 from . import audio_gates as AG
+
+# gates that measure the presenter (face, matte, plate, punch-in, skin) or the voice: N/A when the spine has none
+NA_NO_AROLL = {"CUT-03", "CUT-05", "FRAME-01", "FRAME-02", "FRAME-03", "FRAME-04", "FRAME-05", "FRAME-06", "FRAME-09", "FRAME-10", "FRAME-11",
+               "RET-22", "RET-22b", "COL-03", "COL-04", "COL-05", "COL-06", "COL-07", "COL-08", "COL-09", "COL-10", "COL-12", "GFX-25", "GFX-26"}
+NA_NO_VOICE = {"CUT-01", "CUT-02", "SND-04", "SND-11", "SND-19", "SND-22", "SND-30", "RET-01", "RET-03", "PLAT-11", "STORY-09", "STORY-10"}
+NA_NO_CAPTIONS = {"PLAT-04", "PLAT-05", "PLAT-06", "PLAT-07", "PLAT-08", "PLAT-09", "PLAT-10", "GFX-16"}
+
+def small_size(w, h, area=270 * 480):
+    """an analysis size with the canvas aspect and ~270x480 pixels (never squashes a landscape frame into portrait)"""
+    k = (area / (w * h)) ** .5; return max(2, int(round(w * k / 2)) * 2), max(2, int(round(h * k / 2)) * 2)
+
+def na_gate(gate, spine, captions):
+    """wrap gate(): gates that cannot apply to this spine report N/A (never FAIL)"""
+    from .. import spines as SP
+    no_ar, no_vo = not SP.has_aroll(spine), not SP.has_voice(spine)
+    def g(gid, ok, summary, details="", status=None):
+        if no_ar and gid in NA_NO_AROLL: return gate(gid, True, f"not applicable: the {spine} spine has no presenter", status="N/A")
+        if no_vo and gid in NA_NO_VOICE: return gate(gid, True, f"not applicable: the {spine} spine has no voice", status="N/A")
+        if not captions and gid in NA_NO_CAPTIONS: return gate(gid, True, f"not applicable: no captions in this {spine} edit", status="N/A")
+        return gate(gid, ok, summary, details, status)
+    return g
 
 # every threshold below comes from the style profile (cves.style; docs/STYLE.md). The QC gates judge the edit against
 # the look the client asked for, not a fixed house look. Platform constants (safe zone, delivery size) live in `platform:`.
 
 def run(pr, video, fast=False, stage=None):
     R = []; tmp = tempfile.mkdtemp()
-    def gate(gid, ok, summary, details="", status=None): R.append((gid, status or ("PASS" if ok else "FAIL"), summary, details))
+    def gate0(gid, ok, summary, details="", status=None): R.append((gid, status or ("PASS" if ok else "FAIL"), summary, details))
     def sh(cmd, text=True): return subprocess.run(cmd, capture_output=True, text=text)
     def lufs(path):
         r = sh([C.get("ffmpeg"), "-hide_banner", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"]).stderr
@@ -20,8 +42,16 @@ def run(pr, video, fast=False, stage=None):
     from .. import style as STY
     S = STY.load(pr); E = pr.edit; Q = E.get("qc", {}) or {}; TLm = pr.json("timeline.json", {})
     FPS = TLm.get("fps") or 30.0; FR = TLm.get("fps_rational")
-    PW, PH = TLm.get("size") or S.get("platform.size")
-    META_ZONE = tuple(S.get("platform.safe_zone") or (0, 0, PW, PH)); HOUSE_MARGIN = S.get("platform.margin", 60)
+    from .. import gfx as G, spines as SP
+    PW, PH = TLm.get("size") or G.canvas_of(S, pr); G.set_canvas(PW, PH)
+    META_ZONE = tuple(G.safe_zone(S, (PW, PH)) or (0, 0, PW, PH)); HOUSE_MARGIN = round(S.get("platform.margin", 60) * min(PW, PH) / 1080, 1)
+    spine = TLm.get("spine") or SP.spine_of(E); has_ar, has_vo = SP.has_aroll(spine), SP.has_voice(spine)
+    els_ = pr.e("elements.jsonl")
+    captions = not os.path.exists(els_) or any('"role": "caption"' in l for l in open(els_, encoding="utf-8"))
+    gate = na_gate(gate0, spine, captions)
+    def na(*ids):
+        for g_ in ids: gate(g_, True, f"not applicable: the {spine} spine", status="N/A")
+    SW, SH = small_size(PW, PH)
     G_ = S.get("grammar") or {}
     faces = pr.json("faces.json", {})
 
@@ -48,11 +78,11 @@ def run(pr, video, fast=False, stage=None):
     while True:
         ok, fr = cap.read()
         if not ok: break
-        small.append(cv2.resize(fr, (270, 480), interpolation=cv2.INTER_AREA))
+        small.append(cv2.resize(fr, (SW, SH), interpolation=cv2.INTER_AREA))
     N = len(small); T = N / FPS
     gray = [cv2.cvtColor(f, cv2.COLOR_BGR2GRAY).astype(np.float32) for f in small]
     diff = np.array([0] + [float(np.mean(np.abs(gray[i] - gray[i - 1]))) for i in range(1, N)])
-    det = cv2.FaceDetectorYN.create(C.get("yunet"), "", (270, 480), .7, .3, 5000); face = np.zeros(N, bool)
+    det = cv2.FaceDetectorYN.create(C.get("yunet"), "", (SW, SH), .7, .3, 5000); face = np.zeros(N, bool)
     for i in range(0, N, 2):
         _, f = det.detect(small[i]); face[i] = f is not None and len(f) > 0
         if i + 1 < N: face[i + 1] = face[i]
@@ -77,6 +107,7 @@ def run(pr, video, fast=False, stage=None):
 
     # ---------------- timeline + element log gates
     segs = TLm.get("segments", []); cuts = TLm.get("cutaways", []); zoom = TLm.get("zoom", {}); creep = TLm.get("creep", 0.0)
+    in_broll = lambda t: any(c.get("broll") and c["start"] <= t < c["end"] for c in cuts)
     step_min = S.get("framing.min_step", 1.15)
     in_cut = lambda t: any(c["start"] <= t < c["end"] for c in cuts)
     steps = []
@@ -93,7 +124,7 @@ def run(pr, video, fast=False, stage=None):
     try:
         st0 = json.loads(sh([C.get("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=height,width", "-of", "json", pr.raw]).stdout)["streams"][0]
         sw, shh = int(st0.get("width", PW)), int(st0.get("height", PH))
-    except Exception: sw, shh = PW, PH
+    except (Exception, SystemExit): sw, shh = PW, PH
     plate = ing.get("plate_scale") or max(PW / max(min(sw, shh) if sw > shh else sw, 1), PH / max(shh if shh >= sw else max(sw, shh), 1))
     zmax = max(list(zoom.values()) + [snap[2] if snap else 1]) * (1 + creep); up = zmax * plate
     gate("FRAME-11", up <= 1.0, f"max zoom {zmax:.2f}x x plate scale {plate:.2f} = {up:.2f}x of native source pixels",
@@ -108,7 +139,7 @@ def run(pr, video, fast=False, stage=None):
         for e in els:
             first_seen.setdefault(e["id"], e)
             x0, y0, x1, y1 = e["bbox"]
-            if e["role"] in ("caption", "chest") and e["f"] in seg_by_f:
+            if e["role"] in ("caption", "chest") and e["f"] in seg_by_f and has_ar and not in_broll(e["f"] / FPS):    # no face on B-roll frames
                 sid, k = seg_by_f[e["f"]]; fb = faces.get(sid, [[0] * 14])[min(k, len(faces.get(sid, [0])) - 1)]
                 t = e["f"] / FPS; s = next(q for q in segs if q["id"] == sid)
                 z = zoom.get(sid, 1) * (1 + creep * min(1, max(0, (t - s["t0"]) / max(.5, s["t1"] - s["t0"]))))
@@ -148,7 +179,7 @@ def run(pr, video, fast=False, stage=None):
     I, P = lufs(video); LT = S.get("sound.master_lufs", -14); TP = S.get("sound.true_peak", -1.0)
     gate("SND-01", LT - .5 <= I <= LT + .5, f"{I:.1f} LUFS (target {LT})", status=None if not (LT - .5 <= I <= LT + .5) else ("WARN" if I > LT else "PASS"))
     gate("SND-02", P <= TP, f"true peak {P:.1f} dBTP (max {TP})")
-    if os.path.exists(pr.e("stems", "voice.wav")):
+    if has_vo and os.path.exists(pr.e("stems", "voice.wav")):
         vo, sr = sf.read(pr.e("voice_final.wav")); vo = vo.mean(1) if vo.ndim > 1 else vo
         mu, _ = sf.read(pr.e("stems", "music.wav")); mu = mu.mean(1) if mu.ndim > 1 else mu
         sx, _ = sf.read(pr.e("stems", "sfx.wav")); n = min(len(vo), len(mu), len(sx))
@@ -163,9 +194,14 @@ def run(pr, video, fast=False, stage=None):
         onset = next((i * .02 for i, x in enumerate(dbv) if x > dbv.max() - 30), 99); gate("RET-03", onset <= .25, f"first speech {onset:.2f} s")
         last = (len(dbv) - next(i for i, x in enumerate(dbv[::-1]) if x > dbv.max() - 30)) * .02
         gate("PLAT-11", T - last <= 3.0, f"{T - last:.2f} s after the last word (end card <= 3 s)")
-    g = AG.gaps(pr.e("voice_final.wav")); gate("CUT-02", not g, f"{len(g)} gaps > 0.25 s", "\n".join(f"gap at {a:.2f}s {b:.2f}s" for a, b in g))
+    if not has_vo:
+        na("SND-04", "SND-19", "RET-03", "PLAT-11", "CUT-02", "SND-30")
+        pm, _ = sf.read(pr.e("mix_premaster.wav")); clip = int((np.abs(pm) >= .999).sum()); gate("SND-03", clip == 0, f"{clip} clipped samples")
+    if has_vo:
+        g = AG.gaps(pr.e("voice_final.wav")); gate("CUT-02", not g, f"{len(g)} gaps > 0.25 s", "\n".join(f"gap at {a:.2f}s {b:.2f}s" for a, b in g))
     vc = pr.json("voice_chain.json")           # written by ingest: the processors actually run on this voice
-    if vc is None: gate("SND-30", False, "Edit/voice_chain.json missing: re-run `cves ingest`", status="WARN")
+    if not has_vo: pass
+    elif vc is None: gate("SND-30", False, "Edit/voice_chain.json missing: re-run `cves ingest`", status="WARN")
     else:
         gen = [p for p in vc.get("steps", []) if p.get("generative")]
         gate("SND-30", not gen, "voice chain: " + " -> ".join(p.get("name", "?") for p in vc.get("steps", [])), "generative steps: " + ", ".join(p["name"] for p in gen))
@@ -179,27 +215,30 @@ def run(pr, video, fast=False, stage=None):
     hd = " ".join(w[2] for w in Wd if w[0] < 3).lower()
     bans = [p for p in [r"craziest", r"won'?t believe", r"watch till the end", r"wait for it", r"stay till the end", r"^\s*(hi|hello|hey) (guys|everyone)"] if re.search(p, hd)]
     gate("RET-08", not bans, "no banned openers in the first 3 s", ", ".join(bans))
-    tail = Q.get("brand_tail", [])
+    tail = Q.get("brand_tail", []) if has_vo else []
     if tail:
         tw_ = os.path.join(tmp, "tail.wav"); sh([C.get("ffmpeg"), "-v", "error", "-y", "-sseof", "-6", "-i", pr.e("voice_final.wav"), "-ac", "1", "-ar", "16000", tw_])
         tt = re.sub(r"[^a-z ]", " ", AG._whisper(tw_, lang=__import__("cves.ingest", fromlist=["x"]).whisper_language(pr)).lower()).split(); joined = "".join(tt[-6:])
         gate("STORY-10", all(t in joined for t in tail), f"sign-off heard: {' '.join(tt[-5:])}")
         gate("STORY-09", bool(tt) and any(t in tt[-1] for t in tail), f"last spoken word: {tt[-1] if tt else '?'}")
     if not fast:
-        r, bad, ok = AG.words(pr.e("voice_final.wav"), pr.e("voice_raw.wav"))
-        gate("CUT-01", ok, f"voice stem vs raw: match {r:.3f}", "\n".join(bad))
-        st = AG.stutters(pr); gate("CUT-03", not st, f"{len(pr.json('edl.json')['segments'])} kept segments checked verbatim", "\n".join(st))
+        if has_vo:
+            r, bad, ok = AG.words(pr.e("voice_final.wav"), pr.e("voice_raw.wav"))
+            gate("CUT-01", ok, f"voice stem vs raw: match {r:.3f}", "\n".join(bad))
+        else: na("CUT-01")
+        if has_ar: st = AG.stutters(pr); gate("CUT-03", not st, f"{len(pr.json('edl.json')['segments'])} kept segments checked verbatim", "\n".join(st))
+        else: na("CUT-03")
     from .extra import run_extra; run_extra(pr, video, gate)
     try:
         from ..assets import qc_assets; qc_assets(pr, gate)          # AST-01: every asset registered, unchanged, with provenance
     except ImportError: pass
 
-    order = {"FAIL": 0, "WARN": 1, "PASS": 2}; R.sort(key=lambda x: (order.get(x[1], 3), x[0]))
-    nf, nw, npass = (sum(r[1] == s for r in R) for s in ("FAIL", "WARN", "PASS"))
-    lines = [f"QC REPORT  {os.path.basename(video)}  ({T:.2f} s)", f"{nf} FAIL   {nw} WARN   {npass} PASS   of {len(R)} gates", ""]
+    order = {"FAIL": 0, "WARN": 1, "PASS": 2, "N/A": 3}; R.sort(key=lambda x: (order.get(x[1], 4), x[0]))
+    nf, nw, npass, nna = (sum(r[1] == s for r in R) for s in ("FAIL", "WARN", "PASS", "N/A"))
+    lines = [f"QC REPORT  {os.path.basename(video)}  ({T:.2f} s, {PW}x{PH}, spine {spine})", f"{nf} FAIL   {nw} WARN   {npass} PASS   {nna} N/A   of {len(R)} gates", ""]
     for gid, st_, summ, det_ in R:
         lines.append(f"[{st_:4s}] {gid:10s} {summ}")
-        if st_ != "PASS" and det_: lines += ["             " + l for l in det_.splitlines() if l.strip()]
+        if st_ not in ("PASS", "N/A") and det_: lines += ["             " + l for l in det_.splitlines() if l.strip()]
     open(pr.e("QC-REPORT.txt"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     write_stamp(pr, video, R, fast=fast)     # Edit/qc.json: the machine-readable stamp `cves deliver` and the hook check
     return nf, "\n".join(lines)
@@ -220,6 +259,7 @@ def write_stamp(pr, video, R, fast=False, out=None):
     from .. import __version__
     d = {"video": os.path.abspath(video), "sha256": sha256(video), "size": os.path.getsize(video),
          "fail": sum(r[1] == "FAIL" for r in R), "warn": sum(r[1] == "WARN" for r in R), "pass": sum(r[1] == "PASS" for r in R),
+         "na": sum(r[1] == "N/A" for r in R),
          "gates": [{"id": g, "status": s, "summary": m} for g, s, m, _ in R],
          "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"), "cves_version": __version__, "fast": bool(fast)}
     with open(out or pr.e("qc.json"), "w", encoding="utf-8") as f: json.dump(d, f, indent=1, ensure_ascii=False)

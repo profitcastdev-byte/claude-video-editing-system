@@ -18,6 +18,7 @@ from . import El
 KIND = "cutaway"                                  # full-screen pictures; render passes the A-roll only to NEEDS_AROLL templates
 KINDS = {"pip": "media", "split": "media", "overlay_render": "overlay"}
 NEEDS_AROLL = {"pip", "split"}                    # render.refresh_needs_aroll(): these get ctx["aroll"]
+NATIVE = {"broll_shot"}                          # drawn on the canvas itself (templates._canvas_render); px scale by G.U
 STILL_EXT = (".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp", ".gif")
 
 
@@ -615,5 +616,45 @@ def overlay_render_cues(p, ctx):
     return c
 
 
+# ------------------------------------------------------------------ broll_shot (the edit.yaml broll: track; docs/FORMATS.md)
+def _blur_fill(fr, sigma, dim):
+    """the frame cover-scaled to the canvas, blurred (sigma in canvas px) and dimmed: the bed under a `fit` shot"""
+    sh, sw = fr.shape[:2]; k = 8; w, h = max(2, G.W // k), max(2, G.H // k)
+    small = view(fr, w, h, fit_scale(sw, sh, w, h, "cover"), (sw / 2, sh / 2))
+    small = cv2.GaussianBlur(small[..., :3], (0, 0), max(.5, sigma / k))
+    big = cv2.resize(small, (G.W, G.H), interpolation=cv2.INTER_LINEAR).astype(np.float32) * dim
+    return np.dstack([np.clip(big, 0, 255).astype(np.uint8), np.full((G.H, G.W), 255, np.uint8)])
+
+def broll_shot(t, p, ctx):
+    """one shot of the broll: track, full frame. p: asset (id or footage path), in, speed, after hold|loop, framing fill|fit,
+    kenburns {zoom, pan, ease}, anchor [x, y] (fill crop centre, 0..1). Any source size / rotation / rate: frames are
+    sampled by time (media_frame), so nothing is ever stretched: fill crops to the canvas aspect, fit letterboxes onto a
+    blurred, dimmed copy of itself (style broll.fit_blur / broll.fit_dim)."""
+    S = _S(ctx); at = ctx["start"]
+    spec = {"asset": p.get("asset"), "in": p.get("in", 0), "speed": p.get("speed", 1.0), "out": p.get("out"), "fps": p.get("fps")}
+    fr, name, al = media_frame(t, spec, ctx, at, p.get("after", "hold"))
+    if fr is None: return []
+    kb = p.get("kenburns")
+    z, px, py = _kb(t, dict(kb, at=kb.get("at", at)), ctx, S, 1.0) if kb else (1.0, 0.0, 0.0)
+    sh, sw = fr.shape[:2]; ax, ay = (p.get("anchor") or (.5, .5))[:2]
+    if p.get("framing", "fill") == "fit":
+        s = fit_scale(sw, sh, G.W, G.H, "contain") * z; hw, hh = G.W / 2 / s, G.H / 2 / s
+        u = sw / 2 + px * max(0, sw / 2 - hw); v = sh / 2 + py * max(0, sh / 2 - hh)
+        fg = view(fr, G.W, G.H, s, (u, v), alpha=True)
+        bed = _blur_fill(fr, float(S.get("broll.fit_blur", 40)) * G.U, float(S.get("broll.fit_dim", .55)))
+        a = fg[..., 3:4].astype(np.float32) / 255
+        pic = np.dstack([(fg[..., :3] * a + bed[..., :3] * (1 - a)).astype(np.uint8), np.full((G.H, G.W), 255, np.uint8)])
+    else:
+        s = fit_scale(sw, sh, G.W, G.H, "cover") * z; hw, hh = G.W / 2 / s, G.H / 2 / s
+        u = ax * sw + px * max(0, sw / 2 - hw); v = ay * sh + py * max(0, sh / 2 - hh)
+        pic = view(fr, G.W, G.H, s, (u, v), alpha=al)
+    return [El(canvas_layer(pic, 0, 0), p.get("name", "broll"), "media", asset=name, t_key=at)]
+
+def broll_shot_cues(p, ctx):
+    """the shot's own sound (audio: true), trimmed to the shot and played at its speed"""
+    return _audio_cue(dict(p, at=ctx["start"], gain=p.get("gain", _S(ctx).get("broll.audio_gain", -14))), ctx) if p.get("audio") else []
+
+
 T = {"image": (image, image_cues), "video_broll": (video_broll, video_broll_cues), "screen_rec": (screen_rec, screen_rec_cues),
-     "pip": (pip, pip_cues), "split": (split, split_cues), "overlay_render": (overlay_render, overlay_render_cues)}
+     "pip": (pip, pip_cues), "split": (split, split_cues), "overlay_render": (overlay_render, overlay_render_cues),
+     "broll_shot": (broll_shot, broll_shot_cues)}

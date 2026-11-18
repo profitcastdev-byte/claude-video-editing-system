@@ -165,6 +165,16 @@ media:                        # image / video_broll / screen_rec / pip / split /
   split: {gap: 12, ratio: 0.5, radius: 0}   # two-pane layout
   sfx_in: swipe               # cue for a card / pane / bubble that enters after the cutaway starts ("" = none)
   sfx_click: button           # screen_rec cursor click cue ("" = none)
+broll:                        # the edit.yaml broll: track (docs/FORMATS.md); per-shot keys override these
+  framing: fill               # default framing of a video shot: fill (crop to the canvas aspect) | fit (letterbox on a blurred fill) | kenburns
+  ken_burns: [1.0, 1.08]      # zoom from -> to over a kenburns shot (stills default to kenburns)
+  fit_blur: 40                # px (at a 1080 short side) Gaussian blur of the fill behind a `fit` shot
+  fit_dim: 0.55               # brightness multiplier of that fill
+  audio_gain: -14             # dB of a shot's own sound (audio: true) when the shot sets no gain
+autocut:                      # `cves autocut` defaults (a broll: track snapped to the music grid)
+  every: downbeats            # beats | downbeats (every bar) | bars (every autocut.bars bars)
+  bars: 2
+  min_shot_s: 0.5             # grid points closer than this to the previous cut are skipped
 ingest:                       # how any footage is conformed to the master canvas (docs/INGEST.md)
   reframe: face               # source aspect != canvas: face = YuNet-steered crop (centre when no face) | center
   face_crop:

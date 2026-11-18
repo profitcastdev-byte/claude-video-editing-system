@@ -27,8 +27,9 @@ def _register(mod, origin):
     T = getattr(mod, "T", None)
     if not isinstance(T, dict): return
     kind = getattr(mod, "KIND", None) or {"cutaways": "cutaway"}.get(mod.__name__.rsplit(".", 1)[-1], mod.__name__.rsplit(".", 1)[-1])
-    lay = "fixed" if getattr(mod, "DESIGN", False) else "relative"
+    nat = getattr(mod, "NATIVE", None)
     for name, fns in T.items():
+        lay = "native" if (nat is True or (isinstance(nat, (set, list, tuple, dict)) and name in nat)) else ("fixed" if getattr(mod, "DESIGN", False) else "relative")
         REGISTRY[name] = fns; KIND[name] = (getattr(mod, "KINDS", {}) or {}).get(name, kind); SOURCE[name] = origin; LAYOUT[name] = lay
 
 for _m in pkgutil.iter_modules(__path__):
@@ -56,6 +57,8 @@ def get(name):
 
 # ---- any canvas (docs/FORMATS.md, docs/TEMPLATES.md "Layout on any canvas")
 # Templates write px values designed for a frame whose short side is 1080 px. The canvas is G.W x G.H (style canvas.size).
+#  * native templates (module-level NATIVE = True or {names}) draw on the canvas itself and scale their own px by G.U
+#    (resolution-independent pictures such as broll_shot): no adapter;
 #  * relative templates (the default) lay out from G.W / G.H / G.safe(): on a canvas whose short side is not 1080 they
 #    draw in a "design canvas" of the same aspect with a 1080 short side, and the layers are scaled by G.U onto the canvas;
 #  * fixed templates (module-level DESIGN = True: hard-coded 1080x1920 coordinates) draw in 1080x1920 and are fitted, per
@@ -109,7 +112,7 @@ def _fit_for(name, fn, p, ctx):
 
 def _canvas_render(name, fn, t, p, ctx):
     fixed = LAYOUT.get(name) == "fixed" and KIND.get(name) not in ("chest", "overlay", "media")
-    if G.is_design() or (not fixed and G.U == 1): return fn(t, p, ctx)
+    if G.is_design() or LAYOUT.get(name) == "native" or (not fixed and G.U == 1): return fn(t, p, ctx)
     if fixed:
         a, ox, oy = _fit_for(name, fn, p, ctx); size = G.DESIGN
     else:

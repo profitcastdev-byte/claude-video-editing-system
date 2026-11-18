@@ -12,12 +12,14 @@ face-centre smoothing, snap) is re-derived from timeline.json + faces.json exact
 import os, re, json, math, collections
 import numpy as np, cv2
 
-from ..gfx import W, H     # element bboxes are in the template design space
+W, H = 1080, 1920          # the canvas of the video being judged: run_extra sets them from timeline.json (element bboxes are canvas px)
 TRANS_DUR = {"whip": .15, "glitch": .10, "cut": 0}          # render.TRANS_DUR (unknown kinds use .12, as trans_strength)
 DECOR = ("brackets", ".glow", ".bed")                        # frame decoration / glow / shadow beds: not type, not movers
 DESCRIPTOR = {"map", "listing", "map pack", "logo"}          # `text` used as a label on graphic-only elements
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-CAP_SIZE, CAP_MAXW, CAP_LH = 50, 780, 66                     # render.caption_el layout (read from render when importable)
+CAP_SIZE, CAP_MAXW, CAP_LH = 50, 780, 66                     # render.caption_el layout at a 1080 short side (scaled by U_)
+U_ = 1.0                                                     # min(W, H) / 1080 of the video being judged
+LOW = (270, 480)                                             # low-res analysis size (canvas aspect)
 SFX_PEAK_NAMES = ("whoosh", "riser")                         # SND-08: transition whooshes / risers are judged at their peak
 
 
@@ -89,6 +91,7 @@ class Ctx:
         self.segs = TL.get("segments", []); self.cuts = TL.get("cutaways", []); self.trans = [tuple(x) for x in TL.get("transitions", [])]
         self.zoom = TL.get("zoom", {}); self.creep = TL.get("creep", .015); self.snap = TL.get("snap"); self.lift = set(TL.get("lift", []))
         self.faces = pr.json("faces.json", {}) or {}; self.words = pr.json("words.json", []) or []
+        self.spine = TL.get("spine") or "aroll"; self.cards = [c for c in self.cuts if not c.get("broll")]
         ef = pr.e("elements.jsonl")
         self.els = [json.loads(l) for l in open(ef, encoding="utf-8")] if os.path.exists(ef) else []
         self.by_f = collections.defaultdict(list)
@@ -110,7 +113,8 @@ class Ctx:
 
     # ---- timeline queries
     def in_cut(self, t): return any(c["start"] <= t < c["end"] for c in self.cuts)
-    def is_aroll(self, f): return 0 <= f < self.A and not self.in_cut(f / self.FPS)
+    def is_aroll(self, f): return self.spine == "aroll" and 0 <= f < self.A and not self.in_cut(f / self.FPS)
+    def in_card(self, t): return any(c["start"] <= t < c["end"] for c in self.cards)           # a drawn cutaway (not a B-roll shot)
     def in_trans(self, f, pad=0.):
         t = f / self.FPS
         for tb, kind in self.trans:
@@ -137,8 +141,8 @@ class Ctx:
 
     def cap_allowed(self, f):
         """frames where the renderer may draw a caption: A-roll, no chest element, not the snap, not a hide window"""
-        if not self.is_aroll(f) or self.in_snap(f): return False
-        t = f / self.FPS
+        t = f / self.FPS                 # A-roll, B-roll shots and uncovered frames take captions; drawn cutaways do not
+        if not 0 <= f < self.A or self.in_card(t) or self.in_snap(f): return False
         if any(a <= t < b for a, b in self.cap_hide): return False
         return not any(e["role"] == "chest" for e in self.by_f.get(f, []))
 
@@ -159,7 +163,7 @@ def decode(cx, need, keep_low=True):
     low = {}
     with av.open(cx.video) as c:
         for f, fr in enumerate(c.decode(video=0)):
-            if keep_low: low[f] = fr.reformat(width=270, height=480, format="gray").to_ndarray()
+            if keep_low: low[f] = fr.reformat(width=LOW[0], height=LOW[1], format="gray").to_ndarray()
             cbs = need.get(f)
             if cbs:
                 yuv = fr.to_ndarray(format="yuv444p")
@@ -328,7 +332,7 @@ def aroll_frame(cx, f, yuv, matte, plate):
     r["Y_p1"] = float(np.percentile(Yn, 1)); r["Y_p99"] = float(np.percentile(Yn, 99)); r["C_p99"] = float(np.percentile(Cn, 99))
     # FRAME-10: correlation with the warped plate vs the warped mirrored plate, and the similarity transform plate -> frame
     if plate is not None:
-        g = lambda im: cv2.magnitude(*[cv2.Sobel(cv2.resize(im, (270, 480), interpolation=cv2.INTER_AREA).astype(np.float32), cv2.CV_32F, *d) for d in ((1, 0), (0, 1))])
+        g = lambda im: cv2.magnitude(*[cv2.Sobel(cv2.resize(im, LOW, interpolation=cv2.INTER_AREA).astype(np.float32), cv2.CV_32F, *d) for d in ((1, 0), (0, 1))])
         def zncc(a, b): a = a - a.mean(); b = b - b.mean(); return float((a * b).sum() / (np.sqrt((a * a).sum() * (b * b).sum()) + 1e-9))
         dv = g(Y); r["corr"] = zncc(dv, g(cv2.warpAffine(plate, M, (W, H), borderMode=cv2.BORDER_REPLICATE)))
         r["corr_flip"] = zncc(dv, g(cv2.warpAffine(cv2.flip(plate, 1), M, (W, H), borderMode=cv2.BORDER_REPLICATE)))
@@ -350,8 +354,9 @@ def gates_captions(cx, gate):
         return
     from PIL import ImageFont
     size, maxw = CAP_SIZE, CAP_MAXW
-    try:
-        from .. import render as _R; maxw = getattr(_R, "CAP_MAXW", maxw)
+    try:                                 # the caption wrap width on this canvas, in px at the 50 px design size
+        from .. import captions as CAPM, gfx as G
+        maxw = CAPM._avail(CAPM.resolve(cx.CS), cx.S)[0] / G.U
     except Exception: pass
     fonts = {}
     def wrap(ins):
@@ -371,7 +376,7 @@ def gates_captions(cx, gate):
         elif nl == 2: l4w.append(c.id)
         for j, ln in enumerate(lines):
             s = " ".join(ln); wpx = m["widths"][j] if m and j < len(m["widths"]) and m["lines"] == len(lines) else None
-            if len(s) > 32 or (wpx and wpx > 950): l5.append(f"{c.id} line {j + 1}: {len(s)} chars{f', {wpx} px' if wpx else ''} '{s}'")
+            if len(s) > 32 or (wpx and wpx > 950 * U_): l5.append(f"{c.id} line {j + 1}: {len(s)} chars{f', {wpx} px' if wpx else ''} '{s}'")
         if len(lines) >= 2 and len(lines[-1]) < 2: g16.append(f"{c.id}: last line '{' '.join(lines[-1])}'")
         dur = len(c.f) / FPS; cps = len(c.text or "") / max(dur, 1e-6)
         if cps > 20: l6.append(f"{c.id}: {cps:.0f} cps ({len(c.text)} chars in {dur:.2f} s)")
@@ -426,10 +431,10 @@ def gates_captions(cx, gate):
     if cx._results.get("cap_unmeasured"): bad_note = f" ({len(cx._results['cap_unmeasured'])} events only on transition frames: not measured)"
     else: bad_note = ""
     summ = (f"{', '.join(fonts_used)}{bad_note}; fill matches style ({len(ms) - len(nonwhite)}/{len(ms)} measured); shadow {len(ms) - len(noshadow)}/{len(ms)}; plate per style; "
-            f"cap/ascender height {np.median(caph) if caph else float('nan'):.0f} px (>= 40 CALIBRATE)")
+            f"cap/ascender height {np.median(caph) if caph else float('nan'):.0f} px (>= {40 * U_:.0f} CALIBRATE)")
     if bad: gate("PLAT-10", False, summ, "\n".join(bad[:12]))
-    else: gate("PLAT-10", True, summ, f"cap height {np.median(caph):.0f} px < 40 px (CALIBRATE)" if caph and np.median(caph) < 40 else "",
-               status="WARN" if caph and np.median(caph) < 40 else "PASS")
+    else: gate("PLAT-10", True, summ, f"cap height {np.median(caph):.0f} px < {40 * U_:.0f} px (CALIBRATE)" if caph and np.median(caph) < 40 * U_ else "",
+               status="WARN" if caph and np.median(caph) < 40 * U_ else "PASS")
     cx._results["cap_style"] = (fonts_used, [m["x_h"] for m in ms if len(m.get("shown", "")) >= 6], [m["fill"] for m in ms])
 
 
@@ -461,6 +466,7 @@ def gates_motion(cx, gate):
     # MOT-12 origin
     o_bad, o_ex, o_ok = [], [], 0
     for i in mov:
+        if i.id.startswith("broll."): continue          # a B-roll shot is footage: it enters on a cut (or its transition), not as a graphic
         tr = cx.in_trans(i.f0)
         if tr: o_ex.append(f"{i.key}@f{i.f0} ({tr[1]})"); continue
         r = min(len(i.bb) - 1, 14); b0, br = i.bb[0], i.bb[r]
@@ -524,8 +530,24 @@ def gates_motion(cx, gate):
     from PIL import Image
     r_bad, r_ok, unk = [], [], []
     icons = os.path.join(REPO, "assets", "icons"); MAT = {"post": "event", "link": "link", "chat": "chat", "star": "star", "search": "search", "pin": "place", "phone": "call"}
+    shots = {}
+    try:
+        from .. import spines as SP
+        shots = {f"broll.{x['id']}": x for x in SP.shots(cx.E, cx.FPS, cx.S)}
+    except (SystemExit, KeyError, ValueError, TypeError): pass
+    b_warn, b_fail = [], []
     for i in mov:
         if not i.asset: continue
+        if i.id in shots:    # a B-roll shot: the scale its framing applies to source pixels (like FRAME-11: soft above 1.0, FAIL above 1.5)
+            sh = shots[i.id]
+            try:
+                from .. import assets as AS, spines as SP
+                pv = AS.probe(SP._path(cx.pr, sh["ref"]))
+                kb = (sh.get("kenburns") or {}).get("zoom", 1.0); zmax = max(kb) if isinstance(kb, (list, tuple)) else float(kb)
+                sc = (min if sh["framing"] == "fit" else max)(W / pv["w"], H / pv["h"]) * zmax
+            except Exception as e: unk.append(f"{i.key}: {e}"); continue
+            msg = f"{i.key}: {os.path.basename(str(i.asset))} {pv['w']}x{pv['h']} {sh['framing']} x{zmax:.2f} on {W}x{H} = {sc:.2f}x source px"
+            (b_fail if sc > 1.5 else b_warn if sc > 1.0 else r_ok).append(msg); continue
         a = str(i.asset); src, ss = None, 1
         for base in (cx.pr.root, REPO):
             if os.path.exists(os.path.join(base, a)) and os.path.isfile(os.path.join(base, a)): src = os.path.join(base, a); break
@@ -548,8 +570,10 @@ def gates_motion(cx, gate):
         bw = float((i.bb[:, 2] - i.bb[:, 0]).max() + 1); bh = float((i.bb[:, 3] - i.bb[:, 1]).max() + 1)
         ratio = (min(bw, bh) * ss / min(sw, sh)) if ss == 2 else (bw * ss / sw)
         (r_bad if ratio > 1.0 else r_ok).append(f"{i.key}: {os.path.basename(src)} {sw}x{sh} shown <= {bw:.0f}x{bh:.0f} px x{ss} = {ratio:.2f}{' (bbox bound)' if ss == 2 else ''}")
-    gate("MOT-14", not r_bad, f"{len(r_ok)} raster uses <= 1.0x source; worst {max([float(x.rsplit('= ', 1)[1].split()[0]) for x in r_ok + r_bad] or [0]):.2f}",
-         "\n".join(r_bad + ([f"unresolved assets: {', '.join(unk)}"] if unk else [])), status=None if r_bad else ("WARN" if unk else "PASS"))
+    worst = max([float(x.rsplit('= ', 1)[1].split()[0].rstrip("x")) for x in r_ok + r_bad + b_warn + b_fail] or [0])
+    bad = r_bad + b_fail
+    gate("MOT-14", not bad, f"{len(r_ok)} raster uses <= 1.0x source; {len(b_warn)} B-roll shots soft (1.0-1.5x); worst {worst:.2f}",
+         "\n".join(bad + b_warn + ([f"unresolved assets: {', '.join(unk)}"] if unk else [])), status=None if bad else ("WARN" if (unk or b_warn) else "PASS"))
 
 
 # ======================================================================== gates: graphics
@@ -798,7 +822,7 @@ def gates_sound(cx, gate):
     pr, FPS = cx.pr, cx.FPS
     try:
         from ..render import Timeline
-        from ..mix import all_cues, sfx_bank
+        from ..mix import all_cues, sfx_bank, load_audio
         TL = Timeline(pr); cues = sorted(all_cues(TL), key=lambda c: c[0]); find = sfx_bank(TL)
     except Exception as e:
         for g in ("SND-07", "SND-08", "SND-09", "SND-11"): gate(g, False, f"cue list not rebuilt: {type(e).__name__}: {e}", status="WARN")
@@ -809,7 +833,7 @@ def gates_sound(cx, gate):
         def clip(name, kw):
             key = (name, str(kw.get("trim")))
             if key not in cache:
-                y, _ = librosa.load(find(name), sr=SR, mono=True)
+                y = load_audio(find(name))
                 if kw.get("trim"): y = y[int(kw["trim"][0] * SR):int(kw["trim"][1] * SR)]
                 cache[key] = y
             return cache[key]
@@ -865,7 +889,7 @@ def gates_sound(cx, gate):
         # SND-11 SFX level vs the voice peak; none above -2 dBFS on the stem (reveal cues are the tagged heroes)
         try:
             sx, sr = sf.read(pr.e("stems", "sfx.wav")); vo, _ = sf.read(pr.e("stems", "voice.wav"))
-            sx = sx.mean(1) if sx.ndim > 1 else sx; vo = vo.mean(1) if vo.ndim > 1 else vo; vp = np.abs(vo).max()
+            sx = sx.mean(1) if sx.ndim > 1 else sx; vo = vo.mean(1) if vo.ndim > 1 else vo; vp = max(float(np.abs(vo).max()), 1e-9)
             hot = []
             for t, name, gain, kw in cues:
                 i0 = int(max(0, t) * sr); seg = sx[i0:i0 + len(clip(name, kw))]
@@ -888,6 +912,7 @@ def gates_sound(cx, gate):
             if b - a < .4: continue
             l = bs1770(vo[int(a * sr):int(b * sr)], sr)
             if not math.isnan(l): L.append((l, a, " ".join(w[2] for w in s)))
+        if not L: raise ValueError("no sentences in words.json")
         med = float(np.median([x[0] for x in L])); f5 = [x for x in L if abs(x[0] - med) >= 5]; w3 = [x for x in L if 3 <= abs(x[0] - med) < 5]
         gate("SND-22", not f5, f"{len(L)} sentences: median {med:.1f} LUFS, range {min(x[0] for x in L) - med:+.1f}..{max(x[0] for x in L) - med:+.1f} LU",
              "\n".join(f"{x[1]:.2f} s {x[0] - med:+.1f} LU '{x[2][:40]}'" for x in sorted(f5 + w3, key=lambda x: -abs(x[0] - med))[:10]), status=None if f5 else ("WARN" if w3 else "PASS"))
@@ -896,7 +921,9 @@ def gates_sound(cx, gate):
     try:
         pk = {}
         for nm, p in (("voice", pr.e("stems", "voice.wav")), ("music", pr.e("stems", "music.wav")), ("sfx", pr.e("stems", "sfx.wav")), ("premaster", pr.e("mix_premaster.wav"))):
-            if os.path.exists(p): y, _ = sf.read(p); pk[nm] = 20 * np.log10(np.abs(y).max() + 1e-12)
+            if os.path.exists(p):
+                y, _ = sf.read(p)
+                if np.abs(y).max() > 1e-6: pk[nm] = 20 * np.log10(np.abs(y).max() + 1e-12)      # a silent stem (no voice spine) is not reported
         hot = {k: v for k, v in pk.items() if v > -2}
         gate("SND-23", not hot, "sample peaks " + ", ".join(f"{k} {v:.1f}" for k, v in pk.items()) + " dBFS (<= -2; voice ~ -10 report)", status=None if not hot else "WARN")
     except Exception as e: gate("SND-23", False, f"not measured: {e}", status="WARN")
@@ -910,6 +937,11 @@ def gates_sound(cx, gate):
 
 # ======================================================================== entry point
 def run_extra(pr, video, gate):
+    global W, H, U_, LOW
+    from .. import gfx as G, style as STY
+    from . import small_size
+    W, H = ((pr.json("timeline.json", {}) or {}).get("size") or G.canvas_of(STY.load(pr), pr)); U_ = min(W, H) / 1080; LOW = small_size(W, H)
+    G.set_canvas(W, H)
     cx = Ctx(pr, video)
     def safe(fn, ids):
         try: fn(cx, gate)
