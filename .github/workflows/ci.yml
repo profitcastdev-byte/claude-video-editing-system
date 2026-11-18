@@ -22,7 +22,7 @@ jobs:
         run: brew install ffmpeg
       - name: ffmpeg (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg melt
       - name: ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
@@ -31,6 +31,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -e "engine[test]"
+      - name: Face-detection model (YuNet, sha-checked)
+        run: |
+          python - <<'PY'
+          import hashlib, os, urllib.request
+          d = os.path.join(os.path.expanduser("~"), ".cves", "models"); os.makedirs(d, exist_ok=True)
+          p = os.path.join(d, "face_detection_yunet_2023mar.onnx")
+          url = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+          urllib.request.urlretrieve(url, p)
+          h = hashlib.sha256(open(p, "rb").read()).hexdigest()
+          assert h == "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4", h
+          print("yunet ok", p)
+          PY
       - name: Lint (portability + no hard-coded style)
         run: python tools/lint.py && python tools/gate_status.py --check
       - name: Unit + golden tests

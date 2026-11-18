@@ -78,6 +78,7 @@ def paths_in(cmd, cwd):
     except ValueError: toks = cmd.split()
     res = []
     for t in toks:
+        if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'": t = t[1:-1]   # non-posix split (Windows) keeps the quotes
         t = t.split("=", 1)[1] if t.startswith("-") and "=" in t else t
         if "@" in t: t = re.sub(r"^[^@]*@", "", t)       # curl -F name=@file, --data-binary @file
         if not t or t.startswith("-"): continue

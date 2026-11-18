@@ -86,9 +86,19 @@ def find_melt() -> str | None:
                  shutil.which("melt"), shutil.which("melt-7"),
                  "/Applications/kdenlive.app/Contents/MacOS/melt",
                  r"C:\Program Files\kdenlive\bin\melt.exe"):
-        if cand and Path(cand).is_file():
+        if cand and Path(cand).is_file() and _is_mlt(cand):
             return cand
     return None
+
+
+def _is_mlt(exe: str) -> bool:
+    """True if `exe` is MLT's melt (another program called melt must not be mistaken for it)."""
+    try:
+        r = subprocess.run([exe, "-version"], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    o = (r.stdout + r.stderr).lower()
+    return "meltytech" in o or "mlt" in o
 
 
 def kdenlive_profile_dir() -> Path:
@@ -375,12 +385,18 @@ def melt_check(project: Path, *, render_to: Path | None = None, timeout: int = 9
     if not melt:
         return {"ok": None if not problems else False, "structure": problems,
                 "reason": "melt not found (install Kdenlive or set CVES_MELT)"}
+    # melt takes 8-bit argv on Windows, so a non-ASCII folder name (e.g. a curly apostrophe) breaks an absolute
+    # path: run inside the project folder and pass names relative to it.
+    project = Path(project).resolve(); here = project.parent
+    def rel(p: Path) -> str:
+        try: return os.path.relpath(Path(p).resolve(), here)
+        except ValueError: return str(p)            # another drive on Windows
     if render_to is None:
-        cmd = [melt, "-quiet", str(project), "-consumer", "null", "real_time=-1", "terminate_on_pause=1"]
+        cmd = [melt, "-quiet", project.name, "-consumer", "null", "real_time=-1", "terminate_on_pause=1"]
     else:
-        cmd = [melt, "-quiet", str(project), "-consumer", f"avformat:{render_to}", "vcodec=libx264", "crf=20",
+        cmd = [melt, "-quiet", project.name, "-consumer", f"avformat:{rel(render_to)}", "vcodec=libx264", "crf=20",
                "preset=veryfast", "acodec=aac", "ab=192k", "pix_fmt=yuv420p", "real_time=-1"]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=here)
     noise = ("QPainter",)
     err = "\n".join(ln for ln in r.stderr.splitlines() if not ln.startswith(noise))[-2000:]
     ok = r.returncode == 0 and not problems
@@ -436,7 +452,9 @@ def export(control_dir: str | os.PathLike, *, validate: bool = True) -> dict:
     if validate:
         result["melt"] = melt_check(out)
         if result["melt"]["ok"] is False:
-            raise RuntimeError(f"melt could not load {out}:\n{result['melt']['stderr']}")
+            m = result["melt"]
+            raise RuntimeError(f"melt could not load {out} (exit {m.get('returncode')}; structure: {m.get('structure')}):\n"
+                               f"{m.get('stderr', '')}")
     return result
 
 

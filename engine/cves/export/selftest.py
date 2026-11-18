@@ -172,12 +172,16 @@ def run_one(root: Path, fps: tuple[int, int], size: tuple[int, int], check, *, g
 
     # ---- Kdenlive
     kd = kdenlive.export(ctl)
-    check(tag + "project.kdenlive structure + full melt playback", kd["melt"]["ok"] is True,
+    no_melt = kd["melt"]["ok"] is None          # melt not installed: structure checked, playback skipped
+    check(tag + ("project.kdenlive structure (melt not installed: playback skipped)" if no_melt
+                 else "project.kdenlive structure + full melt playback"), kd["melt"]["ok"] is not False,
           "; ".join(kd["melt"].get("structure", [])) or kd["melt"].get("reason", "") or "ok")
     prof = ET.parse(kd["kdenlive"]).getroot().find("profile")
     check(tag + "Kdenlive <profile> is the project's rate + size",
           (prof.get("frame_rate_num"), prof.get("frame_rate_den"), prof.get("width"), prof.get("height")) ==
           (str(fps[0]), str(fps[1]), str(W), str(H)), f"{prof.get('description')}; profile file: {kd['profile']}")
+    if no_melt:
+        return
     render = ctl / "selftest_render.mp4"
     r = kdenlive.melt_check(kd["kdenlive"], render_to=render)
     check(tag + "melt headless render", r["ok"] is True, r.get("stderr", "")[-300:] if not r["ok"] else str(render))
