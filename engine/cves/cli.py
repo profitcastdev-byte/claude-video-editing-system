@@ -21,7 +21,9 @@
   cves deliver [--variants 4:5,1:1,cut15] [--only master] [--force-unchecked]   QC-stamped Export/vNNN/ (docs/DELIVERY.md)
   cves export resolve [--push] | kdenlive | all          control mode: layered media + layers.json + Resolve / Kdenlive project
   cves music search|download|generate|credit ...        Openverse (licence-checked, credits logged) + ElevenLabs/Magnific hand-off
-  cves doctor                                           check tools, models, GPU backend, fonts"""
+  cves doctor                                           check tools, models, GPU backend, fonts
+  cves learn note|rate|approve|reject|results|mine|list|show|promote|forget|study ...   self-learning (docs/LEARNING.md)
+  cves critique [vNNN|master]                           review pack: contact sheet + energy timeline + CRITIQUE.md rubric"""
 import argparse, os, sys, json, subprocess
 
 def _project(a):
@@ -55,9 +57,13 @@ def main(argv=None):
     vl = sp.add_parser("validate", help="[PROJECT]: check edit.yaml, selects.yaml and style keys (types, templates, times, ids, paths)"); vl.add_argument("dir", nargs="?"); vl.add_argument("--json", action="store_true")
     isp = sp.add_parser("inspire", help="[PROJECT] [--refs DIR] [--dry-run]: measure reference edits -> Edit/style.yaml (docs/STYLE.md)"); isp.add_argument("dir", nargs="?"); isp.add_argument("--refs"); isp.add_argument("--dry-run", action="store_true"); isp.add_argument("--max-s", type=float, default=90, help="seconds analysed per reference video")
     asx = sp.add_parser("assets", help="add | list | check | todo | resolve (media assets + provenance, docs/MEDIA.md)", add_help=False); asx.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- WS E: self-learning + senior-editor review (docs/LEARNING.md) ----
+    lrn = sp.add_parser("learn", help="note | rate | approve | reject | results | journal | mine | list | show | promote | forget | study (docs/LEARNING.md)", add_help=False); lrn.add_argument("rest", nargs=argparse.REMAINDER)
+    crq = sp.add_parser("critique", help="[vNNN|master]: contact sheet + energy timeline + CRITIQUE.md rubric -> Edit/critique/"); crq.add_argument("which", nargs="?", default="master")
+    # ---- end WS E ----
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
-        if a.cmd in ("doctor", "music", "export", "assets"): a.rest = list(getattr(a, "rest", [])) + extra
+        if a.cmd in ("doctor", "music", "export", "assets", "learn"): a.rest = list(getattr(a, "rest", [])) + extra
         else: ap.error("unrecognized arguments: " + " ".join(extra))
 
     if a.cmd == "new":
@@ -74,6 +80,8 @@ def main(argv=None):
         from . import assets; sys.exit(assets.main(a.rest, a.project))
     if a.cmd == "music":     # Openverse search/download (licence-checked, credits logged); ElevenLabs / Magnific hand-off
         from . import music; sys.exit(music.main(a.rest))
+    if a.cmd == "learn":     # WS E: journal notes / ratings / results; mine, promote, study (no project needed for mine/list/promote)
+        from . import learn; sys.exit(learn.main(a.rest, a.project))
     if a.cmd == "export" and a.target == "selftest":     # synthetic layers, no project needed
         from .export.__main__ import main as xmain; sys.exit(xmain(["selftest"] + list(a.rest)))
     if a.cmd == "beats" and a.dir: a.project = a.dir
@@ -86,8 +94,15 @@ def main(argv=None):
         for line in update(pr, a.only): print(line)
         print("relink in the editor (same paths), or rebuild the project file: `cves export resolve|kdenlive --no-build`"); return
     if a.cmd == "import-edits":  # human edits in Resolve / Kdenlive -> edit.yaml / selects.yaml + Edit/IMPORT-REPORT.md
-        from .importer import import_edits
-        rep = import_edits(pr, a.paths[-1], a.src, captions=a.captions, dry_run=a.dry_run); print(rep["summary"]); return
+        from .importer import import_edits; from . import learn
+        E0 = pr.edit; rep = import_edits(pr, a.paths[-1], a.src, captions=a.captions, dry_run=a.dry_run); print(rep["summary"])
+        learn.on_import(pr, E0, rep, a.dry_run); return     # WS E: journal what the human changed
+    if a.cmd == "critique":    # WS E: senior-editor review pack
+        from .critique import critique; r = critique(pr, a.which)
+        print(f"review pack -> {r['dir']}\n  {r['sheet']}\n  {r['timeline']}\n  {r['md']}  (fill the rubric; log it with `cves learn rate ... --by claude`)")
+        for n, u, b, s in r["budget"]:
+            if s == "OVER": print(f"  restraint budget OVER: {n} {u} > {b}")
+        return
     if a.cmd == "validate":
         from . import schema; e_, w_ = schema.validate(pr)
         print(json.dumps({"errors": e_, "warnings": w_}, indent=1) if a.json else schema.report(e_, w_)); sys.exit(1 if e_ else 0)
@@ -137,20 +152,23 @@ def main(argv=None):
     elif a.cmd == "mix":
         from .mix import mix; print(f"mix {mix(pr):.2f} s -> {pr.e('mix.wav')}")
     elif a.cmd == "encode":
-        from .encode import encode; print(encode(pr, a.out))
+        from .encode import encode; from . import learn; v = encode(pr, a.out); print(v); learn.on_build(pr, v)
     elif a.cmd == "qc":
         from . import qc
         if a.stage in ("story", "plan"):
             nf, rep = qc.run_stage(pr, a.stage); print(rep); sys.exit(1 if nf else 0)
-        v = a.video or _latest_export(pr); nf, rep = qc.run(pr, v, fast=a.fast); print(rep); sys.exit(1 if nf else 0)
+        v = a.video or _latest_export(pr); nf, rep = qc.run(pr, v, fast=a.fast); print(rep)
+        from . import learn; learn.on_qc(pr); sys.exit(1 if nf else 0)
     elif a.cmd == "deliver":
         from .deliver import deliver
         d, m = deliver(pr, a.variants, a.only, a.force_unchecked, a.video, a.keep_temp)
         for v in m["variants"]: print(f"  {v['status']:9s} {v['id']:10s} {v.get('file') or v.get('reason', '')[:160]}")
         print(("UNCHECKED (forced) " if m.get("forced_unchecked") else "") + f"delivered {m['version']} -> {d}")
+        from . import learn; learn.on_deliver(pr, m)
     elif a.cmd == "build":
         from .render import render; from .mix import mix; from .encode import encode; from . import qc, schema
-        schema.require_valid(pr); render(pr); mix(pr); v = encode(pr); nf, rep = qc.run(pr, v, fast=True); print(rep); sys.exit(1 if nf else 0)
+        schema.require_valid(pr); render(pr); mix(pr); v = encode(pr); nf, rep = qc.run(pr, v, fast=True); print(rep)
+        from . import learn; learn.on_build(pr, v); learn.on_qc(pr); sys.exit(1 if nf else 0)
     elif a.cmd == "export":     # control mode: layered media + layers.json, then the Resolve / Kdenlive project
         if a.target != "selftest" and "--no-build" not in a.rest:
             from .layered import build; print("layers ->", build(pr))

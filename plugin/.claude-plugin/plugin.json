@@ -1,7 +1,7 @@
 {
   "name": "cves",
   "displayName": "CVES Video Editor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Claude Video Editing System: a Claude-driven, style-profile-driven editor for 9:16 talking-head ads. Runs story, plan, moodboard, render, QC and Resolve/Kdenlive export through the local cves engine, with two user approvals and QC gates before anything is shown.",
   "author": {
     "name": "CVES"

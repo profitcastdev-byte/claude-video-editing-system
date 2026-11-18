@@ -14,17 +14,24 @@ in the [key reference](#key-reference) below.
 
 ## Merge order
 
-`style.load(pr)` merges five layers. A later layer wins, key by key (nested mappings merge; lists and scalars replace):
+`style.load(pr)` merges seven layers. A later layer wins, key by key (nested mappings merge; lists and scalars replace):
 
 | # | layer | written by | typical content |
 |---|---|---|---|
 | 1 | `engine/cves/styles/default.yaml` | the engine | neutral defaults, no brand, no house look |
-| 2 | `engine/cves/styles/<preset>.yaml`, named by `edit.yaml style: {preset: <name>}` | a person | a reusable house look, e.g. `profitcast-dark` |
-| 3 | `PROJECT/Edit/style.yaml` | `cves inspire` | the look measured from the client's reference edits, with `_evidence` |
-| 4 | `PROJECT/Brand/style.yaml` | the client / a person | brand tokens: logo colours, fonts |
-| 5 | `edit.yaml style:` (keys other than `preset`) | Claude / a person | per-video overrides |
+| 2 | `knowledge-base/taste/learned.yaml` (repo learned) | `cves learn promote --share` (a person approves) | team taste, shared through git; global / goal / platform sections |
+| 3 | `~/.cves/taste/learned.yaml` (personal learned) | `cves learn promote` (a person approves) | your taste; may hold `client:<name>` sections |
+| 4 | `engine/cves/styles/<preset>.yaml`, named by `edit.yaml style: {preset: <name>}` | a person | a reusable house look, e.g. `profitcast-dark` |
+| 5 | `PROJECT/Edit/style.yaml` | `cves inspire` | the look measured from the client's reference edits, with `_evidence` |
+| 6 | `PROJECT/Brand/style.yaml` | the client / a person | brand tokens: logo colours, fonts |
+| 7 | `edit.yaml style:` (keys other than `preset`) | Claude / a person | per-video overrides |
 
-`S["_sources"]` lists the layers that were found, e.g. `["default", "preset:profitcast-dark", "inspire", "edit.yaml"]`.
+The learned layers apply only their sections whose scope matches the project: `global`, `goal:<ad|viral>` (from
+`edit.yaml goal:`), `platform:<name>` (from `edit.yaml platform.target`), `client:<name>` (from `project.client`), joined
+with `+` for several conditions. General sections merge first, specific ones last. Learned layers may hold only keys of
+`default.yaml` (`cves learn promote` checks). Details: [LEARNING.md](LEARNING.md).
+
+`S["_sources"]` lists the layers that were found, e.g. `["default", "learned:personal", "preset:profitcast-dark", "inspire", "edit.yaml"]`.
 Keys that start with `_` (`_evidence`, `_inspire`) are notes: the engine never reads them.
 
 So the measured look (3) beats the house preset (2), and the brand (4) and the edit (5) beat the measurement. To keep a
@@ -460,3 +467,15 @@ text over video (captions, chest, roto): WCAG targets and the auto bed (GFX-15)
 | `locale.grouping` | `intl` | number grouping in stat / counter / chart: intl (1,234,567) / indian (12,34,567) / none |
 | `locale.thousands` | `,` | thousands separator |
 | `locale.decimal` | `.` | decimal separator |
+
+#### `creative`
+
+The restraint budget of `knowledge-base/CREATIVE.md` §2. `cves critique` reports usage against it in `CRITIQUE.md`; it is
+advisory (not a QC gate). Per-30 s budgets give a video shorter than 30 s one full allowance.
+
+| key | default | meaning |
+|---|---|---|
+| `creative.signature_per_30s` | `1` | signature moments (the extreme punch-in, a motion piece marked `signature: true`, a hard music hit) per 30 s |
+| `creative.transition_kinds_max` | `2` | distinct transition kinds in one video, cut not counted |
+| `creative.motion_pieces_per_30s` | `6` | animated graphics (cutaways, roto, chest, motion pieces, end card) per 30 s |
+| `creative.accent_colors_max` | `1` | accent colours beyond the text colour and the stage |

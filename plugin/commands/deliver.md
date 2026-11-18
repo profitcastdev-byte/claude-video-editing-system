@@ -41,3 +41,8 @@ Tell the user:
 - the WARN list from QC.
 
 Do not attach files.
+
+## After delivery: ask and log
+- Ask the user for a 1-10 rating of the delivered version and one line why. Log it: `cves learn rate vNNN <score> --why "<their words>"` (`--by client` for the client's verdict); an explicit sign-off is `cves learn approve vNNN`, a refusal `cves learn reject vNNN --why ".."`.
+- When the user later shares platform numbers, log them: `cves learn results vNNN --platform meta --hook-rate .. --hold .. --ctr ..`.
+- Every few deliveries, run `cves learn mine` and offer the new candidates (`/cves:learn`); promote only what the user approves.

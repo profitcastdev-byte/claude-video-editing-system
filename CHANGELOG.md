@@ -3,6 +3,16 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Added
+- **Self-learning** (`cves learn`, docs/LEARNING.md): every project keeps an append-only `Edit/journal.jsonl` (build facts, edit.yaml revisions, QC results, deliveries, editor changes from `import-edits`, critiques, plus notes, ratings, approvals and platform results logged with `cves learn note|rate|approve|reject|results`). `cves learn mine` turns all journals into candidate patterns (repeated human corrections, decisions that go with better ratings or results with n ≥ 3, recurring notes); `promote` / `reject` / `forget` keep a person in charge of every change. `cves learn study <folder>` measures great reference videos (ad vs viral) into `~/.cves/taste/study.json`.
+- **Learned style layers**: `knowledge-base/taste/learned.yaml` (shared, anonymised, via `--share`) and `~/.cves/taste/learned.yaml` (personal), scoped by goal / platform / client. Merge order is now default → repo learned → personal learned → preset → inspire → Brand → edit.yaml (docs/CONTRACTS.md §1). Shared patterns are listed in `knowledge-base/TASTE.md`; shared rules become `LESSONS.md` rows.
+- **`cves critique [vNNN|master]`**: a senior-editor review pack in `Edit/critique/` (contact sheet per shot and key moment, energy / interrupt timeline, measured facts, restraint-budget usage, and a fixed 10-line rubric in `CRITIQUE.md` that Claude scores and logs with `cves learn rate --by claude`).
+- **`knowledge-base/CREATIVE.md`**: the creative method: creative direction before the plan (`Edit/DIRECTION.md`), the restraint budget, contrast and rhythm, taste checks.
+- **Style keys** `creative.signature_per_30s`, `creative.transition_kinds_max`, `creative.motion_pieces_per_30s`, `creative.accent_colors_max` (advisory budget read by `cves critique`).
+- **Plugin**: `/cves:learn` and `/cves:critique`; the `video-editor` skill adds the creative-direction step, the critique pass after QC, and journaling of notes and ratings.
+
 ## [0.2.0] - 2026-11-18
 The engine becomes a general autonomous editor: no look, client or footage format is hard-coded.
 

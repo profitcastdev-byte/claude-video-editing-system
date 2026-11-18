@@ -24,7 +24,7 @@ The craft comes from a 73-video curriculum covering motion, editing, graphic des
 7. Render → beat-synced mix → encode → `cves qc`. Claude fixes until there are 0 FAILs.
 8. `cves deliver`: a versioned `Export/vNNN/` with the master, captions, cover, 4:5 / 1:1 / 16:9 reframes, hook, end-card and music variants, and 15 / 30 s cut-downs. Every variant passes QC itself, and delivery refuses a file QC hasn't approved.
 
-Your notes become rules or gates, so they never come back (`LESSONS.md`).
+Your notes become rules or gates, so they never come back (`LESSONS.md`). CVES also journals every edit, note, rating and result, mines them for repeated patterns, and proposes them as taste you approve (`cves learn`, `docs/LEARNING.md`): nothing changes the look until a person promotes it.
 
 ## Try it without footage
 ```bash
