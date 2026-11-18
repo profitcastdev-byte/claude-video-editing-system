@@ -83,7 +83,7 @@ def measure(frames, r=None):
         if mid.sum() > 100: a_.append(np.median(lab[..., 1][mid]) - 128); b_.append(np.median(lab[..., 2][mid]) - 128)
         g = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY).astype(np.float32)
         res = g - cv2.GaussianBlur(g, (0, 0), 1.2); grad = cv2.GaussianBlur(np.abs(cv2.Sobel(g, cv2.CV_32F, 1, 0)) + np.abs(cv2.Sobel(g, cv2.CV_32F, 0, 1)), (0, 0), 2)
-        flat = grad < np.percentile(grad, 30)
+        flat = (grad < np.percentile(grad, 30)) & (g > 30) & (g < 225)     # clipped blacks / whites carry no noise
         if flat.sum() > 200: noise.append(float(np.median(np.abs(res[flat])) * 1.4826))
         hh, ww = Y.shape; k = max(4, int(.12 * min(hh, ww)))
         cor = np.mean([Y[:k, :k].mean(), Y[:k, -k:].mean(), Y[-k:, :k].mean(), Y[-k:, -k:].mean()])

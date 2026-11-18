@@ -143,15 +143,16 @@ def decide(per_ref, pooled, meta, defaults, forced=None, min_conf=.5):
         elif auth:
             src = sorted(auth, key=lambda l: (-rank_w[l], -weight[l]))[0]; rule = f"refs.yaml: {src} is the {dim} authority"
         elif dim == "other" or cons is None or cons >= AGREE or len(have) < 2:
-            rule = "pooled: " + ("one ref measured it" if len(have) < 2 else f"refs agree (consistency {cons})" if cons is not None else "pooled")
+            rule = ("not measured in any ref" if not have else "pooled: " + ("one ref measured it" if len(have) < 2 else f"refs agree (consistency {cons})" if cons is not None else "pooled"))
         else:
             def score(l):
                 dist = [distance(cands[l][k], defaults.get(k)) for k in cands[l] if defaults.get(k) is not None]
                 conf = np.mean([per_ref[l].conf.get(k, 0) for k in cands[l]]) if cands[l] else 0
                 return rank_w[l] * weight[l] * (.5 + (float(np.mean(dist)) if dist else .5)) * float(conf)
             sc = {l: score(l) for l in have}; src = max(sc, key=sc.get)
-            rule = f"refs disagree (consistency {cons}): strongest look x rank -> {src} (" + ", ".join(f"{l} {sc[l]:.2f}" for l in have) + ")"
-        plan[dim] = dict(source=src or "pooled", rule=rule, consistency=cons, keys=keys)
+            top = sorted(sc, key=sc.get, reverse=True)[:3]
+            rule = f"refs disagree (consistency {cons}): strongest look x rank -> {src} (scores " + ", ".join(f"{l} {sc[l]:.2f}" for l in top) + (", ..." if len(sc) > 3 else "") + ")"
+        plan[dim] = dict(source=src or ("pooled" if have else "-"), rule=rule, consistency=cons, keys=keys)
         for k in keys:
             if src and k in per_ref[src].keys:
                 c = per_ref[src].conf[k]

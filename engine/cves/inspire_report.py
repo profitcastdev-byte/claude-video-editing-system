@@ -10,6 +10,9 @@ BLOCKS = "▁▂▃▄▅▆▇█"
 def spark(xs):
     xs = [x for x in (xs or []) if x is not None]
     if not xs: return ""
+    if len(xs) > 30:      # one block per ~2 s on long references
+        import numpy as np
+        xs = [float(np.mean(c)) for c in np.array_split(np.array(xs, float), 30)]
     lo, hi = min(xs), max(xs)
     return "".join(BLOCKS[int((x - lo) / (hi - lo) * 7) if hi > lo else 3] for x in xs)
 
@@ -120,7 +123,7 @@ def write(dirp, R, labels, meta, plan, keys, dropped, refs_dir, written, aest=Tr
         L += ["", f"## {i}. {lab}" + (f"  ({tag})" if tag else ""), ""]
         if m.get("notes"): L += [f"> {m['notes']}", ""]
         s = r.get("see") or {}
-        if s.get("sheet"): L += [f"![contact sheet]({os.path.basename(s['sheet'])})", ""]
+        if s.get("sheet"): L += [f"![contact sheet](<{os.path.basename(s['sheet'])}>)", ""]
         L += ["**See**", ""] + _see(s) + [""]
         if r.get("kind") == "video":
             L += ["**Hear**", ""] + _hear(r.get("hear")) + ["", "**Feel**", ""] + _feel(r.get("feel"))
