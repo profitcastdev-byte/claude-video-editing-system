@@ -194,3 +194,13 @@ Binary checklists, one per stage of an edit, merged and de-duplicated from the B
 - [ ] Only failed gates and noted items were changed; nothing that passed was re-cut by taste. [6.6]
 - [ ] CALIBRATE thresholds touched by this ad have been re-measured on the inspirations and logged.
 - [ ] After launch, Meta hold rate (3-s views ÷ impressions), ThruPlay and retention drop points are recorded against beat boundaries. [4.4, 6 B.7#8, 9 B.7#9]
+
+## 12. Viral (`goal: viral`; `modules/viral-playbook.md`)
+- [ ] `goal: viral` and `platform.target` are set; the brief names the hook type, the structure, whether it loops, and the trending sound (if any).
+- [ ] The hook was designed first: a visual change by 1.0 s (RET-24) and text or a strong subject by 1.0 s (RET-25); no banned opener (RET-08).
+- [ ] The payoff lands in the last 20 % (RET-29); nothing but the loop seam or a ≤ 1 s button follows it; no outro card.
+- [ ] Interrupts: none further apart than `rhythm.interrupt_max_s` (RET-26), no effect soup (RET-27); re-hooks every 5-8 s.
+- [ ] Loop posts: `structure.loop: true`, and the seam reads as a cut, not a restart (RET-28); watched three times in a row.
+- [ ] No dead air over 0.6 s (RET-31); the length is inside the platform band (RET-30).
+- [ ] Text, captions and stickers clear the platform UI (PLAT-02 with the target's zone); checked with the platform's overlay.
+- [ ] Trending sound: `music.slot: platform` with a guide; the master has no music (SND-04), the cuts sit on the guide beat (RET-32), and POSTING.md names the sound, its start point and the drop. Never on an ad.

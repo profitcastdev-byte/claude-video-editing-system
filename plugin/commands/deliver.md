@@ -32,6 +32,7 @@ Optional cover settings:
 - Read `Export/vNNN/manifest.json`: each variant shows `delivered` or `failed` with a reason.
 - For each failed variant, read `qc/<id>.QC-REPORT.txt` and fix the cause in `edit.yaml` (a re-timed variant can drop a cutaway whose shots were split up). Then deliver again. A new `vNNN` is created; old versions are never overwritten.
 - Look at the cover JPG and one frame of each reframe before telling the user.
+- `music.slot: platform` (organic post, trending sound): check `POSTING.md` and `<master>.guide.wav` are in the folder; tell the user the master has no music on purpose and pass on POSTING.md (the sound, its start point, the drop).
 
 ## Show the user
 Tell the user:

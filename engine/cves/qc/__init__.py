@@ -21,7 +21,9 @@ def run(pr, video, fast=False, stage=None):
     S = STY.load(pr); E = pr.edit; Q = E.get("qc", {}) or {}; TLm = pr.json("timeline.json", {})
     FPS = TLm.get("fps") or 30.0; FR = TLm.get("fps_rational")
     PW, PH = TLm.get("size") or S.get("platform.size")
-    META_ZONE = tuple(S.get("platform.safe_zone") or (0, 0, PW, PH)); HOUSE_MARGIN = S.get("platform.margin", 60)
+    from .. import platforms as PF      # platform.target: UI safe zone as fractions of THIS frame (any canvas size)
+    META_ZONE = tuple(PF.safe_zone(S, PW, PH) or (0, 0, PW, PH)); HOUSE_MARGIN = S.get("platform.margin", 60)
+    CAP_BOTTOM = PF.caption_bottom(S, PH); ZONE_NAME = S.get("platform.target") or "style platform.safe_zone"
     G_ = S.get("grammar") or {}
     faces = pr.json("faces.json", {})
 
@@ -122,13 +124,14 @@ def run(pr, video, fast=False, stage=None):
             if e["role"] in ("caption", "chest", "cutaway", "end") and e.get("text"):
                 if min(x0, y0) < HOUSE_MARGIN or x1 > PW - HOUSE_MARGIN or y1 > PH - HOUSE_MARGIN: margin_bad.append(f"f{e['f']} {e['id']} {e['bbox']}")
                 if (x0 < META_ZONE[0] or y0 < META_ZONE[1] or x1 > META_ZONE[2] or y1 > META_ZONE[3]): zone_bad.append((e["id"], e["bbox"], e["role"]))
+                elif CAP_BOTTOM is not None and e["role"] == "caption" and y1 > CAP_BOTTOM: zone_bad.append((e["id"], e["bbox"], e["role"]))   # under the platform's caption line
         gate("FRAME-01", not over, f"text/graphics vs face on {len(els)} element-frames", "\n".join(over[:12]))
         gate("PLAT-01", not margin_bad, f"all text inside the {HOUSE_MARGIN} px margin", "\n".join(margin_bad[:8]))
         # CTA, prices, pills and end-card elements must sit inside the Reels zone. An on-chest brand logo under a close framing
         # cannot fit between chin and y 1248; it warns (the end card carries the in-zone logo). DECISIONS.md #2
         key_roles = [z for z in zone_bad if any(k in z[0] for k in ("price", "pill", "end."))]
         others = sorted(set(z[0] for z in zone_bad if z not in key_roles))
-        gate("PLAT-02", not key_roles, f"platform safe zone {META_ZONE}: {len(set(z[0] for z in key_roles))} key elements outside, {len(others)} other text elements outside",
+        gate("PLAT-02", not key_roles, f"platform safe zone ({ZONE_NAME}) {META_ZONE}: {len(set(z[0] for z in key_roles))} key elements outside, {len(others)} other text elements outside",
              "\n".join(sorted(set(f"{z[0]} {z[1]}" for z in key_roles))[:8]) + ("\nother (warn): " + ", ".join(others[:10]) if others else ""),
              status=None if key_roles else ("WARN" if others else "PASS"))
         for i_, e in first_seen.items():
@@ -152,10 +155,15 @@ def run(pr, video, fast=False, stage=None):
         vo, sr = sf.read(pr.e("voice_final.wav")); vo = vo.mean(1) if vo.ndim > 1 else vo
         mu, _ = sf.read(pr.e("stems", "music.wav")); mu = mu.mean(1) if mu.ndim > 1 else mu
         sx, _ = sf.read(pr.e("stems", "sfx.wav")); n = min(len(vo), len(mu), len(sx))
-        sf.write(os.path.join(tmp, "bed.wav"), mu[:n] + sx[:n], sr); sf.write(os.path.join(tmp, "vo.wav"), sf.read(pr.e("stems", "voice.wav"))[0][:n], sr)
-        lu = lufs(os.path.join(tmp, "bed.wav"))[0] - lufs(os.path.join(tmp, "vo.wav"))[0]
-        bed = (E.get("music") or {}).get("bed_lu", S.get("sound.bed_lu", -10))
-        gate("SND-04", bed - 2.5 <= lu <= bed + 3, f"music+SFX bed {lu:+.1f} LU vs voice (target {bed})")
+        from .. import guide as GD
+        if GD.is_slot(pr):     # music.slot: platform: the sound is added in the app; the master must carry no music at all
+            mpk = 20 * np.log10(np.abs(mu).max() + 1e-12) if len(mu) else -240.0
+            gate("SND-04", mpk <= -60, f"music.slot: platform: music stem peak {mpk:.0f} dBFS (none in the master); the bed level is set in the app (POSTING.md)")
+        else:
+            sf.write(os.path.join(tmp, "bed.wav"), mu[:n] + sx[:n], sr); sf.write(os.path.join(tmp, "vo.wav"), sf.read(pr.e("stems", "voice.wav"))[0][:n], sr)
+            lu = lufs(os.path.join(tmp, "bed.wav"))[0] - lufs(os.path.join(tmp, "vo.wav"))[0]
+            bed = (E.get("music") or {}).get("bed_lu", S.get("sound.bed_lu", -10))
+            gate("SND-04", bed - 2.5 <= lu <= bed + 3, f"music+SFX bed {lu:+.1f} LU vs voice (target {bed})")
         pm, _ = sf.read(pr.e("mix_premaster.wav")); clip = int((np.abs(pm) >= .999).sum())
         gate("SND-03", clip == 0, f"{clip} clipped samples")
         h = int(.02 * sr); dbv = 20 * np.log10(np.array([np.sqrt(np.mean(vo[i:i + h] ** 2)) for i in range(0, len(vo) - h, h)]) + 1e-9)
@@ -193,6 +201,12 @@ def run(pr, video, fast=False, stage=None):
     try:
         from ..assets import qc_assets; qc_assets(pr, gate)          # AST-01: every asset registered, unchanged, with provenance
     except ImportError: pass
+    from . import retention as RT                                     # RET-24..RET-32: hook, interrupts, loop, payoff, platform, dead air, guide
+    try: RT.run_retention(pr, video, gate, S)
+    except Exception as e:
+        done = {r[0] for r in R}
+        for g in RT.IDS:
+            if g not in done: gate(g, False, f"not measured: {type(e).__name__}: {e}", status="WARN")
 
     order = {"FAIL": 0, "WARN": 1, "PASS": 2}; R.sort(key=lambda x: (order.get(x[1], 3), x[0]))
     nf, nw, npass = (sum(r[1] == s for r in R) for s in ("FAIL", "WARN", "PASS"))

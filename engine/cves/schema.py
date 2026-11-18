@@ -37,6 +37,7 @@ CUT = {"id!": "str|int", "template!": "str", "start!": "time", "end!": "time", "
        "snap": "bool", "params": "dict", "sfx": "any", "note": "str", "beat": "str"}
 SEGREF = {"segment!": "segref", "template!": "str", "params": "dict", "note": "str"}
 EDIT = {
+    "goal": "str",            # ad (default) | viral: the goal layer, QC profile and music-slot rules (docs/VIRAL.md)
     "project": {"client": "str", "title": "str", "fps": "number|list|str", "size": "list", "raw": "path|null", "sources": "list", "language": "str"},
     "style": "style",
     "edl": "str",
@@ -216,7 +217,8 @@ def _captions(v, path, val):
 def _music(v, path, val):
     if not isinstance(val, dict): v.err(path, f"expected a mapping, got {_tname(val)}"); return
     own = {"file": "path|null", "drop_track": "number", "drop_cut": "number", "bed_lu": "number", "credits": "str", "offset": "number",
-           "gain_db": "number", "fade_out": "number", "start": "number", "licence": "str", "license": "str", "url": "str", "beats": "any"}
+           "gain_db": "number", "fade_out": "number", "start": "number", "licence": "str", "license": "str", "url": "str", "beats": "any",
+           "slot": "str", "guide": "any", "sound": "str"}      # slot: file (default) | platform (organic: the sound is added in-app; cves.guide)
     sty = (_default_style().get("music") or {})
     for k, x in val.items():
         p = f"{path}.{k}"
@@ -239,15 +241,50 @@ def _assets(v, path, val):
             if not os.path.exists(q if os.path.isabs(q) else v.pr.p(q)): v.warn(f"{p}.path", f"file not found yet: {q} (`cves assets add --id {k} --file ...`)")
 
 
+def _goal_and_slot(v, E):
+    """edit.yaml goal (ad | viral) and music.slot (file | platform): an ad never uses the platform slot (RULEBOOK §0.12)"""
+    from . import style as STY, guide as GD
+    g = E.get("goal")
+    if g is not None and (not isinstance(g, str) or g.strip().lower() not in STY.GOALS):
+        v.err("goal", f"expected one of {', '.join(STY.GOALS)}, got {_show(g)}{_did_you_mean(str(g), STY.GOALS)}")
+    M = E.get("music")
+    if not isinstance(M, dict): return
+    slot = M.get("slot")
+    if slot is None: return
+    if not isinstance(slot, str) or slot.strip().lower() not in ("file", "platform"):
+        v.err("music.slot", f"expected file or platform, got {_show(slot)}"); return
+    if slot.strip().lower() != "platform": return
+    if str(g or "ad").strip().lower() != "viral":
+        v.err("music.slot", "platform is for organic posts (goal: viral) only: an ad must carry licensed music in the file (RULEBOOK §0.12)")
+    if M.get("file"): v.err("music.file", "music.slot: platform delivers no music: remove music.file (put the reference track in music.guide)")
+    for m in GD.problems(_EditView(v.pr, E)): v.err("music.guide", m.split(": ", 1)[-1] if m.startswith("music.guide") else m)
+
+
+class _EditView:
+    """a project whose edit is the dict being validated (validate() may be handed an edit that is not on disk yet)"""
+    def __init__(self, pr, E): self._pr, self.edit = pr, E
+    def p(self, *a): return self._pr.p(*a)
+    def e(self, *a): return self._pr.e(*a)
+
+
+def _platform_target(v, d, path):
+    t = ((d or {}).get("platform") or {}).get("target") if isinstance((d or {}).get("platform"), dict) else None
+    if t in (None, "", "none", "null"): return
+    from . import platforms as PF
+    if not isinstance(t, str) or t.strip().lower() not in PF.names():
+        v.err(f"{path}.platform.target" if path else "platform.target", f"unknown platform {_show(t)} (one of {', '.join(PF.names())}){_did_you_mean(str(t), PF.names())}")
+
+
 def _style_section(v, path, val):
     if not isinstance(val, dict): v.err(path, f"expected a mapping ({{preset: name}} and/or style keys), got {_tname(val)}"); return
     pre = val.get("preset")
     if pre is not None:
         if not isinstance(pre, str): v.err(f"{path}.preset", f"expected a preset name, got {_tname(pre)}")
-        elif not os.path.exists(os.path.join(HERE, "styles", f"{pre}.yaml")):
-            names = [f[:-5] for f in os.listdir(os.path.join(HERE, "styles")) if f.endswith(".yaml")]
+        elif pre in ("default", "platforms") or not os.path.exists(os.path.join(HERE, "styles", f"{pre}.yaml")):
+            names = [f[:-5] for f in os.listdir(os.path.join(HERE, "styles")) if f.endswith(".yaml") and f[:-5] not in ("default", "platforms")]
             v.err(f"{path}.preset", f"style preset '{pre}' not found in engine/cves/styles{_did_you_mean(pre, names)}")
     check_style(v, {k: x for k, x in val.items() if k != "preset"}, path)
+    _platform_target(v, val, path)
 
 
 SPECIAL = {"zoommap": _zoommap, "captions": _captions, "music": _music, "assets": _assets, "style": _style_section}
@@ -547,11 +584,12 @@ def validate(pr, edit=None):
     _load_timeline(v, edit)
     _check(v, "", edit, EDIT)
     _edit_specific(v, edit)
+    _goal_and_slot(v, edit)
     for name, p in (("Edit/style.yaml", pr.e("style.yaml")), ("Brand/style.yaml", pr.p("Brand", "style.yaml"))):
         if os.path.exists(p):
             try:
                 with open(p, encoding="utf-8") as fh: d = yaml.safe_load(fh) or {}
-                if isinstance(d, dict): check_style(v, d, name)
+                if isinstance(d, dict): check_style(v, d, name); _platform_target(v, d, name)
                 else: v.err(name, "expected a mapping of style keys")
             except yaml.YAMLError as e: v.err(name, f"YAML syntax error: {_yerr(e)}")
     pre = (edit.get("style") or {}).get("preset") if isinstance(edit.get("style"), dict) else None

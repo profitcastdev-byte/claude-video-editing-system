@@ -104,6 +104,15 @@ Ask once per project which mode the user wants, if they haven't said. The defaul
 - **Vibe mode (prompts only).** The user gives notes in words ("the price card is too fast"). You map each note to `edit.yaml` changes, re-render only what changed, re-run `cves qc` to 0 FAILs, and send the MP4 with a one-line change log per note. See `/cves:notes`.
 - **Control mode (hands on).** You export a layered project (`cves export resolve` or `cves export kdenlive`) and drive the editor: DaVinci Resolve live through the `davinci-resolve-mcp` bridge (Workspace > Scripts > CursorBridge, works on Resolve Free), or Kdenlive through its MCP server by editing the `.kdenlive` file. The user then edits by hand. Baked graphics (text inside a card) still change through `edit.yaml` → `cves render --only <id>` → relink. Anything that leaves Resolve or Kdenlive must pass the same final-file gates. See `/cves:resolve` and `/cves:kdenlive`.
 
+## 5b. goal: viral (organic posts)
+When the video is an organic post (Reels, TikTok, Shorts, YouTube) rather than a paid ad, set `goal: viral` in `edit.yaml`
+and read `knowledge-base/modules/viral-playbook.md` (RULEBOOK §12, `docs/VIRAL.md`). The workflow and both approvals stay;
+the goal layer (`styles/viral.yaml`) changes the defaults and `cves qc` adds the retention gates RET-24 to RET-32.
+- **Brief (step 1):** ask, in the same single message, for the **hook type** (curiosity gap, pattern break, bold claim, visual question, in media res, "wait for it" shown), the **structure** (loop, list, story arc, before/after, tutorial), the **platform** (`platform.target`: reels, tiktok, shorts, youtube, meta_feed, meta_stories), whether it **loops**, and the **trending sound** if one will be added in the app. Write them in `Edit/NOTES.md`.
+- **Story (step 3):** design the hook first: the first second as picture and words, with a visual change and text or a strong subject by 1 s. Then the payoff (it lands in the last 20 %), then the middle as a chain of re-hooks. Re-order takes to put the hook line first. Show the hook and the payoff at the top of the cut list.
+- **Plan (step 4):** budget the pattern interrupts before placing graphics: one every ≤ `rhythm.interrupt_max_s` (2.5 s), never a sustained run closer than `rhythm.interrupt_min_s` (no effect soup). List the interrupts with their times in the plan summary. Set `style: {structure: {loop: true}}` for a loop.
+- **Music:** licensed music in the file as usual, or, for a trending sound, `music: {slot: platform, guide: <reference track or tempo>, sound: "<name>"}`: cut to the guide (`cves beats --sync cuts --apply`), deliver a music-free master with the guide stem and POSTING.md. **Never** use the slot for an ad.
+
 ## 6. Notes become rules
 Every note the user gives is a fix now **and** a rule for later, so the same mistake can't happen twice (RULEBOOK §11):
 0. Journal it first, verbatim: `cves learn note "<the user's exact words>"` (with `--version vNNN` if it is about a delivered version). Builds, QC, deliveries and `import-edits` are journaled automatically.
@@ -123,7 +132,7 @@ If you can't open a PR (no git access or no `gh`), write the proposed diff into 
 
 ## 7. Hard limits
 - Don't touch the raw footage. Never commit footage, client media, API keys or unlicensed music to the repo.
-- Use only licensed music, and record its credits in `PROJECT/Music/CREDITS.md`. See `/cves:music`.
+- Use only licensed music, and record its credits in `PROJECT/Music/CREDITS.md`. See `/cves:music`. A trending sound for an organic post is added in the app, never put in the file (`music.slot: platform`, §5b).
 - Never use generative voice enhancement or synthesised speech to fix a line. Choose another take, or ask for a pickup.
 - Icons come from the Material set in `assets/icons/` only.
 - Keep the full sign-off. Snap every edit to a segment boundary. Tag the delivered file's colour `tv/bt709`. (RULEBOOK §0 lists all ten non-negotiables.)

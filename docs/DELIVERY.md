@@ -67,8 +67,23 @@ NNN auto-increments. The folder is built in `Export/.staging-*` and renamed at t
 | `<title>_<variant>.mp4` | each variant that passed its QC (+ `.srt` / `.vtt` for re-timed variants) |
 | `qc/<variant>.qc.json`, `qc/<variant>.QC-REPORT.txt` | each variant's QC, delivered or not |
 | `manifest.json` | see below |
+| `<title>.guide.wav`, `POSTING.md` | only with `music.slot: platform` (organic posts, [VIRAL.md](VIRAL.md) §4): the guide stem the edit was cut to, and the posting notes (see below) |
 
 `manifest.json`: `version`, `created`, `cves_version`, `qc_verified`, `master`, `master_sha256`, `qc` (the master stamp summary), `fps_rational`, `size`, `cover` (`t`, `how`, `title`), `style_sources`, `variants` (`id`, `kind`, `definition`, `status` (delivered | failed), `reason`, `qc`, `notes`, `file`) and `files` (`path`, `bytes`, `sha256`, and for media `duration`, `width`, `height`, `fps`, `frames`).
+
+### Platform sound slot (`music.slot: platform`)
+
+An organic post cut to a trending sound ships **without music**: the platform licenses the sound when the poster adds it
+in the app. The delivery then also holds:
+- `<title>.guide.wav`: `Edit/stems/guide.wav`, the reference track laid where the edit expects it (or a click track for a
+  bare tempo). It is for checking sync only, never for upload.
+- `POSTING.md`: the sound to add (`music.sound`), the tempo, where to start the sound in the track (`offset`, track seconds
+  at the video's first frame), where the drop lands in the video, the length against the `platform.target` band, the
+  in-app steps, and the first cuts against the nearest beat.
+- `manifest.json` gains `music_slot`: `slot`, `guide`, `posting`, `sound`, `tempo`, `start_in_track_s`, `drop_cut_s`, `platform`.
+
+QC for the slot: SND-04 checks the music stem is silent (FAIL if any music reached the master), RET-32 checks the cuts against
+the guide beat, RET-31 counts the guide as sound. Delivery refuses if `Edit/stems/guide.wav` is missing. Ads can't use the slot.
 
 ### Cover
 

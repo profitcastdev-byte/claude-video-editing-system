@@ -17,7 +17,7 @@ where = ["."]
 include = ["cves*"]
 
 [tool.setuptools.package-data]
-cves = ["styles/*.yaml", "styles/*.md"]
+cves = ["styles/*.yaml", "styles/*.md"]   # includes styles/platforms.yaml (platform profiles) and styles/viral.yaml
 
 [project.optional-dependencies]
 test = ["pytest"]

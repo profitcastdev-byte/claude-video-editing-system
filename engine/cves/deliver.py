@@ -4,6 +4,9 @@ Writes a new, never-overwritten Export/vNNN/ folder: the QC'd master, SRT + WebV
 qc.json + QC-REPORT.txt, edit.yaml + the merged style snapshot, every variant that passed its own QC, and manifest.json
 (files, sha256, durations, sizes, fps, cves version, variant definitions and results).
 
+`music.slot: platform` (organic posts): the master has no music; the delivery adds the guide stem (`<master>.guide.wav`)
+and POSTING.md (which sound to add in the app, where to start it, where the drop lands; cves.guide).
+
 Refuses unless Edit/qc.json exists, has fail == 0 and its sha256 equals the master's: re-encoding without re-running QC
 blocks. `--force-unchecked` delivers anyway and writes a loud warning into the manifest."""
 import os, re, sys, json, shutil, tempfile, datetime, subprocess
@@ -170,6 +173,27 @@ def _jsonable(o):
     return o
 
 
+# ------------------------------------------------------------------ platform sound slot
+def _platform_slot(pr, S, stage, base, master):
+    """music.slot: platform -> copy Edit/stems/guide.wav as <master>.guide.wav and write POSTING.md; None otherwise"""
+    from . import guide as GD
+    if not GD.is_slot(pr): return None
+    src = pr.e("stems", "guide.wav")
+    if not os.path.exists(src): raise SystemExit("music.slot: platform but Edit/stems/guide.wav is missing: run `cves mix` (and encode + qc) again")
+    from .variants import probe
+    T = float(probe(master).get("format", {}).get("duration", 0))
+    g = GD.grid(pr, T, S)
+    if g is None: raise SystemExit("music.slot: platform: " + ("; ".join(GD.problems(pr)) or "no guide grid"))
+    gname = os.path.basename(base) + ".guide.wav"; shutil.copy2(src, os.path.join(stage, gname))
+    tl = pr.json("timeline.json", {}) or {}
+    cuts = sorted(set([round(s_["t0"], 3) for s_ in tl.get("segments", [])[1:]] + [round(c["start"], 3) for c in tl.get("cutaways", [])]
+                      + [round(c["end"], 3) for c in tl.get("cutaways", [])]))
+    with open(os.path.join(stage, "POSTING.md"), "w", encoding="utf-8") as f:
+        f.write(GD.posting_md(pr, S, os.path.basename(master), gname, T, g, cuts))
+    return {"slot": "platform", "guide": gname, "posting": "POSTING.md", "sound": g["spec"].get("sound"), "tempo": g.get("tempo"),
+            "start_in_track_s": g.get("offset"), "drop_cut_s": g.get("drop_cut"), "platform": S.get("platform.target")}
+
+
 # ------------------------------------------------------------------ deliver
 def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, keep_temp=False):
     import yaml
@@ -200,6 +224,7 @@ def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, kee
             with open(pr.e("elements.jsonl"), encoding="utf-8") as f:
                 txt = [(e["bbox"][1], e["bbox"][3]) for e in map(json.loads, f) if e["f"] == fi and e["role"] in ("caption", "chest", "cutaway")]
         draw_cover(pr, S, img, (E.get("delivery") or {}).get("cover_title"), base + ".cover.jpg", [fbox] + txt)
+        slot_info = _platform_slot(pr, S, stage, base, master)
         shutil.copy2(pr.e("edit.yaml"), os.path.join(stage, "edit.yaml"))
         with open(os.path.join(stage, "style.yaml"), "w", encoding="utf-8") as f:
             f.write(f"# merged style profile used for this delivery; sources (later wins): {', '.join(S.get('_sources') or [])}\n")
@@ -251,6 +276,7 @@ def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, kee
                "qc": {k: (stamp or {}).get(k) for k in ("fail", "warn", "pass", "sha256", "created", "fast")},
                "fps_rational": None, "cover": {"t": round(ct, 3), "how": how, "title": (E.get("delivery") or {}).get("cover_title")},
                "style_sources": S.get("_sources"), "variants": results}
+        if slot_info: man["music_slot"] = slot_info
         from .encode import stream_params
         fr, size = stream_params(pr); man["fps_rational"] = fr; man["size"] = list(size)
         if probs: man = {"WARNING": FORCE_WARNING, "forced_unchecked": True, "unchecked_reasons": probs, **man}

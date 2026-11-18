@@ -79,6 +79,22 @@ These are the open conflicts that need your call, most important first. They wer
 25. **Source frame rate and extreme-punch resolution.** 9.5 exports at 30 fps; CVES renders at the source rate. 7 B.7#8 worried that the 1.55× punch would upscale, but the test raws were 1728×3072, which supports up to 1.6×. [9 B.7#8, 7 B.7#8]
     **Default:** keep the source frame rate (style `platform.fps: source`) with no conversion; probe each new shoot and cap zoom at source height ÷ 1920 (FRAME-11).
 
+## Resolved while building viral mode (2026-11-19, builder's call; the owner asked for v0.3 without further questions)
+These start as defaults in `styles/default.yaml` / `styles/viral.yaml` and can be re-measured per client (`cves inspire`, retention data). New gates start as WARN unless the fault is objective.
+- **Goal switch.** `edit.yaml goal: ad | viral` (default ad). Viral layers `styles/viral.yaml` right after `default.yaml`, so a preset, the client's inspirations, the brand and edit.yaml still win. Ads keep every v0.2 behaviour; RET-25, RET-28 and RET-29 are not run for ads.
+- **RET-24 hook change:** first pattern interrupt by `structure.hook_change_s` 1.5 s (ad) / 1.0 s (viral). WARN: RET-09 already blocks the first visual event at 1.0 s on frame difference; RET-24 adds timeline and element-log events.
+- **RET-25 hook text or subject:** by `retention.hook_subject_s` 1.0 s (viral). WARN: "strong subject" is a heuristic (the A-roll face, or a centre with ≥ 1.5× the border's Laplacian detail and contrast ≥ 20).
+- **RET-26 interrupt gap:** `rhythm.interrupt_max_s` 4.0 s (ad, = `grammar.max_shot_s`) / 2.5 s (viral). WARN.
+- **RET-27 effect soup:** gaps under `rhythm.interrupt_min_s` 0.3 s (viral 0.25 s) sustained for `retention.soup_window_s` 1.5 s. A list stagger (< 1 s) never trips it. WARN. Events within `retention.merge_s` 0.05 s are one interrupt; a picture change is a frame step ≥ `retention.scene_diff` 12 (0-255 luma, 96 px decode).
+- **RET-28 loop seam:** SSIM ≥ `retention.loop_min_similarity` 0.6 over the last / first `retention.loop_seam_s` 0.3 s and last / first frame; only with `structure.loop: true`. WARN (PLAT-13 is the advisory version for every edit).
+- **RET-29 payoff:** a picture step ≥ max(12, body p90), a graphic entry, or an audio peak ≥ body median + `retention.payoff_rise_db` 3 dB in the last `structure.payoff_window` 20 %. WARN.
+- **RET-30 platform duration:** FAIL above the platform's maximum (objective: the platform cuts or refuses the post), WARN outside the ideal band. Bands in `styles/platforms.yaml` (ideal bands are HOUSE; maxima are the platforms' published limits as of 2026-11).
+- **RET-31 dead air:** no 50 ms window above `retention.dead_air_db` −45 dBFS for more than `retention.dead_air_s` 0.6 s. FAIL for viral (objective: a silent stretch loses the scroll), WARN for ads (SND-13 remains the ad gate, unchanged).
+- **RET-32 guide / beat alignment:** ≥ `retention.guide_on_beat_min` 60 % of cuts within `music.snap_tolerance_s` of a beat. WARN; FAIL only when `music.slot: platform` has no usable guide or no guide stem.
+- **Platform safe zones** are fractions of the frame in `styles/platforms.yaml`. `reels` equals the v0.2 Meta zone (x 65-1015, y 269-1248 on 1080×1920); TikTok / Shorts clear the right rail and the bottom caption area; values without a published number are the builder's call. With no `platform.target` the v0.2 `platform.safe_zone` applies, scaled to the frame.
+- **Platform sound slot:** organic posts may be cut to a trending sound that the app licenses; the master then has no music (SND-04 checks the stem is silent), the delivery adds the guide stem and POSTING.md. Ads may never use it (validation error), which keeps §0.12 intact.
+- **RET-08 vs the "wait for it" hook:** the spoken phrase stays banned; the playbook's "wait for it" hook is shown (a visible timer or half-built object), never said.
+
 ## Already resolved by your own feedback (these win over the videos)
 - **The bed level is the client's call, stored in the style profile** (`sound.bed_lu`, default −10 LU). The first reviewer rejected −23, −14 and −10 LU as too quiet (−23 read as "no BGM") and settled at −7 LU, now the `profitcast-dark` value. Module 5's own figures support a loud bed; the condition is that the words gate passes. [ES §3, USER]
 - **No added grain**, one decode and one encode, no `tune film`. v1 was rejected partly for grain. [ES §2, USER]

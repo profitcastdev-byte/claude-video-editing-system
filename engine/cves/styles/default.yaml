@@ -7,6 +7,7 @@ platform:
   safe_zone: [65, 269, 1015, 1248]   # x0 y0 x1 y1 kept free of platform UI (Meta Reels norm); null to disable
   margin: 60
   duration: [15, 90]          # seconds the brief allows
+  target: null                # reels | tiktok | shorts | youtube | meta_feed | meta_stories (styles/platforms.yaml): UI safe zone as frame fractions, duration band (RET-30), loudness; null = platform.safe_zone above
 stage: {background: "#0B0B0D", glow_bottom: "#2A2A33", dot_grid: "#8A8A99", dots: true, glow: true}
 colors: {accent: "#4C8DFF", accent_dark: "#2A5BB8", text: "#FFFFFF", card: "#16161B", card_border: "#34343F", icon_well: "#24243A", gold: "#D6B26C",
          star: "#FFC446", negative: "#E5484D"}   # rating stars; negative marks (comparison crosses). muted / surface / line are derived unless set
@@ -118,6 +119,25 @@ music:                        # beat sync + music fit (docs/MUSIC.md); edit.yaml
   min_aroll_s: 0.5            # a moved cutaway edge never leaves an A-roll piece shorter than this
   sfx_snap: [whoosh, hit, boom, riser]   # full mode: cues whose name contains one of these are nudged to the beat
   sfx_snap_max_f: 1           # full mode: max nudge in frames (SND-07 keeps every SFX within 1 frame of its picture event)
+rhythm:                       # pattern-interrupt pacing (RET-26 / RET-27 / RET-32); `cves inspire` measures these from references
+  interrupt_max_s: 4.0        # longest gap between pattern interrupts (cut, zoom step, graphic in, motion element), s (RET-26)
+  interrupt_min_s: 0.3        # interrupts closer than this, sustained for retention.soup_window_s, read as effect soup (RET-27)
+  cut_on_beat: false          # cut points sit on the music / guide beat (RET-32 reports the share on the beat)
+structure:                    # the shape of the piece (docs/VIRAL.md)
+  hook_change_s: 1.5          # first visual change (pattern interrupt) by this time, s (RET-24); preset viral: 1.0
+  loop: false                 # the end flows back into the start for a seamless replay (RET-28 checks the seam)
+  payoff_window: 0.2          # the payoff (a visual or audio peak) lands in this last fraction of the runtime (RET-29, goal viral)
+retention:                    # retention-gate measurement settings (RET-24..RET-32, knowledge-base/QC-GATES.md)
+  hook_subject_s: 1.0         # goal viral: on-screen text or a strong subject (face / high-contrast centre) by this time (RET-25)
+  soup_window_s: 1.5          # RET-27: a run of interrupt gaps under rhythm.interrupt_min_s longer than this is effect soup
+  merge_s: 0.05               # events this close count as one interrupt (one graphic entering with its parts)
+  scene_diff: 12.0            # mean abs luma step (0-255, on a 96 px wide decode) that counts as a picture change in the master
+  loop_seam_s: 0.3            # RET-28: span compared at each end of the video
+  loop_min_similarity: 0.6    # RET-28: correlation of the last span vs the first span (0..1) a seamless loop reaches
+  payoff_rise_db: 3.0         # RET-29: an audio peak this much above the body median counts as a payoff
+  dead_air_s: 0.6             # RET-31: longest stretch with no speech, music or SFX (FAIL for goal viral, WARN for ads)
+  dead_air_db: -45            # RET-31: a 50 ms window of the master quieter than this (dBFS) is silent
+  guide_on_beat_min: 0.6      # RET-32: share of cuts within music.snap_tolerance_s of a beat (music guide / slot: platform)
 motion: {entry_s: 0.28, overshoot: 1.6, slide_px: 50, stagger_s: 0.12, drift: 0.025}
 delivery:                     # `cves encode` / `cves deliver` (docs/DELIVERY.md). Encoder settings for every delivered file
   video: {codec: libx264, crf: 16, preset: slow, profile: high, pix_fmt: yuv420p, tune: null, x264_params: null}   # no tune=film (DEL-05)
