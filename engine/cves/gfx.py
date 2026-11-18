@@ -145,7 +145,7 @@ def need_contrast(size_px):
     big = size_px >= sget("legibility.large_px", 48) * U          # large_px is at a 1080 short side
     return sget("legibility.large_contrast", 3.0) if big else sget("legibility.min_contrast", 4.5)
 
-def legible_bed(im, fg, size_px, bg=None, force=0.0):
+def legible_bed(im, fg, size_px, bg=None, force=0.0, reach=2):
     """a soft dark (or light) bed behind text so it reads at the WCAG target over video (GFX-15).
     im: the text layer (RGBA). fg: text colour. bg: what is behind it (default: style `legibility.video_bg`, an assumed
     worst-case mid-tone). Returns an RGBA layer to draw UNDER the text, or None when the colours already pass."""
@@ -162,7 +162,8 @@ def legible_bed(im, fg, size_px, bg=None, force=0.0):
     r = max(3, int(size_px * sget("legibility.bed_spread", .18)))
     m = cv2.dilate(al, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1)))
     m = cv2.GaussianBlur(m, (0, 0), max(1., r * .6))                  # soft: a hard-edged bed reads as a second "ink" class
-    m = np.maximum(m, cv2.dilate(al, np.ones((5, 5), np.uint8)))        # full strength right at the glyph edge (the 3-7 px ring)
+    k = 2 * max(2, int(reach)) + 1                                     # full strength right at the glyph edge (the 3-7 px ring GFX-15 reads);
+    m = np.maximum(m, cv2.dilate(al, np.ones((k, k), np.uint8)))        # outlined text: al includes the stroke, so reach past it
     out = np.zeros((H, W, 4), np.uint8); out[..., :3] = shade; out[..., 3] = (m.astype(np.float32) * a).astype(np.uint8)
     return Image.fromarray(out)
 

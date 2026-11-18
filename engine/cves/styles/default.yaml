@@ -244,6 +244,7 @@ legibility:                   # text over video (captions, chest, roto): WCAG ta
   large_contrast: 3.0         # text >= large_px
   large_px: 48
   video_bg: "#B4B4B4"         # assumed background behind text on video; darker beds read as a second "ink" class in GFX-15
+  video_bg_broll: "#C8C8C8"   # the same over B-roll / footage with no presenter (brighter, more varied than a presenter's wall)
   plate_max: 0.85             # strongest bed opacity
   bed_spread: 0.18            # bed reach around glyphs, as a fraction of the type size
   wordmark_bed: 0.72          # darkness of the soft bed behind a chest wordmark

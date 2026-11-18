@@ -3,7 +3,8 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-19
+CVES becomes a senior editor for any video: motion design, inspirations it can hear and feel, any frame size and spine, viral mode, and a learning loop a person stays in charge of.
 
 ### Added
 - **Self-learning** (`cves learn`, docs/LEARNING.md): every project keeps an append-only `Edit/journal.jsonl` (build facts, edit.yaml revisions, QC results, deliveries, editor changes from `import-edits`, critiques, plus notes, ratings, approvals and platform results logged with `cves learn note|rate|approve|reject|results`). `cves learn mine` turns all journals into candidate patterns (repeated human corrections, decisions that go with better ratings or results with n ≥ 3, recurring notes); `promote` / `reject` / `forget` keep a person in charge of every change. `cves learn study <folder>` measures great reference videos (ad vs viral) into `~/.cves/taste/study.json`.
@@ -66,6 +67,9 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
 - Lint L4 points at `canvas.size`.
 
 ### Fixed
+- Pop / one-word captions are opaque from their first frame (a fading word failed GFX-15 over bright footage).
+- The caption legibility bed reaches past an outline stroke (`legible_bed(reach=)`), and captions over B-roll assume the brighter `legibility.video_bg_broll` (#C8C8C8): outlined viral captions over bright B-roll now pass GFX-15 without loosening it.
+- `cves critique` counts B-roll footage as shots, not animated graphics (the restraint budget no longer flags B-roll edits).
 - `cves inspire` in a project without `Raw/` no longer crashes looking for footage to compare the grade with.
 
 ## [0.2.0] - 2026-11-18
