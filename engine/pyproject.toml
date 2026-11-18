@@ -17,7 +17,8 @@ where = ["."]
 include = ["cves*"]
 
 [tool.setuptools.package-data]
-cves = ["styles/*.yaml", "styles/*.md"]   # includes styles/platforms.yaml (platform profiles) and styles/viral.yaml
+cves = ["styles/*.yaml", "styles/*.md", "motion/*.js", "motion/*.css", "motion/pieces/*/*"]   # styles/ includes platforms.yaml and viral.yaml
 
 [project.optional-dependencies]
 test = ["pytest"]
+motion = ["playwright==1.58.0"]     # HTML motion pieces (docs/MOTION.md); then `python -m playwright install chromium`

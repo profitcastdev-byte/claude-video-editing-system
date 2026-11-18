@@ -1,0 +1,13 @@
+title: Quote
+description: An oversized accent quotation mark settles, the quote fades up word by word in the serif, a rule draws and the attribution slides in.
+kinds: [cutaway, overlay]
+duration: 4.0
+params:
+  quote: {type: str, required: true, help: "the quote; *stars* mark accent words"}
+  author: {type: str, default: ""}
+  role: {type: str, default: ""}
+  serif: {type: bool, default: true, help: set the quote in the style's serif}
+preview:
+  params: {quote: "They called us *the next morning*. We had not even finished the job.", author: "Priya S.", role: "Homeowner, verified review"}
+cues:
+  - [0.0, swipe, -24]

@@ -1,0 +1,17 @@
+title: Kinetic title
+description: Headline words rise out of masks on a tight stagger, accent words get an underline sweep, eyebrow and sub settle in around them.
+kinds: [cutaway, overlay, roto]
+hero: true
+duration: 3.0
+params:
+  text: {type: str, required: true, help: "headline; wrap accent words in *stars*"}
+  eyebrow: {type: str, default: "", help: small tracked label above}
+  sub: {type: str, default: "", help: one supporting line below}
+  align: {type: str, default: center, help: center | left}
+  scale: {type: number, default: 1.0, help: "headline size multiplier (it still shrinks to fit the safe zone)"}
+  underline: {type: bool, default: true, help: accent words get an underline sweep}
+preview:
+  duration: 3.0
+  params: {eyebrow: "The fix", text: "Stop guessing. Start *growing*.", sub: "Three changes that doubled our calls"}
+cues:
+  - [0.1, whoosh, -20]

@@ -1,0 +1,14 @@
+title: Before / after compare
+description: Two cards build side by side (stacked on a tall canvas), the "before" muted with crosses, the "after" lit in the accent with checks, a VS chip pops on the seam.
+kinds: [cutaway]
+duration: 4.0
+params:
+  left_title: {type: str, default: Before}
+  right_title: {type: str, default: After}
+  left: {type: list, required: true, help: lines on the before card}
+  right: {type: list, required: true, help: lines on the after card}
+  vs: {type: str, default: VS, help: "seam chip text (empty: none)"}
+preview:
+  params: {left_title: "Before", right_title: "After", left: ["3 calls a week", "No reviews answered", "Empty profile"], right: ["14 calls a week", "Every review answered", "Photos every week"]}
+cues:
+  - [0.0, card, -16]

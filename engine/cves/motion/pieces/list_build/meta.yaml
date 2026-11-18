@@ -1,0 +1,13 @@
+title: List build
+description: Rows slide in one by one on a stagger (or on their own `at`), each mark draws itself on (check, cross, number or dot), the latest row is lit.
+kinds: [cutaway, overlay]
+duration: 3.6
+params:
+  title: {type: str, default: "", help: heading above the list}
+  items: {type: list, required: true, help: "strings, or {text, sub, at, state: check|cross}"}
+  mark: {type: str, default: check, help: "check | number | dot (an item's state overrides)"}
+  stagger: {type: number, default: 0.38, help: seconds between rows when items have no `at`}
+preview:
+  params: {title: "What changed", items: ["Photos every week", {text: "Replies within an hour", sub: "every review, good or bad"}, "Posts with offers", {text: "Paid ads", state: cross}]}
+cues:
+  - [0.2, card, -16]

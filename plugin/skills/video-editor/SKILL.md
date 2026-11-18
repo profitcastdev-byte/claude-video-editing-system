@@ -72,6 +72,12 @@ Before you fill `edit.yaml`, write `PROJECT/Edit/DIRECTION.md` (`knowledge-base/
 
 Tick `knowledge-base/CHECKLISTS.md` for each stage as you finish it. Any "no" is fixed before the next stage, or logged with a reason.
 
+### Motion pieces (`m_*` templates)
+The motion layer (`docs/MOTION.md`) gives senior-grade animation: kinetic titles, glass cards, stat counters, list builds, lower thirds, quotes, highlight sweeps, progress bars, map-pin callouts, logo stings, split reveals, before/after, steps, bar charts, CTAs. `cves motion list` lists them; `/cves:motion` previews one.
+- **When:** the beat carries one idea that motion explains better than the face: a number (`m_stat_counter`), a list or steps, a contrast (`m_compare`, `m_split_reveal`), a name (`m_lower_third` in `chest:`), a place (`m_callout`), the offer (`m_cta`), the brand (`m_logo_sting` as `end_card`).
+- **How to pick:** the piece whose structure matches the line (one number, one list, one quote...), its copy taken from `words.json`, its `at` on the keyword. Over A-roll use `chest:` (it exits by itself before the shot ends); full-screen use `cutaways:`; behind the presenter use the `_roto` variant.
+- **Restraint:** at most one hero motion moment (meta `hero: true`: kinetic title, stat, logo sting, split reveal, CTA) per ~8-10 s unless the style says more (`motion.hero_min_gap_s`; render warns). Supporting pieces stay quiet. Never stack two pieces on one frame. The style's `motion.energy` sets the pace; don't fight it per piece.
+
 ## 3. Keep it cheap
 Images cost far more than text. Work from text:
 - **Read text, not images.** Use `words.json`, the transcript, `edl.json`, `edit.yaml`, `elements.jsonl` (query it with `grep` or `jq`, never read it whole) and `QC-REPORT.txt`. QC gates measure pixels so you don't have to.

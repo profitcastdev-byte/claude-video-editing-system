@@ -18,6 +18,7 @@ claude-video-editing-system/
     project.py            project folder layout, edit.yaml load/save/validate
     ingest.py             transcribe, pause-tighten, plate extract, matte, faces, voice chain
     gfx.py                drawing kit (2x supersampled, Material icons, fonts) + ELEMENT LOG
+    motion/               HTML motion layer: Chromium (Playwright) renderer + frame cache, runtime.js, base.css, pieces/<name>/ (docs/MOTION.md)
     style.py              loads and merges the style profile (§9); every module reads looks through it
     styles/               default.yaml (neutral defaults, the full schema) + optional named presets
     look.py               A-roll grade (optional edge-accurate relight) + per-shot skin exposure balance, from `grade:`
@@ -106,6 +107,8 @@ Every time is cut time in seconds; the engine snaps edits to frame/segment bound
 - roto (behind the head): `card_behind` (map), `big_words`, `listing_card`, `top3_card`
 - chest (replace captions): `wordmark`, `price_card`, `logo_lockup`
 - end: `logo_end`
+- motion (`m_*`, `templates/motion.py`): HTML/CSS pieces from `engine/cves/motion/pieces/`, `~/.cves/motion/` and `PROJECT/Brand/motion/`, rendered once by headless Chromium (`cves.motion`, pre-rendered by `render.render()` before the worker pool) and read back as cached RGBA frames; cutaway, overlay (chest), `_roto` and `_end` uses. See `docs/MOTION.md`.
+
 New template = new file + registry entry + a moodboard sample in `docs/TEMPLATES.md`. Templates draw in the 1080×1920 design
 space and read every colour and font through `gfx` from the style profile, never as literal values (`docs/CONTRACTS.md` §4).
 

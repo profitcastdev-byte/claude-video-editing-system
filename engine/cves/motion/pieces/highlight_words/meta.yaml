@@ -1,0 +1,13 @@
+title: Highlight words
+description: A sentence settles in, then marker strokes sweep behind the key words one after another and the words knock out of the marker.
+kinds: [cutaway, overlay, roto]
+duration: 3.4
+params:
+  text: {type: str, required: true, help: "the sentence; *stars* mark the words to highlight"}
+  style: {type: str, default: marker, help: "marker (filled sweep, text knocks out) | underline | box (outlined)"}
+  highlight_at: {type: time, default: null, help: "when the first sweep starts (default after the sentence lands)"}
+  plate: {type: bool, default: false, help: put the sentence on a dark plate (use over busy video)}
+preview:
+  params: {text: "Most owners *never reply* to reviews. The ones who do get *twice the calls*."}
+cues:
+  - [0.9, swipe, -22]

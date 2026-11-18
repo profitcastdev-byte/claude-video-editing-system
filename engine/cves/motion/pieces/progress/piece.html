@@ -1,0 +1,76 @@
+<div class="safe center">
+  <div class="pg" id="pg">
+    <h2 class="title" id="lb"></h2>
+    <div class="track" id="track">
+      <div class="rail" id="rail"></div>
+      <div class="fill" id="fill"></div>
+      <div class="head" id="head"><span class="val" id="val"></span></div>
+    </div>
+    <div class="ms" id="ms"></div>
+  </div>
+</div>
+<style>
+  .pg { width: min(100%, calc(var(--u) * 92)); }
+  #lb { font-size: var(--t-5); text-align: left; margin-bottom: calc(var(--u) * 14); }
+  .track { position: relative; height: calc(var(--u) * 1.6); }
+  .rail { position: absolute; inset: 0; border-radius: 99px; background: rgb(var(--text-rgb) / 0.12); transform-origin: left center; }
+  .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 99px; transform-origin: left center;
+          background: linear-gradient(90deg, var(--accent-dark), var(--accent)); box-shadow: 0 0 calc(var(--u) * 2.4) rgb(var(--accent-rgb) / 0.55); }
+  .head { position: absolute; z-index: 3; top: 50%; left: 0; width: calc(var(--u) * 4); height: calc(var(--u) * 4); margin: calc(var(--u) * -2) 0 0 calc(var(--u) * -2);
+          border-radius: 50%; background: var(--text); box-shadow: 0 0 0 calc(var(--u) * 0.9) rgb(var(--accent-rgb) / 0.45), 0 0 calc(var(--u) * 3) rgb(var(--accent-rgb) / 0.8); }
+  .val { position: absolute; bottom: calc(100% + var(--u) * 2.2); left: 50%; transform: translateX(-50%); font-size: var(--t-4); font-weight: 800;
+         font-variant-numeric: tabular-nums; white-space: nowrap; background: var(--accent); color: var(--bg); padding: 0.18em 0.5em; border-radius: 0.5em; }
+  .val::after { content: ""; position: absolute; left: 50%; top: 100%; margin-left: -0.3em; border: 0.3em solid transparent; border-top-color: var(--accent); }
+  .ms { position: relative; height: calc(var(--u) * 10); }
+  .dot { position: absolute; top: calc(var(--u) * -2.1); width: calc(var(--u) * 2.6); height: calc(var(--u) * 2.6); margin-left: calc(var(--u) * -1.3);
+         border-radius: 50%; background: var(--card); border: calc(var(--u) * 0.3) solid rgb(var(--text-rgb) / 0.35); }
+  .dot.on { background: var(--accent); border-color: var(--text); }
+  .mlab { position: absolute; top: calc(var(--u) * 2.6); transform: translateX(-50%); font-size: var(--t-2); font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .mlab.on { color: var(--text); }
+  .mlab.first { transform: none; } .mlab.last { transform: translateX(-100%); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let lb, rail, fill, head, val, ms = [], tl, track;
+  C.piece({
+    setup(P, ctx) {
+      lb = document.getElementById('lb'); rail = document.getElementById('rail'); fill = document.getElementById('fill');
+      head = document.getElementById('head'); val = document.getElementById('val'); track = document.getElementById('track');
+      if (P.label) C.words(lb, P.label); else lb.remove();
+      if (P.show_value === false) val.remove(); else val.dataset.text = `${Math.round(+P.value)}%`;
+      const box = document.getElementById('ms'), list = P.milestones || [];
+      list.forEach((m, i) => {
+        const pos = typeof m === 'object' && m.pos !== undefined ? +m.pos : (list.length === 1 ? 100 : (i / (list.length - 1)) * 100);
+        const dot = C.el('div', 'dot', box); dot.style.left = pos + '%';
+        const lab = C.el('div', 'mlab' + (pos <= 0 ? ' first' : pos >= 100 ? ' last' : ''), box, C.plain(typeof m === 'object' ? m.text : m));
+        lab.style.left = pos + '%'; lab.dataset.text = lab.textContent; ms.push({ dot, lab, pos });
+      });
+      if (!list.length) box.style.height = '0';
+      tl = C.timeline().at('lb', 0, D(0.6)).at('rail', D(0.15), D(0.6)).at('fill', D(0.45), D(P.fill_s || 1.8));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t);
+      if (lb.isConnected) lb.querySelectorAll('.wi').forEach((wi, i) => C.rise(wi, t, i * D(0.04), D(0.6), wi.offsetHeight));
+      rail.style.transform = `scaleX(${tl.p('rail', t, C.MOVE).toFixed(4)})`;
+      const v = C.clamp(+P.value / 100) * C.easings.inOutCubic(tl.raw('fill', t));
+      fill.style.transform = `scaleX(${v.toFixed(5)})`;
+      const W = track.clientWidth; C.set(head, { x: v * W, s: C.easings.outBack(C.prog(t, tl.t0('fill') - D(0.1), D(0.4))), o: Math.min(1, C.prog(t, tl.t0('fill') - D(0.1), D(0.2)) * 2) });
+      if (val.isConnected) val.textContent = `${Math.round(v * 100)}%`;
+      ms.forEach((m, i) => {
+        const on = v * 100 >= m.pos - 0.5 && tl.raw('fill', t) > 0;
+        m.dot.classList.toggle('on', on); m.lab.classList.toggle('on', on);
+        const pi = C.prog(t, D(0.35) + i * D(0.08), D(0.5)); C.set(m.lab, { y: (1 - C.IN(pi)) * 1.5 * u, o: pi });
+        C.set(m.dot, { s: (0.4 + 0.6 * C.easings.outBack(pi)) * (on ? 1.15 : 1), o: Math.min(1, pi * 3) });
+      });
+      if (ex) C.set(document.getElementById('pg'), { y: ex * 3 * u, o: 1 - ex });
+    },
+    cues(P) {
+      C.cue(tl.t0('fill'), 'riser', -28, { trim: [0, D(P.fill_s || 1.8)] });
+      ms.forEach((m, i) => { const pf = m.pos / Math.max(1, +P.value); if (m.pos <= +P.value && pf <= 1) {
+        // the cue lands where the fill (inOutCubic) passes the milestone
+        let lo = 0, hi = 1; for (let k = 0; k < 30; k++) { const mid = (lo + hi) / 2; if (C.easings.inOutCubic(mid) < pf) lo = mid; else hi = mid; }
+        C.cue(tl.t0('fill') + lo * D(P.fill_s || 1.8), 'pop', -21, { pitch: 1 + i * 0.7 }); } });
+    },
+  });
+})();
+</script>

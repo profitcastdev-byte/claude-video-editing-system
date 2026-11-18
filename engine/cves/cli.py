@@ -23,7 +23,9 @@
   cves music search|download|generate|credit ...        Openverse (licence-checked, credits logged) + ElevenLabs/Magnific hand-off
   cves doctor                                           check tools, models, GPU backend, fonts
   cves learn note|rate|approve|reject|results|mine|list|show|promote|forget|study ...   self-learning (docs/LEARNING.md)
-  cves critique [vNNN|master]                           review pack: contact sheet + energy timeline + CRITIQUE.md rubric"""
+  cves critique [vNNN|master]                           review pack: contact sheet + energy timeline + CRITIQUE.md rubric
+
+  cves motion list | preview <piece> [--params JSON] [--size WxH] [--out f.png|f.mp4]   HTML motion pieces (docs/MOTION.md)"""
 import argparse, os, sys, json, subprocess
 
 def _project(a):
@@ -61,6 +63,9 @@ def main(argv=None):
     isp.add_argument("--refresh", action="store_true", help="re-measure every reference (ignore Edit/inspire/cache)")
     isp.add_argument("--min-conf", type=float, default=.5, help="keys below this confidence are not written (default 0.5)")
     # ---- end WS B
+    # ---- motion layer (WS A, docs/MOTION.md): list / preview HTML motion pieces; no project needed
+    mo = sp.add_parser("motion", help="list | preview <piece> (HTML motion pieces, docs/MOTION.md)", add_help=False); mo.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- end motion layer
     asx = sp.add_parser("assets", help="add | list | check | todo | resolve (media assets + provenance, docs/MEDIA.md)", add_help=False); asx.add_argument("rest", nargs=argparse.REMAINDER)
     # ---- WS E: self-learning + senior-editor review (docs/LEARNING.md) ----
     lrn = sp.add_parser("learn", help="note | rate | approve | reject | results | journal | mine | list | show | promote | forget | study (docs/LEARNING.md)", add_help=False); lrn.add_argument("rest", nargs=argparse.REMAINDER)
@@ -68,7 +73,7 @@ def main(argv=None):
     # ---- end WS E ----
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
-        if a.cmd in ("doctor", "music", "export", "assets", "learn"): a.rest = list(getattr(a, "rest", [])) + extra
+        if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion"): a.rest = list(getattr(a, "rest", [])) + extra
         else: ap.error("unrecognized arguments: " + " ".join(extra))
 
     if a.cmd == "new":
@@ -83,6 +88,8 @@ def main(argv=None):
         return
     if a.cmd == "assets":    # media registry: copy into Assets/, provenance in Edit/assets.json
         from . import assets; sys.exit(assets.main(a.rest, a.project))
+    if a.cmd == "motion":    # motion layer (WS A): `cves motion list | preview ...`; --project picks the style + Brand/motion
+        from . import motion; sys.exit(motion.main(list(a.rest) + (["--project", a.project] if a.project and a.rest and a.rest[0] == "preview" else [])))
     if a.cmd == "music":     # Openverse search/download (licence-checked, credits logged); ElevenLabs / Magnific hand-off
         from . import music; sys.exit(music.main(a.rest))
     if a.cmd == "learn":     # WS E: journal notes / ratings / results; mine, promote, study (no project needed for mine/list/promote)

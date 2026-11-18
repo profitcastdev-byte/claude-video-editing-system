@@ -1,0 +1,14 @@
+title: Split-word reveal
+description: A word slams in, splits horizontally along its middle, the halves slide apart and a second word rises out of the gap in the accent colour.
+kinds: [cutaway, overlay, roto]
+hero: true
+duration: 2.8
+params:
+  text: {type: str, required: true, help: the word / short line that splits}
+  reveal: {type: str, required: true, help: the word revealed inside the split}
+  eyebrow: {type: str, default: ""}
+  split_at: {type: time, default: null, help: "when it splits (default 0.7 s in)"}
+preview:
+  params: {text: "COST", reveal: "INVESTMENT", eyebrow: "Stop calling it a"}
+cues:
+  - [0.0, lowhit, -16]

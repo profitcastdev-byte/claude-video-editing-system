@@ -1,0 +1,14 @@
+title: Progress / timeline bar
+description: A track draws in, the fill runs to the value with a glowing head and a counting percentage, milestone dots light as the fill passes them.
+kinds: [cutaway, overlay]
+duration: 3.6
+params:
+  label: {type: str, default: "", help: heading above the bar}
+  value: {type: number, default: 100, help: "fill, 0-100"}
+  milestones: {type: list, default: [], help: "labels spaced evenly along the bar, or {text, pos (0-100)}"}
+  show_value: {type: bool, default: true, help: the counting percentage over the fill head}
+  fill_s: {type: number, default: 1.8, help: seconds the fill runs}
+preview:
+  params: {label: "Your first 30 days", value: 80, milestones: ["Audit", "Fix", "Post", "Grow"]}
+cues:
+  - [0.3, riser, -28]

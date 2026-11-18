@@ -199,6 +199,26 @@ def check_packages():
             pass
 
 
+def check_motion():
+    """motion layer: Playwright (pinned) + the Chromium build it drives (docs/MOTION.md)"""
+    fix = "python -m playwright install chromium"
+    try:
+        import playwright
+        ver = importlib.metadata.version("playwright"); pin = pins().get("playwright")
+        add("motion", "playwright", "WARN" if pin and ver != pin else "PASS", ver + (f" (pinned {pin})" if pin and ver != pin else ""),
+            "pip install -r setup/requirements.txt" if pin and ver != pin else "")
+    except Exception:
+        add("motion", "playwright", "FAIL", "not installed: m_* motion templates cannot render", "pip install -r setup/requirements.txt && " + fix)
+        return
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as pw:
+            exe = pw.chromium.executable_path
+        okx = bool(exe) and os.path.exists(exe)
+        add("motion", "chromium (playwright)", "PASS" if okx else "FAIL", exe if okx else "browser build missing", "" if okx else fix)
+    except Exception as e:
+        add("motion", "chromium (playwright)", "FAIL", str(e)[:100], fix)
+
 def check_gpu(cfg):
     try:
         import torch
@@ -331,6 +351,7 @@ def main(argv=None):
         seen = {"ffmpeg", "ffprobe", "whisper", "deepfilter", "earshot", "whisper_model", "rvm_repo", "rvm_weights", "yunet"}
         check_config_keys(cfg, seen)
     check_packages()
+    check_motion()
     check_gpu(cfg)
     check_assets()
     check_tools()

@@ -1,0 +1,50 @@
+<div class="safe center" id="root">
+  <div class="eyebrow bare" id="eb"></div>
+  <div class="sp" id="sp">
+    <div class="half top" id="ht"><span class="tw"></span></div>
+    <div class="half bot" id="hb"><span class="tw"></span></div>
+    <div class="gap" id="gap"><span class="rv" id="rv"></span></div>
+  </div>
+</div>
+<style>
+  #root { gap: var(--s-3); }
+  #eb { font-size: var(--t-3); letter-spacing: 0.04em; text-transform: none; color: var(--muted); }
+  .sp { position: relative; display: grid; place-items: center; }
+  .half { grid-area: 1 / 1; font-size: calc(var(--t-9) * 1.1); font-weight: 800; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
+  .top { clip-path: inset(-20% -5% 54% -5%); }
+  .bot { clip-path: inset(46% -5% -20% -5%); }
+  .gap { grid-area: 1 / 1; display: grid; place-items: center; overflow: hidden; height: 0; }
+  .rv { font-size: var(--t-6); font-weight: 800; letter-spacing: 0.02em; color: var(--accent); white-space: nowrap; line-height: 1; }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let eb, ht, hb, gap, rv, sp, tl, G;
+  C.piece({
+    setup(P, ctx) {
+      eb = document.getElementById('eb'); ht = document.getElementById('ht'); hb = document.getElementById('hb'); gap = document.getElementById('gap');
+      rv = document.getElementById('rv'); sp = document.getElementById('sp');
+      const word = C.plain(P.text); ht.firstChild.textContent = word; hb.firstChild.textContent = word; ht.dataset.text = word;
+      rv.textContent = C.plain(P.reveal); rv.dataset.text = rv.textContent;
+      if (P.eyebrow) { eb.textContent = C.plain(P.eyebrow); eb.dataset.text = eb.textContent; } else eb.remove();
+      const maxW = sp.parentElement.clientWidth * 0.96;
+      [ht, hb].forEach((h) => C.fit(h, maxW, ctx.h * 0.4, 1, 0.25));
+      hb.style.fontSize = ht.style.fontSize; C.fit(rv, maxW, ctx.h * 0.2, 1, 0.3);
+      G = rv.offsetHeight * 2.7;                                        // how far the halves open
+      const s0 = typeof P.split_at === 'number' ? P.split_at : D(0.7);
+      tl = C.timeline().at('eb', 0, D(0.5)).at('slam', D(0.05), D(0.45)).at('split', s0, D(0.6)).at('rv', s0 + D(0.12), D(0.6));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), ps = tl.p('slam', t, 'outBack');
+      if (eb.isConnected) { C.rise(eb, t, 0, D(0.5), 1.5 * u); if (ex) C.set(eb, { o: 1 - ex }); }
+      const open = tl.p('split', t, 'inOutExpo') * (1 - ex), d = (G / 2) * open;
+      const fade = Math.min(1, tl.raw('slam', t) * 3) * (1 - ex);
+      const sc = 1.25 - 0.25 * ps;
+      C.set(ht, { y: -d, s: sc, o: fade, blur: (1 - Math.min(1, tl.raw('slam', t) * 1.6)) * 1.5 * u + C.mblur((tt) => -(G / 2) * C.easings.inOutExpo(C.prog(tt, tl.t0('split'), D(0.6))), t) });
+      C.set(hb, { y: d, s: sc, o: fade, blur: (1 - Math.min(1, tl.raw('slam', t) * 1.6)) * 1.5 * u + C.mblur((tt) => (G / 2) * C.easings.inOutExpo(C.prog(tt, tl.t0('split'), D(0.6))), t) });
+      gap.style.height = `${(2 * d).toFixed(2)}px`; sp.style.padding = `${d.toFixed(2)}px 0`;
+      const pr = tl.p('rv', t); C.set(rv, { y: (1 - pr) * rv.offsetHeight * 0.9, o: Math.min(1, tl.raw('rv', t) * 2.5) * (1 - ex), s: 0.9 + 0.1 * pr });
+    },
+    cues() { C.cue(tl.t0('slam'), 'lowhit', -15); C.cue(tl.t0('split'), 'whoosh', -21, { trim: [0, 0.6] }); C.cue(tl.t0('rv') + D(0.12), 'pop', -19, { pitch: 2 }); },
+  });
+})();
+</script>

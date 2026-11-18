@@ -255,6 +255,43 @@ Layout:
 - the `chin` position sits under the chin (`chin_gap`, `chin_min_gap`) and above the safe-zone bottom (`pad_bottom`);
 - RTL text never crashes. Without libraqm it is drawn in visual order, unshaped.
 
+## Motion pieces (`m_*`, HTML rendered by headless Chromium)
+
+Senior-grade motion design: HTML/CSS compositions in `engine/cves/motion/pieces/`, rendered to RGBA frames once and cached (authoring contract, runtime and CSS variables: [MOTION.md](MOTION.md)). They lay out in `u` units (1 % of the shorter canvas side) inside the safe zone, so the same params work at 9:16, 1:1 and 16:9. Preview any piece: `cves motion preview <piece> --size 1080x1920 --out sheet.png`.
+
+**Where they go.** Kind `overlay` = usable in `cutaways:` (full screen on the stage, role `cutaway`) and in `chest:` (over the A-roll, role `chest`, plays its exit before the segment ends). `<name>_roto` sits behind the presenter, `<name>_end` is an end card.
+
+**Common params:** `at` (cut-time second the piece's clock starts; default the slot start), `duration` (default: to the slot end; give it when a `chest:` entry spans several segments), `exit` (default on in `chest:` / roto). Every other `at` / `*_at` param is a cut-time second too. Text params take `*stars*` around accent words.
+
+| template | kinds | hero | what it does | params (`!` = required) |
+|---|---|---|---|---|
+| `m_callout` | overlay/cutaway |  | A pin drops onto a point with a squash and two sonar rings, a leader line draws out from it and a glass label card slides off the end of the line. | `label`!, `sub`, `x`, `y`, `side`, `icon` |
+| `m_chart_bars` | cutaway |  | Bars grow from a baseline on a stagger with their values counting above them; the highlighted bar is in the accent, the rest stay quiet. | `title`, `bars`!, `prefix`, `suffix`, `decimals`, `highlight` |
+| `m_compare` | cutaway |  | Two cards build side by side (stacked on a tall canvas), the "before" muted with crosses, the "after" lit in the accent with checks, a VS chip pops on the seam. | `left_title`, `right_title`, `left`!, `right`!, `vs` |
+| `m_cta` + `m_cta_end` | cutaway/overlay/end | yes | A headline settles, an accent button springs in, a cursor glides to it on a curve and clicks; the button presses, a ripple rings out and the label confirms. | `text`!, `title`, `sub`, `done`, `cursor` |
+| `m_glass_card` | cutaway/overlay |  | A frosted card focus-pulls in (blur to sharp, slight scale), a sheen sweeps across, then icon, tag, title and body build inside it. | `title`!, `body`, `eyebrow`, `icon`, `chip`, `align` |
+| `m_highlight_words` + `m_highlight_words_roto` | cutaway/overlay/roto |  | A sentence settles in, then marker strokes sweep behind the key words one after another and the words knock out of the marker. | `text`!, `style`, `highlight_at`, `plate` |
+| `m_kinetic_title` + `m_kinetic_title_roto` | cutaway/overlay/roto | yes | Headline words rise out of masks on a tight stagger, accent words get an underline sweep, eyebrow and sub settle in around them. | `text`!, `eyebrow`, `sub`, `align`, `scale`, `underline` |
+| `m_list_build` | cutaway/overlay |  | Rows slide in one by one on a stagger (or on their own `at`), each mark draws itself on (check, cross, number or dot), the latest row is lit. | `title`, `items`!, `mark`, `stagger` |
+| `m_logo_sting` + `m_logo_sting_end` | cutaway/overlay/end | yes | An accent pill outline draws itself around the mark and breathes out, the logo (or wordmark) focus-pulls in with a light sweep across it, the tagline tracks in underneath. | `logo`, `text`, `tagline`, `ring` |
+| `m_lower_third` | overlay/cutaway |  | An accent bar grows, a solid plate wipes open from it, the name rises inside and the role tracks in; it wipes back out before the shot ends. | `name`!, `role`, `align`, `position` |
+| `m_progress` | cutaway/overlay |  | A track draws in, the fill runs to the value with a glowing head and a counting percentage, milestone dots light as the fill passes them. | `label`, `value`, `milestones`, `show_value`, `fill_s` |
+| `m_quote` | cutaway/overlay |  | An oversized accent quotation mark settles, the quote fades up word by word in the serif, a rule draws and the attribution slides in. | `quote`!, `author`, `role`, `serif` |
+| `m_split_reveal` + `m_split_reveal_roto` | cutaway/overlay/roto | yes | A word slams in, splits horizontally along its middle, the halves slide apart and a second word rises out of the gap in the accent colour. | `text`!, `reveal`!, `eyebrow`, `split_at` |
+| `m_stat_counter` | cutaway/overlay | yes | One big number counts up on an expo curve with a soft accent glow, its suffix lands with the final digit, a meter fills underneath and the label and caption frame it. | `value`!, `from`, `prefix`, `suffix`, `decimals`, `grouping`, `label`, `caption`, `max`, `count_s` |
+| `m_steps` | cutaway/overlay |  | Numbered nodes on a line that draws itself from step to step; each node fills and its label rises as the line reaches it. Vertical on tall canvases, horizontal on wide ones. | `title`, `steps`!, `stagger` |
+
+```yaml
+cutaways:
+- {id: c2, template: m_stat_counter, start: 6.94, end: 10.26,
+   params: {label: "Calls from Google", value: 312, prefix: "+", suffix: "%", caption: "in the first 90 days", max: 400}}
+chest:
+- {segment: 01_hook_0, template: m_lower_third, params: {name: "Alex Morgan", role: "Owner · Morgan Roofing", at: 0.4}}
+roto:
+- {segment: 05_cta_0, template: m_kinetic_title_roto, params: {text: "*TODAY*", at: 11.0}}
+end_card: {template: m_logo_sting_end, duration: 2.0, params: {logo: Brand/logo-white.png, tagline: "Built for storms"}}
+```
+
 ## Icons
 Icons are Material Design (Apache-2.0), in `assets/icons/`:
 - `post` (calendar);

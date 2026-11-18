@@ -1,0 +1,60 @@
+<div class="safe center">
+  <div class="cmp" id="cmp">
+    <div class="side l solid" id="L"><div class="hd"></div><ul></ul></div>
+    <div class="vs" id="vs"></div>
+    <div class="side r glass" id="R"><div class="hd"></div><ul></ul></div>
+  </div>
+</div>
+<style>
+  .cmp { display: flex; flex-direction: column; align-items: stretch; gap: calc(var(--u) * 3); width: min(100%, calc(var(--u) * 84)); position: relative; font-size: var(--t-4); }
+  @media (min-aspect-ratio: 1/1) { .cmp { flex-direction: row; width: min(100%, calc(var(--u) * 150)); } .side { flex: 1; } }
+  .side { padding: calc(var(--u) * 3.6) calc(var(--u) * 4); text-align: left; }
+  .side.l { background: rgb(var(--card-rgb) / 0.7); }
+  .side.r { box-shadow: 0 calc(var(--u) * 2.2) calc(var(--u) * 6) rgb(0 0 0 / 0.38), 0 0 0 max(1px, calc(var(--u) * 0.18)) rgb(var(--accent-rgb) / 0.7), 0 0 calc(var(--u) * 5) rgb(var(--accent-rgb) / 0.25); }
+  .hd { font-size: var(--t-1); font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); margin-bottom: calc(var(--u) * 2.2); }
+  .r .hd { color: var(--accent); }
+  ul { list-style: none; display: flex; flex-direction: column; gap: calc(var(--u) * 1.8); }
+  li { display: flex; align-items: center; gap: calc(var(--u) * 1.8); font-weight: 600; line-height: 1.15; }
+  .l li { color: var(--muted); }
+  .m { width: 1.3em; height: 1.3em; flex: none; border-radius: 50%; display: grid; place-items: center; }
+  .l .m { color: var(--negative); background: rgb(var(--negative-rgb) / 0.14); }
+  .r .m { color: var(--accent); background: rgb(var(--accent-rgb) / 0.18); }
+  .m svg { width: 82%; height: 82%; }
+  .vs { position: absolute; left: 50%; top: 50%; width: calc(var(--u) * 9); height: calc(var(--u) * 9); margin: calc(var(--u) * -4.5) 0 0 calc(var(--u) * -4.5); z-index: 3;
+        border-radius: 50%; display: grid; place-items: center; font-size: var(--t-1); font-weight: 800; letter-spacing: 0.06em; color: var(--bg); background: var(--text);
+        box-shadow: 0 calc(var(--u) * 1) calc(var(--u) * 3) rgb(0 0 0 / 0.45); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let L, R, vs, rows = [], tl;
+  const build = (side, title, items, mark, t0) => {
+    side.querySelector('.hd').textContent = C.plain(title); side.querySelector('.hd').dataset.text = C.plain(title);
+    const ul = side.querySelector('ul');
+    (items || []).forEach((x, i) => {
+      const li = C.el('li', '', ul); const m = C.el('span', 'm', li); const path = C.svg(m, mark).querySelector('path');
+      C.el('span', '', li, C.plain(x)); li.dataset.text = C.plain(x); rows.push({ li, path, at: t0 + i * D(0.2) });
+    });
+  };
+  C.piece({
+    setup(P, ctx) {
+      L = document.getElementById('L'); R = document.getElementById('R'); vs = document.getElementById('vs');
+      build(L, P.left_title, P.left, C.CROSS, D(0.35)); build(R, P.right_title, P.right, C.CHECK, D(1.05) + (P.left || []).length * D(0.12));
+      if (P.vs) { vs.textContent = C.plain(P.vs); } else vs.remove();
+      const cmp = document.getElementById('cmp'); let fs = parseFloat(getComputedStyle(cmp).fontSize);
+      for (let k = 0; k < 30 && cmp.getBoundingClientRect().height > cmp.parentElement.clientHeight * 0.98; k++) { fs *= 0.94; cmp.style.fontSize = fs + 'px'; }
+      tl = C.timeline().at('L', 0, D(0.6)).at('R', D(0.75), D(0.65)).at('vs', D(0.6), D(0.5));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, land = ctx.w > ctx.h;
+      C.rise(L, t, 0, D(0.6), (land ? -6 : -4) * u, { axis: land ? 'x' : 'y' });
+      const pr = tl.p('R', t); C.set(R, { x: land ? (1 - pr) * 6 * u : 0, y: land ? 0 : (1 - pr) * 4 * u, s: 0.96 + 0.04 * pr, o: Math.min(1, tl.raw('R', t) * 2.5) });
+      if (vs.isConnected) C.set(vs, { s: C.easings.outBack(tl.raw('vs', t), C.overshoot * 1.3), r: (1 - tl.p('vs', t)) * -40, o: Math.min(1, tl.raw('vs', t) * 4) });
+      rows.forEach((x) => { C.rise(x.li, t, x.at, D(0.5), 1.6 * u); C.draw(x.path, C.easings.outCubic(C.prog(t, x.at + D(0.15), D(0.35)))); });
+    },
+    cues(P) {
+      C.cue(0, 'card', -16); C.cue(tl.t0('R'), 'card', -14, { pitch: 1 }); if (P.vs) C.cue(tl.t0('vs') + D(0.1), 'pop', -18);
+      rows.forEach((x, i) => C.cue(x.at + D(0.15), 'pop', -26, { pitch: i % 4 }));
+    },
+  });
+})();
+</script>

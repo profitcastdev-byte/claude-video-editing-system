@@ -22,6 +22,7 @@ def faded(fn, alpha):
 import os, sys, pkgutil, importlib, importlib.util   # noqa: E402
 
 REGISTRY, KIND, SOURCE = {}, {}, {}
+LOAD_HOOKS = []      # fn(folder, origin) called by load_dir (motion.py: a `templates` folder's sibling `motion` pieces)
 
 def _register(mod, origin):
     T = getattr(mod, "T", None)
@@ -36,8 +37,8 @@ for _m in pkgutil.iter_modules(__path__):
 def load_dir(d, origin=None):
     """register every template module in folder d (user / project templates); later folders override earlier ones"""
     d = os.path.expanduser(d or "")
-    if not os.path.isdir(d): return []
-    got = []
+    got = [n for h in LOAD_HOOKS for n in (h(d, origin) or [])]
+    if not os.path.isdir(d): return got
     for f in sorted(os.listdir(d)):
         if f.endswith(".py") and not f.startswith("_"):
             spec = importlib.util.spec_from_file_location(f"cves_user_templates.{f[:-3]}", os.path.join(d, f))
