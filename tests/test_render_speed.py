@@ -203,3 +203,14 @@ def test_text_behind_scale_on_its_box_is_the_full_frame_scale():
         im = _text_layer(seed, at=at)
         for hold, cx, base in ((1.0123, 270.4, 500.7), (1.16, 100.0, 40.0), (1.0004, 520.0, 950.0), (.97, 300.0, 700.0)):
             assert np.array_equal(np.asarray(TC._scaled(im, hold, cx, base)), ref(im, hold, cx, base)), (seed, hold)
+
+
+def test_split_boxes_thin_far_sliver_matches_split_alpha():
+    """a 2 px sliver far outside every padded box (a glyph tail mid-rise) joins the nearest part in both splitters"""
+    a = np.zeros((120, 160, 4), np.uint8); a[..., :3] = 200
+    a[10:30, 10:80, 3] = 255; a[90:92, 20:60, 3] = 40
+    parts = [["hd", "t", 10, 10, 80, 30, 1.0]]
+    ref = dict(MO.split_alpha(a, parts, 3)); got = {p: (c, o) for p, c, o in MO.split_boxes(a, parts, 3)}
+    assert int((ref[""][..., 3] > 0).sum()) == 0
+    crop, (x0, y0) = got["hd"]; canvas = np.zeros_like(a); canvas[y0:y0 + crop.shape[0], x0:x0 + crop.shape[1]] = crop
+    assert np.array_equal(canvas[..., 3], ref["hd"][..., 3])

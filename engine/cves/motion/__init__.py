@@ -450,6 +450,16 @@ def split_boxes(a, parts, pad):
                 big = np.zeros((ey1 - ey0, ex1 - ex0), bool); big[y0 - ey0:y1 - ey0, x0 - ex0:x1 - ex0] = m[3]
                 take = take.copy(); big |= take; m[2], m[3] = (ex0, ey0, ex1, ey1), big
                 claimed[ey0:ey1, ex0:ex1] |= take; stray[ey0:ey1, ex0:ex1] &= ~take
+    if masks and stray.any():            # as split_alpha: a thin sliver further out joins the nearest part
+        ys, xs = np.nonzero(stray)
+        if ys.max() - ys.min() < 8 or xs.max() - xs.min() < 8:
+            cy, cx = ys.mean(), xs.mean()
+            m = min(masks, key=lambda q: max(q[1][0] - cx, 0, cx - q[1][2]) + max(q[1][1] - cy, 0, cy - q[1][3]))
+            (mx0, my0, mx1, my1), sy0, sy1, sx0, sx1 = m[2], int(ys.min()), int(ys.max()) + 1, int(xs.min()), int(xs.max()) + 1
+            ux0, uy0, ux1, uy1 = min(mx0, sx0), min(my0, sy0), max(mx1, sx1), max(my1, sy1)
+            big = np.zeros((uy1 - uy0, ux1 - ux0), bool); big[my0 - uy0:my1 - uy0, mx0 - ux0:mx1 - ux0] = m[3]
+            big |= stray[uy0:uy1, ux0:ux1]; m[2], m[3] = (ux0, uy0, ux1, uy1), big
+            claimed |= stray; stray[:] = False
     for pid, _, (x0, y0, x1, y1), mk in masks:
         out = a[y0:y1, x0:x1].copy(); out[..., 3] = np.where(mk, out[..., 3], 0)
         yield pid, out, (x0, y0)
