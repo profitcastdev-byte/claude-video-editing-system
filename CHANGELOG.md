@@ -3,6 +3,35 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Added
+- **Take alignment in `cves select`** (`cves.align`, docs/INGEST.md "Take alignment"). Long-form whisper word times drift
+  by 1-3 s around retakes and pauses, so clip edges picked from `raw_words.json` clipped words. Every `selects.yaml` clip
+  with `text:` is now re-timed: `story.align_passes` windows around the hand in/out are transcribed with whisper.cpp DTW
+  token times (cached in `Edit/align/`), the text is fuzzy-matched (numbers normalised: "300 plus" = "300+", "a hundred
+  percent" = "100%"), the passes are pooled (a pass that merged two takes is outvoted) and each edge snaps into the nearest
+  pause, never inside speech, with `story.align_pad_s`. A low score keeps the hand times and warns. One report line per clip;
+  `edl.json` clips record `aligned: {in, out, score, status, hand}`. Opt out per clip (`align: false`) or per style
+  (`story.align: false`). `cves select --align-only` prints the report alone.
+- **STORY-17 "every chosen word is heard"** (`cves qc --stage story`): each clip's own span of `voice_final.wav` is
+  transcribed separately (a whole-file pass skipped a sentence that was in the cut) and its word recall against `text:` must
+  reach `qc.words_recall_min` (0.85); the missing words are listed per clip, and clips without `text:` are skipped and named.
+  QC-GATES.md: 184 rows (STORY-14 was already the loops gate).
+- **Named story structures**: style `grammar.structure: problem | offer | story | custom` (`cves.structure`). `problem` =
+  H P A PR O C (the old fixed order), `offer` = H M PR R C (M mechanism, R risk reversal), `story` = H S T PR C (S setup,
+  T turn); `grammar.beats` still overrides. The labels show in `cves story`, the moodboard / edit plan and `cves validate`
+  (a beat outside the structure warns, as does a clip without `text:`). Music `hook_beats` / `turn_beats` / `drop_beats`
+  now default per structure (offer: turn M, drop PR). STORY-13 runs only when the structure has a P beat; STORY-07 checks
+  the offer after the proof, or for `offer` the risk reversal after the proof.
+- New style keys `grammar.structure`, `story.align*` (7), `qc.words_recall_min`; `grammar.beats` and `music.hook_beats` /
+  `turn_beats` / `drop_beats` now default to null (= from the structure). `tools/make_demo.py` writes `text:` on every
+  clip; `tests/test_story.py`.
+
+### Changed
+- `/cves:story`, the `video-editor` skill, RULEBOOK §2 and CHECKLISTS §2: choose the structure in the brief, tag with its
+  beats, write `text:` on every clip, read the alignment report.
+
 ## [0.4.0] - 2026-11-19
 
 ### Added

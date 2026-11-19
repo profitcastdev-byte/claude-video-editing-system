@@ -55,7 +55,7 @@ Do the steps in order. Don't skip a step, and don't start a step whose input has
 |---|---|---|---|---|
 | 1 Setup | `cves new "<Client>" "<Video>" --raw <file>`, then `cves inspire` for a new client | Brief: emotion, want + obstacle, the proof. STYLE for a new client | The brief, plus what's missing (proof, logo, claims) | Only if raw, inspirations or brand are missing |
 | 2 Ingest | `cves ingest` | Nothing (a local step): raw transcript | Nothing, unless it fails | No |
-| 3 Story | `cves story` → write `Edit/selects.yaml` → `cves select` → `cves qc --stage story` | Beats H/P/A/PR/O/C/X, takes, order, connectors, setup→payoff | **The cut list** as text | **Yes: approval 1** |
+| 3 Story | `cves story` → write `Edit/selects.yaml` (`text:` on every clip) → `cves select` (aligns each take) → `cves qc --stage story` | The structure (`grammar.structure`: problem H/P/A/PR/O/C, offer H/M/PR/R/C, story H/S/T/PR/C), beats + X, takes, order, connectors, setup→payoff | **The cut list** as text | **Yes: approval 1** |
 | 3b Direction | write `Edit/DIRECTION.md` (§2a) | Concept, arc, the ONE signature moment, motif, what we will NOT do | Shown with the cut list or the edit plan | No (not a third approval) |
 | 4 Plan | `cves prep` → `cves plan` → fill `edit.yaml` → `cves plan` → `cves qc --stage plan` | Templates + params, keyed to `words.json`, serving DIRECTION.md | A short summary only | No |
 | 5 Edit plan | `cves moodboard` | Read `EDIT-PLAN.md`; review `moodboard.jpg` once; fix `edit.yaml` | **`EDIT-PLAN.html`** (timeline + every shot with its build frames) | **Yes: approval 2** |
@@ -72,6 +72,11 @@ Do the steps in order. Don't skip a step, and don't start a step whose input has
   video): 9:16 `[1080, 1920]` Reels / Shorts / TikTok (default), 4:5 `[1080, 1350]` or 1:1 `[1080, 1080]` feed, 16:9
   `[1920, 1080]` YouTube / web, 2.39:1 `[1920, 804]` cinematic. Edit natively at the main placement; deliver other
   aspects as reframes (`cves deliver --variants 9:16,1:1`). Change the canvas of an A-roll project before `cves select`.
+- **Story structure** (style `grammar.structure`, from the brief): `problem` (default; H P A PR O C) when the ad sells
+  relief from a pain, `offer` (H M PR R C: promise, mechanism, proof, risk reversal, CTA) when it leads with the result
+  or offer, `story` (H S T PR C: setup, turn, proof) for a before/after story, `custom` with `grammar.beats`. It sets
+  the beats you tag, the STORY gates, the labels on the moodboard and the music turn / drop. Every `selects.yaml` clip
+  carries `text:` (its exact words): `cves select` aligns each take from it and STORY-17 checks every word is heard.
 - **Spine: what drives the cut** (`edit.yaml spine:`).
   - `aroll` (default): a presenter on camera. The workflow above, unchanged.
   - `voiceover`: no presenter on screen; a recorded VO, or an ElevenLabs VO the user asked for (cost confirmed, registered
@@ -121,7 +126,7 @@ The motion layer (`docs/MOTION.md`) gives senior-grade animation (30 pieces): ki
 
 ### Sound (`docs/SOUND.md`)
 Cut sound as carefully as picture. The engine does the placing; you make the choices and listen.
-- **Story beats drive the music.** Tag clips `beat:` H / P / A / PR / O / C in `selects.yaml` (or set `music.hook_cut` / `turn_cut` / `drop_cut`). With `music.sync: drop` (or cuts / full), the drop lands on the payoff, and the drop whose build starts on the turn is preferred. `cves beats` prints the music sections (intro / build / drop / body / break / outro) against the hook, the turn and the payoff.
+- **Story beats drive the music.** Tag clips `beat:` with the structure's beats in `selects.yaml` (or set `music.hook_cut` / `turn_cut` / `drop_cut`). The hook / turn / drop beats default per `grammar.structure`: problem turn P/A, drop PR/O; offer turn M, drop PR; story turn T, drop PR. With `music.sync: drop` (or cuts / full), the drop lands on the payoff, and the drop whose build starts on the turn is preferred. `cves beats` prints the music sections (intro / build / drop / body / break / outro) against the hook, the turn and the payoff.
 - **Accents are automatic and budgeted.** `cves mix` adds:
   - a riser that resolves on the payoff;
   - a riser into or out of the hook;
