@@ -191,7 +191,8 @@ def test_riser_resolves_on_the_target_and_budget_limits_accents(built_song, tmp_
     fin = MX._finalize(TL, acc)
     E = {s["id"]: s for s in SFX.entries(pr)}
     for t, name, g, kw in fin:
-        if kw["accent"] != "riser": assert abs(t - kw["target"]) < 1e-6; continue
+        if kw["accent"] != "riser":
+            assert abs(t + SO.onset_offset(E[name]["path"], kw.get("trim")) - kw["target"]) < 1e-6; continue
         pk = t + MX.peak_offset(TL, name, kw)
         assert abs(pk - kw["target"]) <= 1 / 48000 + 1e-6                     # the peak IS the target
         assert abs(t + float(E[name]["duration_s"]) - kw["target"]) <= 1 / TL.FPS   # and the riser ends on it (within a frame)

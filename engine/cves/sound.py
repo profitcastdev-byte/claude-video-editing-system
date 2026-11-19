@@ -40,6 +40,19 @@ def picture_events(TL):
     ev += [float(t) for t, _ in getattr(TL, "trans", [])]
     return sorted(set(round(t, 6) for t in ev))
 
+_ONSET = {}
+def onset_offset(path, trim=None):
+    """seconds from the start of a (trimmed) sound to its onset: the first 10 ms RMS window at 10% of the peak, the
+    measure SND-07 uses. An impact is placed so this onset is on its target."""
+    import os, librosa
+    key = (os.path.abspath(path), int(os.path.getmtime(path)), str(trim))
+    if key not in _ONSET:
+        y, _ = librosa.load(path, sr=48000, mono=True)
+        if trim: y = y[int(trim[0] * 48000):int(trim[1] * 48000)]
+        env = np.sqrt(np.convolve(y ** 2, np.ones(480) / 480, "same")) if len(y) else np.zeros(1)
+        _ONSET[key] = float(np.argmax(env >= .1 * (env.max() + 1e-12))) / 48000
+    return _ONSET[key]
+
 def _nearest(ev, t, tol):
     if not ev: return None
     e = min(ev, key=lambda x: abs(x - t))
@@ -109,7 +122,7 @@ def accents(TL, cues, log=None):
             if s is None: rec["status"] = "skipped: no impact in the bank"; continue
             kw = {"accent": "impact", "target": tgt, "reveal": True, "beat_snap": False, "why": why}
             if float(s["duration_s"]) > imx: kw["trim"] = (0, imx)          # a long recorded boom: its first impact_max_s
-            out.append((tgt, s["id"], i_gain, kw))
+            out.append((tgt - onset_offset(s["path"], kw.get("trim")), s["id"], i_gain, kw))      # its onset on the target (SND-07)
         taken[kind] = s["id"]; used.append(tgt); rec.update(status="placed", id=s["id"], intensity=s.get("intensity"))
     return out
 
