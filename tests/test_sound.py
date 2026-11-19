@@ -281,3 +281,15 @@ def test_user_bank_resolves_in_the_mix(tmp_path, monkeypatch):
     assert s["bank"] if "bank" in s else True
     assert any(e["id"] == "pop_test" and e["bank"] == "user" for e in SFX.entries())
     assert SFX.pick(SFX.entries(), "pop", "hard")["id"] == "pop_test"
+
+
+def test_cves_sfx_cli_lists_and_checks():
+    import subprocess
+    env = dict(os.environ, PYTHONPATH=os.path.join(ROOT, "engine"))
+    r = subprocess.run([sys.executable, "-m", "cves.cli", "sfx", "list", "--category", "riser"], capture_output=True, text=True, cwd=ROOT, env=env)
+    assert r.returncode == 0 and "riser_air" in r.stdout and "@category" in r.stdout, r.stderr[-800:]
+    r = subprocess.run([sys.executable, "-m", "cves.cli", "sfx", "check"], capture_output=True, text=True, cwd=ROOT, env=env)
+    assert r.returncode == 0 and "valid" in r.stdout, r.stdout + r.stderr[-800:]
+    r = subprocess.run([sys.executable, "-m", "cves.cli", "sfx", "add", os.path.join(ROOT, "assets", "sfx", "pop.mp3"), "--category", "pop", "--licence", "by"],
+                       capture_output=True, text=True, cwd=ROOT, env=env)
+    assert r.returncode != 0 and "CC0" in (r.stdout + r.stderr) and "Traceback" not in r.stderr
