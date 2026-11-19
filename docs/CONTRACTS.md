@@ -71,7 +71,9 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `selects.yaml` | Claude / human | source clips (`src` per clip for multi-source), in/out, `beat:` tag (from the style's `grammar.structure`), `text:` (the clip's spoken words: take alignment and STORY-17 need it), optional `align: false` |
 | `edl.json` | ingest | fps, fps_rational, size, clips (selects.yaml clips with their aligned in/out and `aligned: {in, out, score, status, hand: [in, out]}`), segments (f0, n, in, out, src); non-aroll spines: `spine`, `duration`, `segments: []` (voiceover: `vo_kept`) |
 | `ingest.json` | ingest | per source: probe (w, h, fps, rotation, hdr, sar), conform applied, plate_scale; top level: canvas, fps_rational, plate_scale (max), language_detected. See [INGEST.md](INGEST.md) |
-| `voice_chain.json` | ingest | `{"steps": [{"name", "generative": bool, "params"}]}` (SND-30 reads it) |
+| `voice_chain.json` | ingest | `{"steps": [{"name", "generative": bool, "params"}]}` (SND-30 reads it); the last step is `adaptive_gate` with each take's measured floor / speech / threshold / depth |
+| `shot_match.json` | render (Timeline) | per-shot colour match (`grade.shot_match`): `reference`, per-shot skin / wall stats, the measured samples, and per shot `k` (plate frames), `gs` / `gb` (linear subject / wall gains); `_sig` = what it was solved for |
+| `cue_sync.json` | mix (`sound.sync_cues`) | pixel-change onsets measured on the rendered frames near each cue, with the render signature (element log + timeline) they belong to: `cves qc` rebuilds the same synced cue list |
 | `words.json` | ingest | `[[t0, t1, word]]` in cut time; language from `edit.yaml project.language` > `captions.language` (`auto` = detect) |
 | `style.yaml` | `cves inspire` | measured style profile + `_evidence` |
 | `inspire/` | `cves inspire` | `REPORT.md` (see / hear / feel per reference + the per-dimension mix), `<ref>-sheet.jpg` contact sheets, `aesthetic-review.md` (Claude fills it), `cache/` (per-reference measurements) |
@@ -79,7 +81,7 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `assets.json` | `cves assets` | registry: id → path, kind, source (file/magnific/elevenlabs/stock/url), prompt, licence, sha256 |
 | `stems/guide.wav` | mix | only with `music.slot: platform`: the guide the edit is cut to (reference track or click track), never mixed into the master ([VIRAL.md](VIRAL.md) §4) |
 | `beats.json` | `cves beats` | music analysis in track seconds: tempo, beats, downbeats, bars, sections, phrases (intro / build / drop / body / break / outro), energy, drop candidates, last sync plan ([MUSIC.md](MUSIC.md), [SOUND.md](SOUND.md)) |
-| `mix.json` | `cves mix` | master gain, cue count, music placement (+ `sections`, `story` alignment), automatic `accents` (placed / skipped + why), `duck` settings ([SOUND.md](SOUND.md)) |
+| `mix.json` | `cves mix` | master gain, cue count, music placement (+ `sections`, `story` alignment), automatic `accents` (placed / skipped + why), `duck` settings, `vmr_guard` (the bed's speech-band trim), `cue_sync` (every cue moved onto its picture event) ([SOUND.md](SOUND.md)) |
 | `timeline.json` | render | resolved timeline (spine, zoom, cutaways incl. `broll` shots, transitions, fps_rational, size, segments with `kind`) |
 | `IMPORT-REPORT.md` | `cves import-edits` | editor changes mapped onto edit.yaml / selects.yaml (backups `*.bak-<time>`), and what could not be mapped. `Export/control/layers.json` (schema in CONTROL-MODE.md §3) is the reference it compares against |
 | `elements.jsonl` | render | one record per drawn element per frame (id, role, bbox, text, t_key, asset, font) |

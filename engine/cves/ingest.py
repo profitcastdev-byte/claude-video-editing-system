@@ -449,15 +449,16 @@ def select(pr):
 # the voice chain: podcast-style polish on the DeepFilterNet stem. No generative models: they rewrite words (SND-30).
 VOICE_CHAIN = [("highpass", {"f": 75}), ("equalizer", {"f": 170, "t": "q", "w": 1, "g": 1.5}), ("equalizer", {"f": 380, "t": "q", "w": 1.2, "g": -2}),
                ("equalizer", {"f": 3800, "t": "q", "w": 1, "g": 2}), ("highshelf", {"f": 10000, "g": 1.5}), ("deesser", {"i": 0.35, "m": 0.5, "f": 0.55}),
-               ("acompressor", {"threshold": "-22dB", "ratio": 3, "attack": 8, "release": 120, "makeup": "4dB"}),
-               ("agate", {"threshold": 0.02, "ratio": 6, "range": 0.015, "attack": 3, "release": 90})]
+               ("acompressor", {"threshold": "-22dB", "ratio": 3, "attack": 8, "release": 120, "makeup": "4dB"})]
+# the gate is NOT a fixed ffmpeg agate any more: cves.voicegate measures each clip's room tone and speech level and sets the
+# threshold and depth from them (SND-19: a fixed threshold left real rooms at a -50 dBFS floor)
 def voice_af(chain=VOICE_CHAIN): return ",".join(f"{n}=" + ":".join(f"{k}={v}" for k, v in p.items()) for n, p in chain)
 
 def assemble_voice(pr):
     import librosa
-    edl = pr.json("edl.json"); clips = {c["id"]: c for c in edl["clips"]}; resampled = set(); df_model = set()
+    edl = pr.json("edl.json"); clips = {c["id"]: c for c in edl["clips"]}; resampled = set(); df_model = set(); spans = []
     for stem in ("df", "raw"):
-        out, cache = [], {}
+        out, cache, pos = [], {}, 0
         for s in edl["segments"]:
             if s["clip"] not in cache:
                 p = _df_out(pr, s["clip"]) if stem == "df" else pr.e("voice", "in", f"{s['clip']}.wav")
@@ -468,16 +469,37 @@ def assemble_voice(pr):
             y = cache[s["clip"]]; off = max(0, clips[s["clip"]]["in"] - PAD)
             seg = y[int((s["in"] - off) * SR):int((s["out"] - off) * SR)].copy(); f = int(.008 * SR)
             seg[:f] *= np.linspace(0, 1, f); seg[-f:] *= np.linspace(1, 0, f); out.append(seg)
+            if stem == "df": spans.append((pos, pos + len(seg), s["clip"]))
+            pos += len(seg)
         sf.write(pr.e(f"voice_{stem}.wav"), np.concatenate(out), SR)
-    sh([C.get("ffmpeg"), "-v", "error", "-y", "-i", pr.e("voice_df.wav"), "-af", voice_af(), "-ar", str(SR), pr.e("voice_final.wav")])
+    gate_step = polish_voice(pr, pr.e("voice_df.wav"), pr.e("voice_final.wav"), spans)
     steps = [{"name": "extract", "generative": False, "params": {"rate": SR, "channels": 1, "tool": "ffmpeg"}},
              {"name": "deepfilternet", "generative": False, "params": {"model": ",".join(sorted(df_model)) or "DeepFilterNet", "pad_s": PAD,
                                                                         "binary": os.path.basename(C.get("deepfilter"))}},
              {"name": "pause_tighten", "generative": False, "params": {"max_gap_s": MAXGAP, "breath_s": BREATH, "edge_s": EDGE, "threshold_db_below_peak": 32}}]
     if resampled: steps.append({"name": "resample", "generative": False, "params": {"from": sorted(resampled), "to": SR, "tool": "librosa"}})
     steps.append({"name": "crossfade", "generative": False, "params": {"ms": 8}})
-    steps += [{"name": n, "generative": False, "params": dict(p, tool="ffmpeg")} for n, p in VOICE_CHAIN]
+    steps += [{"name": n, "generative": False, "params": dict(p, tool="ffmpeg")} for n, p in VOICE_CHAIN] + [gate_step]
     pr.save_json("voice_chain.json", {"steps": steps, "output": "voice_final.wav"})
+
+def polish_voice(pr, src, dst, spans=None):
+    """the voice chain after DeepFilterNet: the ffmpeg polish (VOICE_CHAIN), then the adaptive gate (cves.voicegate),
+    measured per take. spans = [(first sample, end sample, take id)] of the assembled voice (None = one take).
+    Writes dst; returns the gate's voice_chain.json step."""
+    from . import voicegate as VG
+    pre = dst + ".pregate.wav"
+    try:
+        sh([C.get("ffmpeg"), "-v", "error", "-y", "-i", src, "-af", voice_af(), "-ac", "1", "-ar", str(SR), pre])
+        y, _ = sf.read(pre, dtype="float32"); y = y.mean(1) if y.ndim > 1 else y
+        spans = spans or [(0, len(y), "take")]
+        yg, info = VG.apply(y, SR, spans, _S(pr), seams=[a for a, _, _ in spans[1:]])     # the room between words, per take
+        sf.write(dst, yg, SR)
+    finally:
+        if os.path.exists(pre): os.remove(pre)
+    g = VG.cfg_of(_S(pr))
+    return {"name": "adaptive_gate", "generative": False, "params": {"tool": "cves.voicegate", "enabled": bool(info),
+            "floor_target_db": g["floor_target_db"], "ratio": g["ratio"], "attack_ms": g["attack_ms"], "lookahead_ms": g["lookahead_ms"],
+            "hold_ms": g["hold_ms"], "release_ms": g["release_ms"], "takes": info}}
 
 # ------------------------------------------------------------------ 3. cut-time words
 def words(pr):

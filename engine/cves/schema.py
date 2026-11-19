@@ -43,7 +43,7 @@ EDIT = {
     "style": "style",
     "edl": "str",
     "aroll": {"zoom": "zoommap", "creep": "number", "snap": {"start!": "time", "end!": "time", "zoom!": "number"},
-              "exposure_match": "bool", "lift": "bool"},
+              "exposure_match": "bool", "shot_match": "bool", "lift": "bool"},
     "captions": "captions",
     "cutaways": [CUT],
     "roto": [SEGREF],

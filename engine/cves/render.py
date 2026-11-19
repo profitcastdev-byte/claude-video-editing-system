@@ -8,7 +8,7 @@ import multiprocessing as _mp
 Pool = _mp.get_context("spawn").Pool   # same on every OS; fork deadlocks once torch/OpenCV threads exist (Linux)
 from PIL import Image, ImageFilter
 from fractions import Fraction
-from . import gfx as G, templates as TPL, style as STY, captions as CAP, spines as SP, craft as CR
+from . import gfx as G, templates as TPL, style as STY, captions as CAP, spines as SP, craft as CR, shotmatch as SM
 from .gfx import prog, clamp          # the canvas is G.W / G.H, read at call time (set per process by Timeline)
 from .look import grade
 
@@ -83,7 +83,9 @@ class Timeline:
         sn = ar.get("snap"); self.snap = (sn["start"], sn["end"], sn["zoom"]) if sn else None
         self.zoom = self._auto_zoom(ar.get("zoom", {})) if self.aroll else {}
         if not self.aroll: self.lift = set()
-        self.gain = self._exposure() if self.aroll and ar.get("exposure_match", self.S.get("grade.exposure_match", True)) else {}
+        self.match = SM.solve(self) if self.aroll else {}          # per-shot colour match to a reference shot (COL-06/07)
+        # the colour match includes exposure: the older skin-gain balance only runs when it is off
+        self.gain = self._exposure() if self.aroll and not self.match and ar.get("exposure_match", self.S.get("grade.exposure_match", True)) else {}
         self.caps = self._captions()
         self.root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         if proxy and float(proxy) != 1.0: self._to_proxy(float(proxy))
@@ -297,9 +299,23 @@ class Timeline:
     def _captions(self):
         cfg = {**(self.S.get("captions") or {}), **(self.E.get("captions") or {})}     # style defaults + per-video (fixes, hide)
         self.cap_cfg = cfg; self.cap_hide = [tuple(x) for x in cfg.get("hide", [])]
-        if cfg.get("events"): return [(e["start"], e["end"], [tuple(w) for w in e["words"]]) for e in cfg["events"]]
-        if not SP.has_voice(self.spine): return []                           # music / broll spines: text cards are cutaways
-        return CAP.build(self.pr.json("words.json", []), cfg, self.T_END)
+        if cfg.get("events"): ev = [(e["start"], e["end"], [tuple(w) for w in e["words"]]) for e in cfg["events"]]
+        elif not SP.has_voice(self.spine): return []                         # music / broll spines: text cards are cutaways
+        else: ev = CAP.build(self.pr.json("words.json", []), cfg, self.T_END)
+        self.cap_log = []                                                    # no fragment flashes round a cover (PLAT-06 / 07)
+        return CAP.schedule(ev, self.cap_hidden, self.FPS, cfg, self.cap_log)
+
+    def cap_hidden(self, f):
+        """True where compose() surely draws no caption on frame f: a drawn cutaway (B-roll shots keep them), the snap over a
+        roto segment, a captions.hide window, the end card. Chest graphics are not counted: they hide captions only on the
+        frames they draw on, which only the render knows (a fragment there is left as it is)."""
+        t = f / self.FPS
+        if t >= self.T_END or any(a <= t < b for a, b in self.cap_hide): return True
+        c = self.in_cut(t)
+        if c and not c.get("broll"): return True
+        if not (self.snap and self.snap[0] <= t < self.snap[1]): return False
+        s = self.seg_at(f)
+        return bool(s is not None and s["id"] in self.roto)
 
 # ------------------------------------------------------------------ helpers
 def skin_lab(bgr, f):
@@ -387,8 +403,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
             Ms = affine(max(z0, TL.snap[2]), cx, G.H if sid in TL.lift else cy - fh * .05, True); M0 = Ms if Ms[0, 0] > M0[0, 0] else M0
         if mode in ("overlay", "chest"): img = None
         else:
-            g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
-            img = grade(np.clip(P * g, 0, 1) if np.any(g != 1) else P, A, (cx, cy), TL.S.get("grade"))
+            img = grade(_matched(TL, sid, k, P, A), A, (cx, cy), TL.S.get("grade"))
             r = TL.roto.get(sid)
             if r:
                 rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], view=M, seg_view=M0, **CR.roto_ctx(TL, s, k)))
@@ -444,12 +459,17 @@ def _caption_front(TL, t, img, els):
     else: img = G.over(img, ce.im)
     return img, els + [(ce, "post")]
 
+def _matched(TL, sid, k, P, A=None):
+    """the plate as the grade receives it: colour-matched to the reference shot (grade.shot_match), else exposure-balanced"""
+    if TL.match: return SM.apply(TL.match, sid, k, P, A)
+    g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
+    return np.clip(P * g, 0, 1) if np.any(g != 1) else P
+
 def aroll_frame(TL, s, k, t, P, A):
     """the graded, framed A-roll frame of segment s at plate frame k (what the A-roll branch shows, without roto,
     chest or captions) + its matte (float 0..1, framed the same way). Only computed for NEEDS_AROLL templates."""
     sid = s["id"]; cx, cy, fh = smooth_face(TL, sid, k)
-    g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
-    img = grade(np.clip(P * g, 0, 1) if np.any(g != 1) else P, A, (cx, cy), TL.S.get("grade"))
+    img = grade(_matched(TL, sid, k, P, A), A, (cx, cy), TL.S.get("grade"))
     z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
     if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
     M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)
@@ -594,7 +614,8 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None):
                     for line in fh: out.write(line)
         pr.save_json("timeline.json", {"spine": TL.spine, "fps": TL.FPS, "fps_rational": list(TL.fps_rational), "size": list(TL.size), "frames": TL.N, "a_frames": TL.A_FRAMES, "zoom": TL.zoom, "lift": sorted(TL.lift), "snap": TL.snap, "creep": TL.creep,
                                        "cutaways": [dict({"id": c["id"], "start": c["start"], "end": c["end"], "template": c["template"]}, **({"broll": True} if c.get("broll") else {})) for c in TL.cuts],
-                                       "transitions": TL.trans, "exposure_gain": TL.gain, **({"proxy": list(TL.proxy)} if TL.proxy else {}),
+                                       "transitions": TL.trans, "exposure_gain": TL.gain,
+                                       "shot_match": {"reference": (TL.pr.json("shot_match.json", {}) or {}).get("reference"), "shots": sorted(TL.match)} if TL.match else None, **({"proxy": list(TL.proxy)} if TL.proxy else {}),
                                        "segments": [{k: s.get(k) for k in ("id", "in", "out", "f0", "n", "t0", "t1", "kind")} for s in TL.segs]})
     for f in logs: os.remove(f)
     return n, TL.N

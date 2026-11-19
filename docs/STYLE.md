@@ -215,9 +215,19 @@ number) is a warning. Maps whose keys are data (`colors`, `font_files`, `caption
   `edge_alpha_range` is treated as wall / subject, so RVM's soft tails do not spread graded subject light over the wall.
   Phone cameras sharpen dark-on-bright edges: the wall within `edge_dehalo_px` of the silhouette is clamped to the wall
   level just beyond it. Never widen a feather to hide an edge: it reads as an aura (LESSONS #4).
-- **Exposure balance** (`grade.exposure_*`): one gain per shot, fitted so that consecutive shots meet at their cut
-  frames and at their shot medians (COL-06 / COL-07), weakly anchored to the common median. Cached in
-  `Edit/exposure.json` with the timeline it was solved for (any segment or cutaway change re-solves it).
+- **Shot colour match** (`grade.shot_match_*`, on by default; `engine/cves/shotmatch.py`): every A-roll shot is matched to
+  a reference shot (`hook` = the first A-roll shot on screen, `median`, or a segment id) in linear light, before the look.
+  Skin (the two cheek patches, as QC COL-06 measures them) and wall (matte background 50-130 px round the head, above the eye line,
+  as QC measures it) are measured every `shot_match_step_f` plate frames. The subject gets a per-channel gain that maps its skin onto
+  the reference skin, the background one that maps its wall onto the reference wall, blended through the matte; the two
+  never differ by more than `shot_match_split_max`. Inside a shot, `shot_match_drift` of the drift onto the shot's own
+  median is followed, smoothed over `shot_match_smooth_s` (slow light drift: yes; a head turn: no). Gain only: a gain +
+  offset fit on two anchors at about the same level (a pale wall) is ill-conditioned and lifts the blacks. Cached in
+  `Edit/shot_match.json` (reference, per-shot stats, samples, gains) with the signature it was solved for.
+- **Exposure balance** (`grade.exposure_*`): used only when `grade.shot_match` is off (the colour match includes it). One
+  gain per shot, fitted so that consecutive shots meet at their cut frames and at their shot medians (COL-06 / COL-07),
+  weakly anchored to the common median. Cached in `Edit/exposure.json` with the timeline it was solved for (any segment
+  or cutaway change re-solves it).
 
 ## Key reference
 
@@ -300,7 +310,15 @@ project.size` wins over it.
 | `grade.shoulder` | `0.0` | filmic highlight roll-off |
 | `grade.shoulder_gain` | `1.0` | output scale after the shoulder (keeps white below clip when shoulder > 0) |
 | `grade.black_lift` | `[0.0, 0.0, 0.0]` | RGB lift of the blacks (matte / faded look), 0..0.06 |
-| `grade.exposure_match` | `true` | per-shot skin balance across cuts |
+| `grade.exposure_match` | `true` | per-shot skin balance across cuts (only when `shot_match` is off) |
+| `grade.shot_match` | `true` | per-shot colour match to a reference shot, in linear light, before the look (COL-06 / COL-07); `edit.yaml aroll.shot_match: false` turns it off for one video |
+| `grade.shot_match_reference` | `hook` | hook (the first A-roll shot on screen) / median (the visible shot nearest the median: least correction) / a segment id |
+| `grade.shot_match_strength` | `1.0` | 0..1 blend of the correction toward identity |
+| `grade.shot_match_drift` | `0.5` | 0..1: how much of the light drift inside a shot is followed |
+| `grade.shot_match_smooth_s` | `0.8` | Gaussian smoothing of the in-shot correction, s |
+| `grade.shot_match_step_f` | `4` | sample every N plate frames (plus the first / last visible frames) |
+| `grade.shot_match_gain_range` | `[0.7, 1.45]` | clamp on every linear-light gain |
+| `grade.shot_match_split_max` | `0.18` | max difference (log, per channel) between the subject's gain (skin) and the wall's gain |
 | `grade.exposure_mode` | `rgb` | `rgb`: luminance gain plus a small per-channel trim so skin colour matches across cuts (COL-06); `luma`: luminance only |
 | `grade.exposure_chroma_max` | `0.06` | cap on that per-channel trim (log units, about 6 %) |
 | `grade.exposure_gain_range` | `[0.85, 1.18]` | clamp on the per-shot balance gain |
@@ -344,6 +362,7 @@ project.size` wins over it.
 | `captions.lower_third_y` | `0.68` | position lower_third: top as a fraction of the canvas height |
 | `captions.line_height` | `1.32` | line spacing as a multiple of the size |
 | `captions.lead_s` | `0.03` | a word shows this long before its spoken start |
+| `captions.min_on_s` | `0.83` | no caption fragment shorter than this round a cutaway / snap / hide window: its words move into the next event, the previous one holds them, or (words spoken under the cover) it is skipped (PLAT-06 / 07); 0 = off |
 | `captions.reveal_s` | `0.06` | word_reveal fade-in per word |
 | `captions.pop_s` | `0.16` | pop / bounce / one_word entry duration per word |
 | `captions.karaoke_dim` | `0.55` | unspoken words in karaoke, as a fraction of the text colour |
@@ -446,6 +465,9 @@ story-stage thresholds (an `edit.yaml qc:` key of the same name wins for one vid
 | `sound.repeat_pitch_st` | `1` | SND-09: an identical back-to-back cue is pitched +/- this many semitones (alternating, deterministic) |
 | `sound.repeat_gain_db` | `1.5` | ... and its gain moved by -/+ this much |
 | `sound.phrase_tolerance_s` | `0.05` | SND-33: the drop section must start this close to the payoff, s |
+| `sound.cue_sync` | `true` | after render, every cue's onset (a riser: its peak) lands exactly on its logged picture event (SND-07 at any frame rate; [SOUND.md](SOUND.md) §6) |
+| `sound.cue_sync_max_f` | `6` | the event must be within this many frames of the time the template asked for |
+| `sound.cue_sync_pixel_min` | `40` | a pixel-change onset (no logged element near) counts only when this many quarter-res px start changing |
 | `sound.accents` |  | automatic risers / impacts on the story moments ([SOUND.md](SOUND.md)); budget `creative.sound_accents_per_30s` |
 | `sound.accents.enabled` | `true` | false (or edit.yaml `sfx.auto: false`) = no automatic accents |
 | `sound.accents.reveals` | `true` | also an impact on reveal cues that carry no low hit of their own |
@@ -473,6 +495,27 @@ how the music sits under the voice ([SOUND.md](SOUND.md))
 | `mix.duck_release_ms` | `auto` | envelope: how fast it comes back; auto = 1.25 x the measured syllable period, within `mix.duck_release_range_ms` |
 | `mix.duck_release_range_ms` | `[250, 400]` | clamp for the auto release, ms |
 | `mix.duck_range_db` | `30` | envelope: voice this far under its loud level does not duck; full depth (`sound.duck_voice_band_db` / `duck_other_db`) from 6 dB under it |
+| `mix.vmr_guard` | `true` | after ducking, trim the bed's speech band wherever a word would not clear it ([SOUND.md](SOUND.md) §3) |
+| `mix.vmr_band_hz` | `[1000, 4000]` | band the vocal-to-music ratio is measured and trimmed in |
+| `mix.vmr_min_db` | `null` | guaranteed ratio while speaking; null = `review.vmr_min_db` + `mix.vmr_margin_db` |
+| `mix.vmr_margin_db` | `2.0` | headroom over the review's limit |
+| `mix.vmr_max_cut_db` | `12.0` | deepest band trim |
+| `mix.vmr_window_s` | `0.4` | measurement window (the review's) |
+| `mix.vmr_attack_ms` / `mix.vmr_release_ms` | `30` / `250` | trim smoothing: in place before the word, back after it |
+
+#### `voice`
+
+The voice chain after DeepFilterNet ([INGEST.md](INGEST.md) "Voice chain").
+
+| key | default | meaning |
+|---|---|---|
+| `voice.gate.enabled` | `true` | the adaptive downward expander at the end of the chain (`engine/cves/voicegate.py`, SND-19) |
+| `voice.gate.floor_pct` / `speech_pct` | `10` / `90` | room tone between words / speech level = these percentiles of the take's 10 ms voice-band envelope |
+| `voice.gate.open_frac` | `0.3` | threshold = floor + this share of (speech - floor), kept `open_min_db` (6) .. `open_max_db` (14) over the floor |
+| `voice.gate.ratio` | `6.0` | expander ratio under the threshold |
+| `voice.gate.floor_target_db` | `-72.0` | the depth takes the room to this level, within `range_min_db` (10) .. `range_max_db` (40); a take with less than `min_snr_db` (12) between speech and room gets `range_min_db` |
+| `voice.gate.attack_ms` / `lookahead_ms` / `hold_ms` / `release_ms` | `2` / `8` / `15` / `40` | timing: open early (onsets), hold briefly, fade in dB |
+| `voice.gate.band_hz` | `[150, 6000]` | detector band |
 
 #### `music`
 

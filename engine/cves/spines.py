@@ -251,8 +251,8 @@ def ingest_voiceover(pr, words=True, force=False):
     steps.append({"name": "crossfade", "generative": False, "params": {"ms": 8}})
     tight = pr.e("voice_tight.wav"); sf.write(tight, np.concatenate(parts) if parts else y, SR)
     if V.get("chain", True):
-        ING.sh([C.get("ffmpeg"), "-v", "error", "-y", "-i", tight, "-af", ING.voice_af(), "-ar", str(SR), pr.e("voice_final.wav")])
-        steps += [{"name": n, "generative": False, "params": dict(p, tool="ffmpeg")} for n, p in ING.VOICE_CHAIN]
+        gate = ING.polish_voice(pr, tight, pr.e("voice_final.wav"))
+        steps += [{"name": n, "generative": False, "params": dict(p, tool="ffmpeg")} for n, p in ING.VOICE_CHAIN] + [gate]
     else: shutil.copyfile(tight, pr.e("voice_final.wav"))
     pr.save_json("voice_chain.json", {"steps": steps, "output": "voice_final.wav"})
     edl = sync_edl(pr, force=True)
