@@ -56,9 +56,9 @@ def test_legacy_cutaways_fill_the_safe_zone(size):
 
 
 def test_card_list_is_two_columns_on_landscape():
-    els = [e for e in _draw("card_list", (1920, 1080)) if e.id.startswith("list.item")]
+    els = [e for e in _draw("card_list", (1920, 1080)) if e.id.startswith("list.item") and not e.id.endswith(".icon")]
     xs = sorted({e.im.getbbox()[0] // 20 for e in els}); assert len(xs) == 2, xs               # two column edges
-    els = [e for e in _draw("card_list", (1080, 1920)) if e.id.startswith("list.item")]
+    els = [e for e in _draw("card_list", (1080, 1920)) if e.id.startswith("list.item") and not e.id.endswith(".icon")]
     assert len({e.im.getbbox()[0] // 20 for e in els}) == 1                                    # one column on 9:16
 
 
