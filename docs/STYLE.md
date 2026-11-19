@@ -14,7 +14,7 @@ in the [key reference](#key-reference) below.
 
 ## Merge order
 
-`style.load(pr)` merges up to eight layers. A later layer wins, key by key (nested mappings merge; lists and scalars replace):
+`style.load(pr)` merges up to nine layers. A later layer wins, key by key (nested mappings merge; lists and scalars replace):
 
 | # | layer | written by | typical content |
 |---|---|---|---|
@@ -24,6 +24,7 @@ in the [key reference](#key-reference) below.
 | 3 | `~/.cves/taste/learned.yaml` (personal learned) | `cves learn promote` (a person approves) | your taste; may hold `client:<name>` sections |
 | 4 | `engine/cves/styles/<preset>.yaml`, named by `edit.yaml style: {preset: <name>}` | a person | a reusable house look, e.g. `profitcast-dark` |
 | 5 | `PROJECT/Edit/style.yaml` | `cves inspire` | the look measured from the client's reference edits, with `_evidence` |
+| 5b | `PROJECT/Edit/treatment.yaml` (its `style:` mapping) | `cves treatments pick` (in a treatment folder: `make`) | the creative treatment: caption preset, transition family, grade, energy, bed ([TREATMENTS.md](TREATMENTS.md)); `_sources` shows `treatment:<name>` |
 | 6 | `PROJECT/Brand/style.yaml` | the client / a person | brand tokens: logo colours, fonts |
 | 7 | `edit.yaml style:` (keys other than `preset`) | Claude / a person | per-video overrides |
 
@@ -39,7 +40,8 @@ QC recomputes the zone from the profile's fractions on the real frame size.
 `S["_sources"]` lists the layers that were found, e.g. `["default", "learned:personal", "preset:profitcast-dark", "inspire", "edit.yaml"]`.
 Keys that start with `_` (`_evidence`, `_inspire`) are notes: the engine never reads them.
 
-So the measured look (3) beats the house preset (2), and the brand (4) and the edit (5) beat the measurement. To keep a
+So the measured look (5) beats the house preset (4), a treatment (5b) beats the measurement, and the brand (6) and the edit
+(7) beat both: brand rules always win over a treatment. To keep a
 preset value that inspire measured differently, set it again in `Brand/style.yaml` or `edit.yaml style:`, or delete the key
 from `Edit/style.yaml`.
 
@@ -732,3 +734,19 @@ no gate covers, and the loop cap.
 | `review.end_tail_db` | `-30` | master level in its last 50 ms above this (dBFS) = audio cut off at the end, not faded or ended on a hit (low) |
 | `review.earshot` | `auto` | `auto` runs `earshot measure --json --light` on the master when earshot is installed (`audio.json` `earshot`); `off` skips it |
 | `review.earshot_timeout_s` | `180` | give up on earshot after this long; the pack is written without it |
+
+#### `treatments`
+
+`cves treatments` ([TREATMENTS.md](TREATMENTS.md)): 2-3 creative takes on one plan, rendered as fast proxies and compared.
+
+| key | default | meaning |
+|---|---|---|
+| `treatments.offer` | `[punchy, cinematic, minimal]` | treatments `make` builds when none are named; the project's own `treatments/*.yaml` are added |
+| `treatments.prefer` | `null` | the treatment offered first; `cves learn mine` proposes it per goal / client from past `pick`s |
+| `treatments.proxy_scale` | `0.5` | proxy renders at this fraction of the canvas (even-rounded); plates and mattes are resized as they decode, never re-ingested |
+| `treatments.proxy_preset` | `veryfast` | x264 preset of proxy encodes (delivered files keep `delivery.video`) |
+| `treatments.proxy_crf` | `26` | x264 crf of proxy encodes |
+| `treatments.compare_points` | `6` | timecodes on the comparison sheet, the same in every treatment |
+| `treatments.compare_thumb` | `360` | sheet thumbnail height (portrait) or width (landscape), px |
+| `treatments.compare_max_s` | `12` | seconds of each treatment in the comparison MP4 |
+| `treatments.compare_layout` | `stacked` | `stacked` (side by side, or one above the other on landscape; audio of the first) or `sequential` (one after another, each with its own sound) |

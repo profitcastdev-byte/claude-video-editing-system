@@ -19,6 +19,10 @@ S.get("captions.style", "word_reveal")   # dotted lookup with a default
 3. `~/.cves/taste/learned.yaml`, the personal learned layer (`$CVES_TASTE`);
 4. the preset named by `edit.yaml style.preset`;
 5. `PROJECT/Edit/style.yaml`, written by `cves inspire`;
+   - the `style:` mapping of `PROJECT/Edit/treatment.yaml`, the **treatment layer** (written by `cves treatments pick`;
+     inside a treatment folder `Edit/treatments/<name>/` by `cves treatments make`). It sits after inspire and before
+     Brand and `edit.yaml`, so brand rules and per-video overrides still win over a treatment. `S["_sources"]` shows
+     `treatment:<name>`. Treatment files may hold only keys of `default.yaml` ([TREATMENTS.md](TREATMENTS.md));
 6. `PROJECT/Brand/style.yaml`;
 7. inline keys under `edit.yaml style:`.
 
@@ -80,8 +84,11 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `IMPORT-REPORT.md` | `cves import-edits` | editor changes mapped onto edit.yaml / selects.yaml (backups `*.bak-<time>`), and what could not be mapped. `Export/control/layers.json` (schema in CONTROL-MODE.md §3) is the reference it compares against |
 | `elements.jsonl` | render | one record per drawn element per frame (id, role, bbox, text, t_key, asset, font) |
 | `QC-REPORT.txt` / `qc.json` | `cves qc` | gate results; `qc.json` is machine-readable and carries the hash of the file it judged |
-| `journal.jsonl` | `cves` (build, encode, qc, deliver, import-edits, critique, review) + `cves learn` | append-only events `{t, event, cves, style_hash, ...}` for self-learning ([LEARNING.md](LEARNING.md)); `journal.last_edit.yaml` is the edit.yaml of the last build |
+| `journal.jsonl` | `cves` (build, encode, qc, deliver, import-edits, critique, review, treatments make / render / compare / pick) + `cves learn` | append-only events `{t, event, cves, style_hash, ...}` for self-learning ([LEARNING.md](LEARNING.md)); `journal.last_edit.yaml` is the edit.yaml of the last build |
 | `DIRECTION.md` | Claude | creative direction: concept, arc, the one signature moment, motif, what we will not do (knowledge-base/CREATIVE.md) |
+| `treatment.yaml` | `cves treatments pick` | the picked treatment (`name`, `label`, `style:` = the treatment style layer, `structure:` hints); the old one is kept as `treatment.yaml.bak-<time>` |
+| `treatments/<name>/` | `cves treatments make` / `render` | one treatment: `edit.yaml` (the adapted plan, `treatment: <name>`), `treatment.yaml`, `plan.json` (changes + metrics: cuts, caption style, transitions, punch-ins), `proxy.mp4`; its own `timeline.json`, `mix.wav`, `stems/`, `exposure.json`, `beats.json`. A `project.Variant` view: plates, mattes, faces, words and voice are read from `Edit/`, never rebuilt |
+| `treatments/compare/` | `cves treatments compare` | `sheet.jpg` (rows = treatments, columns = the same timecodes, labelled), `compare.mp4`, `compare.json` |
 | `critique/` | `cves critique` | `contact_sheet.jpg`, `timeline.png`, `critique.json`, `CRITIQUE.md` (rubric Claude fills) |
 | `review/` | `cves review` | `state.json` (rounds of the current loop, closed loops, capped at style `review.max_rounds`); one never-overwritten `rNNN/` per round: `cuts/cut_NN.jpg`, `index.jpg`, `hook.jpg`, `payoff.jpg`, `endcard.jpg`, `cuts.json`, `audio.json`, `findings.json` (`[{id, severity: high\|med\|low, t, kind, message, patch?}]`, `patch = {set: {edit.yaml path: value}, append: {...}, safe}`), `REVIEW.md` (rubric Claude answers), `applied.json`, `signoff.json` ([REVIEW.md](REVIEW.md)) |
 

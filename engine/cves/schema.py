@@ -37,6 +37,7 @@ CUT = {"id!": "str|int", "template!": "str", "start!": "time", "end!": "time", "
        "snap": "bool", "params": "dict", "sfx": "any", "note": "str", "beat": "str"}
 SEGREF = {"segment!": "segref", "template!": "str", "params": "dict", "note": "str"}
 EDIT = {
+    "treatment": "str",       # the creative treatment this plan was made from (`cves treatments`, docs/TREATMENTS.md)
     "goal": "str",            # ad (default) | viral: the goal layer, QC profile and music-slot rules (docs/VIRAL.md)
     "project": {"client": "str", "title": "str", "fps": "number|list|str", "size": "list", "raw": "path|null", "sources": "list", "language": "str"},
     "style": "style",
@@ -659,10 +660,11 @@ def validate(pr, edit=None):
     _check(v, "", edit, EDIT)
     _edit_specific(v, edit)
     _goal_and_slot(v, edit)
-    for name, p in (("Edit/style.yaml", pr.e("style.yaml")), ("Brand/style.yaml", pr.p("Brand", "style.yaml"))):
+    for name, p in (("Edit/style.yaml", pr.e("style.yaml")), ("Edit/treatment.yaml", pr.e("treatment.yaml")), ("Brand/style.yaml", pr.p("Brand", "style.yaml"))):
         if os.path.exists(p):
             try:
                 with open(p, encoding="utf-8") as fh: d = yaml.safe_load(fh) or {}
+                if name == "Edit/treatment.yaml": d = d.get("style") or {} if isinstance(d, dict) else d     # the treatment layer: its style: overlay
                 if isinstance(d, dict): check_style(v, d, name); _platform_target(v, d, name)
                 else: v.err(name, "expected a mapping of style keys")
             except yaml.YAMLError as e: v.err(name, f"YAML syntax error: {_yerr(e)}")

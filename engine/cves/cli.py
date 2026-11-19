@@ -27,6 +27,8 @@
   cves review build [vNNN|master] | apply [--only F01,F03] | signoff --verdict ship|revise --notes "..." | show
                                                         render review loop: cut strips, hook, payoff, end card, audio -> findings + REVIEW.md (docs/REVIEW.md)
 
+  cves treatments list|make|render|compare|pick ...      creative treatments as fast proxies, compared, one picked (docs/TREATMENTS.md)
+
   cves motion list | preview <piece> [--params JSON] [--size WxH] [--out f.png|f.mp4]   HTML motion pieces (docs/MOTION.md)
 
   cves sfx list|fetch|add|check ...                     the SFX bank: by category + intensity; fetch = CC0 from Openverse / Freesound (docs/SOUND.md)
@@ -94,12 +96,16 @@ def main(argv=None):
     ac.add_argument("--apply", action="store_true", help="write the track into edit.yaml broll: (backup kept); else print it")
     ac.add_argument("--json", action="store_true")
     # ---- end formats + spines ----
+    # ---- WS G: treatments (docs/TREATMENTS.md) ----
+    trt = sp.add_parser("treatments", help="list | make [NAMES] | render [NAMES] [--proxy|--full] | compare [NAMES] | pick NAME (docs/TREATMENTS.md)", add_help=False)
+    trt.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- end WS G ----
     # ---- WS H (senior sound, docs/SOUND.md): the SFX bank ----
     sfx_ = sp.add_parser("sfx", help="list | fetch | add | check: the SFX bank (manifest, CC0 only; docs/SOUND.md)", add_help=False); sfx_.add_argument("rest", nargs=argparse.REMAINDER)
     # ---- end WS H ----
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
-        if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion", "sfx"): a.rest = list(getattr(a, "rest", [])) + extra
+        if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion", "sfx", "treatments"): a.rest = list(getattr(a, "rest", [])) + extra
         else: ap.error("unrecognized arguments: " + " ".join(extra))
 
     if a.cmd == "new":
@@ -122,6 +128,8 @@ def main(argv=None):
         from . import sfx; sys.exit(sfx.main(a.rest, a.project))
     if a.cmd == "learn":     # WS E: journal notes / ratings / results; mine, promote, study (no project needed for mine/list/promote)
         from . import learn; sys.exit(learn.main(a.rest, a.project))
+    if a.cmd == "treatments":    # WS G: creative treatments (proxies, comparison sheet, pick -> edit.yaml + journal)
+        from . import treatments; sys.exit(treatments.main(a.rest, a.project))
     if a.cmd == "export" and a.target == "selftest":     # synthetic layers, no project needed
         from .export.__main__ import main as xmain; sys.exit(xmain(["selftest"] + list(a.rest)))
     if a.cmd == "beats" and a.dir: a.project = a.dir

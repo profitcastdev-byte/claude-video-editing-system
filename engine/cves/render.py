@@ -30,8 +30,10 @@ def refresh_needs_aroll():
 
 # ------------------------------------------------------------------ timeline
 class Timeline:
-    def __init__(self, pr):
-        self.pr = pr; E = pr.edit; self.E = E
+    def __init__(self, pr, proxy=None):
+        """proxy: a fraction of the canvas (treatment proxies, docs/TREATMENTS.md): the timeline is planned and the exposure
+        solved at full size, then the canvas and the face tracks are scaled; plates and mattes are resized as they decode"""
+        self.pr = pr; E = pr.edit; self.E = E; self.proxy = None
         self.S = STY.load(pr); self.style = self.S
         G.apply_style(self.S, canvas=G.canvas_of(self.S, pr))              # the ONLY source of look (docs/STYLE.md) + the canvas (docs/FORMATS.md)
         TPL.load_dir(pr.p("Brand", "templates"), "project")                  # per-client templates, if any
@@ -82,6 +84,20 @@ class Timeline:
         self.gain = self._exposure() if self.aroll and ar.get("exposure_match", self.S.get("grade.exposure_match", True)) else {}
         self.caps = self._captions()
         self.root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        if proxy and float(proxy) != 1.0: self._to_proxy(float(proxy))
+
+    def _to_proxy(self, k):
+        """scale this timeline's canvas by k (even-rounded) for a fast proxy render. Called after the exposure solve, which
+        measures the full-size plates. Every module reads G.W / G.H / G.U at call time, so templates follow."""
+        w, h = self.size; pw, ph = max(16, int(round(w * k / 2)) * 2), max(16, int(round(h * k / 2)) * 2)
+        G.set_canvas(pw, ph); self.size = (G.W, G.H); self.proxy = (pw / w, ph / h)
+        sx, sy = self.proxy
+        def sc(f):
+            if not f: return f
+            f = list(f)
+            for j in range(min(len(f), 14)): f[j] = f[j] * (sx if j % 2 == 0 else sy)
+            return f
+        self.faces = {sid: [sc(f) for f in F] for sid, F in (self.faces or {}).items()}
 
     def resolve(self, p):
         """asset id (edit.yaml `assets:` / Edit/assets.json) -> path; else a path relative to the project or the repo"""
@@ -469,12 +485,12 @@ def _write(TL, out_dir, i, img, logf):
     cv2.imwrite(f"{out_dir}/{i:05d}.png", cv2.cvtColor(out, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_PNG_COMPRESSION, 1])
 
 _TL = None
-def _init(root):
+def _init(root, work=None, proxy=None):
     """worker initializer. spawn re-imports every module, so the canvas (gfx.set_canvas) and the style are re-applied here
-    by Timeline: never rely on the parent's module state"""
+    by Timeline: never rely on the parent's module state. work: a Variant's folder (treatments); proxy: canvas fraction"""
     global _TL
-    from .project import Project
-    _TL = Timeline(Project(root))
+    from .project import reopen
+    _TL = Timeline(reopen(root, work), proxy=proxy)
 
 def canvas_of_worker():
     """(G.W, G.H) as this process sees it (tests: the canvas is re-set inside spawned workers)"""
@@ -488,6 +504,8 @@ def job_seg(sid, only, out_dir, mode):
     need = s.get("kind", "aroll") == "aroll" and (mode == "aroll" or any(not TL.in_cut(f / TL.FPS) or (TL.in_cut(f / TL.FPS) or {}).get("template") in NEEDS_AROLL for f in frames))
     Pg = _decode(TL.pr.e("plate", f"{sid}.mkv"), "rgb48le") if need else None
     Ag = _decode(TL.pr.e("matte", f"{sid}.mkv"), "gray") if need else None
+    if need and TL.proxy:      # proxy: the full-size plate / matte, resized as it decodes (never re-ingested)
+        Pg = (cv2.resize(x, TL.size, interpolation=cv2.INTER_AREA) for x in Pg); Ag = (cv2.resize(x, TL.size, interpolation=cv2.INTER_AREA) for x in Ag)
     last = max(frames) - s["f0"]
     with open(os.path.join(out_dir, f"_log_{s['f0']:07d}_{sid}.jsonl"), "w", encoding="utf-8") as fh:
         for k in range(last + 1):
@@ -507,12 +525,13 @@ def job_tail(only, out_dir, mode):
             for x in r: fh.write(json.dumps(x) + "\n")
     return len(fr)
 
-def render(pr, only=None, out_dir=None, mode="final", workers=None):
+def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None):
     """only: None (everything), a frame list, or an `--only` spec string (ids / ranges, see Timeline.frames_for).
+    proxy: a canvas fraction (e.g. 0.5) for a fast preview render (treatments); timeline.json then records `proxy`.
     Streams: each worker decodes one segment a frame at a time and writes frames + element records straight to disk;
     nothing holds the timeline's frames or logs in RAM, so memory does not grow with the video's length."""
     out_dir = out_dir or pr.e("frames"); os.makedirs(out_dir, exist_ok=True)
-    TL = Timeline(pr)    # also computes + caches exposure gains before forking
+    TL = Timeline(pr, proxy=proxy)    # also computes + caches exposure gains before forking
     if isinstance(only, str): only = TL.frames_for(only)
     from . import motion as MOT; MOT.prerender(pr, TL)     # motion pieces (HTML) render their frames ONCE here, before the spawn pool: workers only read the cache
     for f in glob.glob(os.path.join(out_dir, "_log_*.jsonl")): os.remove(f)
@@ -521,7 +540,7 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None):
             for s in sorted(TL.segs, key=lambda s: -s["n"])]
     jobs = [(sid, fr) for sid, fr in jobs if fr is None or fr]
     tail = None if want is None else sorted(f for f in want if f >= TL.A_FRAMES)
-    with Pool(max(1, min(workers or max(2, (os.cpu_count() or 4) - 1), len(jobs) + 1)), initializer=_init, initargs=(pr.root,)) as pool:
+    with Pool(max(1, min(workers or max(2, (os.cpu_count() or 4) - 1), len(jobs) + 1)), initializer=_init, initargs=(pr.root, getattr(pr, "work", None), proxy)) as pool:
         res = [pool.apply_async(job_seg, (sid, fr, out_dir, mode)) for sid, fr in jobs]
         if tail is None or tail: res.append(pool.apply_async(job_tail, (tail, out_dir, mode)))
         n = sum(r.get() for r in res)
@@ -533,7 +552,7 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None):
                     for line in fh: out.write(line)
         pr.save_json("timeline.json", {"spine": TL.spine, "fps": TL.FPS, "fps_rational": list(TL.fps_rational), "size": list(TL.size), "frames": TL.N, "a_frames": TL.A_FRAMES, "zoom": TL.zoom, "lift": sorted(TL.lift), "snap": TL.snap, "creep": TL.creep,
                                        "cutaways": [dict({"id": c["id"], "start": c["start"], "end": c["end"], "template": c["template"]}, **({"broll": True} if c.get("broll") else {})) for c in TL.cuts],
-                                       "transitions": TL.trans, "exposure_gain": TL.gain,
+                                       "transitions": TL.trans, "exposure_gain": TL.gain, **({"proxy": list(TL.proxy)} if TL.proxy else {}),
                                        "segments": [{k: s.get(k) for k in ("id", "in", "out", "f0", "n", "t0", "t1", "kind")} for s in TL.segs]})
     for f in logs: os.remove(f)
     return n, TL.N

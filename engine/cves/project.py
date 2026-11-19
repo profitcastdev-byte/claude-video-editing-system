@@ -32,6 +32,24 @@ class Project:
         if not vids: raise SystemExit("no raw video in Raw/")
         return self.p("Raw", vids[0])
 
+class Variant(Project):
+    """A view of a project whose plan and outputs live in their own folder (a treatment: Edit/treatments/<name>/) while the
+    ingest artefacts (edl.json, plates, mattes, faces, words, voice, beats, motion cache, inspire style) stay shared and are
+    never rebuilt. `e()` routes the files in OWN to the variant folder and everything else to the project's Edit/."""
+    OWN = {"edit.yaml", "treatment.yaml", "frames", "elements.jsonl", "timeline.json", "exposure.json", "mix.wav",
+           "mix_premaster.wav", "mix.json", "stems", "beats.json", "journal.jsonl", "journal.last_edit.yaml", "qc.json", "QC-REPORT.txt"}
+    def __init__(self, root, work):
+        super().__init__(root)
+        self.work = os.path.abspath(work)
+        if not os.path.isdir(self.work): raise SystemExit(f"no variant folder {self.work}")
+    def e(self, *parts):
+        if parts and parts[0] in self.OWN: return os.path.join(self.work, *parts)
+        return super().e(*parts)
+
+def reopen(root, work=None):
+    """a Project (or a Variant when work is given): spawned render workers rebuild the caller's view with it"""
+    return Variant(root, work) if work else Project(root)
+
 def new(client, title, raw=None, root=None):
     d = os.path.join(root or clients_root(), client, f"{datetime.date.today():%Y-%m-%d} {title}")
     for f in FOLDERS: os.makedirs(os.path.join(d, f), exist_ok=True)

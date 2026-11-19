@@ -1,0 +1,35 @@
+# Treatment "punchy": retention-first energy for feeds. Fast cuts, popped captions, whips, punch-ins, a fuller bed and
+# high-energy motion pieces. A treatment is a style overlay (`style:`, keys of default.yaml only) plus structure hints
+# (`structure:`) that `cves treatments make` applies to a copy of the edit plan. docs/TREATMENTS.md.
+name: punchy
+label: Punchy
+summary: Fast and loud. Popped keyword captions, whip transitions, a punch-in on a key word, every shot moving, a fuller music bed.
+style:
+  captions:
+    style: pop
+    size: 58
+    max_chars: 22
+    max_lines: 2
+    outline: 3
+    case: sentence
+    emphasis: {color: accent, scale: 1.25, numbers: true}
+    pop_s: 0.12
+  transitions: {in: whip, out: whip, whip_s: 0.12}
+  framing: {creep: 0.02}
+  grade: {gamma: 0.95, gain: 1.04, vignette: 0.1}
+  motion: {energy: 0.85, entry_s: 0.22, stagger_s: 0.08, ease: expo}
+  sound: {bed_lu: -8, sfx_offset_db: 0}
+  music: {sync: cuts}
+  rhythm: {music_energy: rising}
+structure:
+  pace: fast                  # fast | medium | slow (docs/TREATMENTS.md)
+  max_shot_s: 1.6             # broll spines: a video shot longer than this is split into a wide + punched-in pair (cut on a word)
+  min_shot_s: null            # broll spines: shots shorter than this are merged into a longer hold (null = never)
+  cutaways_per_30s: null      # cap on drawn cutaways (null = keep every one)
+  punch_ins: add              # add (a punch-in on a key word) | keep | gentle (smaller scale steps, no snap)
+  transitions: whip           # family for cutaway in/out, broll shot entries, explicit transitions and the end card: whip | glitch | fade | cut | keep
+  roto: keep                  # keep | drop
+  music: {bed_lu_offset: 2}   # added to edit.yaml music.bed_lu when the edit sets one
+  motion:                     # drawn templates swapped for HTML motion pieces (params are mapped)
+    swap: {stat: m_stat_counter}   # checklist -> m_list_build is mapped too, but its row slide crosses the 60 px margin (PLAT-01) at 1080x1920
+  broll_move: null            # broll spines: kenburns zoom [from, to] given to unmoving fill shots (null = leave them)

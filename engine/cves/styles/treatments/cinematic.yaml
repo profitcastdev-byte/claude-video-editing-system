@@ -1,0 +1,43 @@
+# Treatment "cinematic": slow, filmic and warm. Longer holds, small word-reveal captions low in the frame, dips to black,
+# a filmic grade (highlight roll-off, vignette, lifted blacks, relit background), slow pushes, a quieter bed. docs/TREATMENTS.md.
+name: cinematic
+label: Cinematic
+summary: Slow and filmic. Longer holds with slow pushes, small captions low in the frame, dips to black, a warm graded look, calm motion and a quieter bed.
+style:
+  captions:
+    style: word_reveal
+    size: 44                  # small and low; the serif face reads beautifully but its hairlines fail GFX-15 over bright footage
+    position: lower_third
+    lower_third_y: 0.74
+    case: sentence
+    reveal_s: 0.0             # crisp: a word mid-fade reads as low-contrast ink (GFX-15)
+    outline: 0
+    emphasis: {scale: 1.0, numbers: false}
+  transitions: {in: fade, out: fade, fade_s: 0.22}
+  stage: {dots: false, glow: true}
+  framing: {creep: 0.012}
+  grade:
+    relight: true
+    background_stops: -0.7
+    background_saturation: 0.8
+    subject_tint: [1.02, 1.0, 0.97]
+    background_tint: [0.97, 1.0, 1.03]
+    shoulder: 0.3
+    vignette: 0.32
+    black_lift: [0.015, 0.018, 0.024]
+  motion: {energy: 0.3, entry_s: 0.4, stagger_s: 0.16, ease: cubic, drift: 0.035}
+  sound: {bed_lu: -12, sfx_offset_db: -6}
+  music: {sync: drop}
+  rhythm: {music_energy: wave}
+structure:
+  pace: slow
+  max_shot_s: null
+  min_shot_s: 2.4             # merged holds never exceed grammar.max_shot_s (no QC gate is loosened)
+  cutaways_per_30s: null
+  punch_ins: keep
+  transitions: fade
+  roto: drop                  # a loud accent word behind the speaker is not this film's voice
+  music: {bed_lu_offset: -2}
+  motion:
+    swap: {stat: m_stat_counter}   # checklist -> m_list_build is mapped too, but its row slide crosses the 60 px margin (PLAT-01) at 1080x1920
+  broll_move: [1.0, 1.06]     # slow push on fill shots that do not move

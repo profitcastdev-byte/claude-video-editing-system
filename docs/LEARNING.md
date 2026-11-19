@@ -48,6 +48,8 @@ journals under the projects root) and anything path-like, and refuses to write i
 | `review` | `cves review build` | round, loop, pack folder, finding counts, QC FAIL count, the kinds of the high findings |
 | `review-apply` | `cves review apply` | the safe patches applied (`[{id, kind, changes: [{path, old, new}]}]`) |
 | `review-signoff` | `cves review signoff` | verdict (`ship` / `revise`), Claude's notes, the high / med findings still open, rounds used, cap reached ([REVIEW.md](REVIEW.md)) |
+| `treatments-make` / `-render` / `-compare` | `cves treatments` | the treatments built, rendered or compared, with their plan metrics ([TREATMENTS.md](TREATMENTS.md)) |
+| `treatment-pick` | `cves treatments pick` | the treatment chosen, the ones offered, goal / client / platform, its metrics and the edit.yaml diff it brought |
 
 And these by hand (Claude runs them during the workflow, `plugin/skills/video-editor/SKILL.md`):
 
@@ -63,7 +65,7 @@ delivered version.
 
 ## 3. Mining
 `cves learn mine [--root DIR]` reads every `Edit/journal.jsonl` under the projects root (`$CVES_CLIENTS`, config
-`clients_root`, else `~/CVES Projects`) and proposes candidates of three kinds:
+`clients_root`, else `~/CVES Projects`) and proposes candidates of four kinds:
 
 - **Repeated corrections**: the same kind of change made by people at least twice (in the editor, or in edit.yaml after a
   note): a style key raised or lowered, a value switched (transition kind, caption style), a template deleted. A style key
@@ -74,6 +76,9 @@ delivered version.
 - **Note clusters**: notes grouped by topic (captions, music, SFX, pace, transitions, colour, zoom, hook, brand, motion)
   and direction (more / less, faster / slower) that recur. Some map to a style nudge (louder music = `sound.bed_lu` +2
   LU, bigger captions = `captions.size` +10%, faster = `grammar.max_shot_s` −0.5 s); the rest become rules.
+- **Treatment preferences**: `treatment-pick` events per client and per goal. The same treatment picked at least twice and
+  in at least 60% of that scope's picks becomes a `treatments.prefer` style change for that scope (`client:<name>` or
+  `goal:<ad|viral>`); once promoted, `cves treatments list / make` offer it first.
 
 Each candidate has an id, a plain-words statement, a proposed style change (`key → value`) or rule text, a scope
 (`global`, `client:<name>` (local only), `goal:ad|viral`, `platform:<name>`, joinable with `+`), evidence (project /
@@ -92,8 +97,8 @@ Only keys that exist in `engine/cves/styles/default.yaml` can be learned; `promo
 reach teammates with the next `git pull` (open a PR as for any repo change; `CONTRIBUTING.md`).
 
 ## 5. How learned taste is applied
-`style.load()` merges `default → repo learned → personal learned → preset → inspire (Edit/style.yaml) → Brand → edit.yaml
-style:` (docs/CONTRACTS.md §1). A learned file holds `scopes: {<scope>: {style keys}}`; only sections whose scope matches
+`style.load()` merges `default → repo learned → personal learned → preset → inspire (Edit/style.yaml) → treatment
+(Edit/treatment.yaml) → Brand → edit.yaml style:` (docs/CONTRACTS.md §1). A learned file holds `scopes: {<scope>: {style keys}}`; only sections whose scope matches
 the project apply (goal from `edit.yaml goal:`, platform from `edit.yaml platform.target`, client from `project.client`;
 a project without a goal matches only `global` and its client / platform sections). General sections merge first,
 specific ones last. `S["_sources"]` lists `learned:repo` / `learned:personal` when they applied. Because the preset, the

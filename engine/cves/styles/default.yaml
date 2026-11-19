@@ -318,3 +318,13 @@ review:                       # `cves review` (docs/REVIEW.md): the render revie
   end_tail_db: -30            # master level in its last 50 ms above this (dBFS) = audio cut off, not faded or ended on a hit
   earshot: auto               # auto (run `earshot measure` on the master when installed) | off
   earshot_timeout_s: 180      # give up on earshot after this long (the pack is written without it), s
+treatments:                   # `cves treatments` (docs/TREATMENTS.md): creative alternatives of one plan, compared as fast proxies
+  offer: [punchy, cinematic, minimal]   # treatments `make` builds when none are named (PROJECT/treatments/*.yaml are added)
+  prefer: null                # the treatment offered first; `cves learn mine` proposes it per goal / client from past picks
+  proxy_scale: 0.5            # proxy renders: fraction of the canvas (even-rounded); plates and mattes are resized, never re-ingested
+  proxy_preset: veryfast      # x264 preset of proxy encodes (delivery encodes keep `delivery.video`)
+  proxy_crf: 26               # x264 crf of proxy encodes
+  compare_points: 6           # timecodes on the comparison sheet (the same ones in every treatment)
+  compare_thumb: 360          # sheet thumbnail height (portrait) or width (landscape), px
+  compare_max_s: 12           # length of each treatment in the comparison MP4, s
+  compare_layout: stacked     # stacked (side by side / one above the other, audio of the first) | sequential (one after another, own sound)

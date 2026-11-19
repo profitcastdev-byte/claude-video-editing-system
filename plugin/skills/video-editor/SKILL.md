@@ -59,6 +59,7 @@ Do the steps in order. Don't skip a step, and don't start a step whose input has
 | 3b Direction | write `Edit/DIRECTION.md` (§2a) | Concept, arc, the ONE signature moment, motif, what we will NOT do | Shown with the cut list or the edit plan | No (not a third approval) |
 | 4 Plan | `cves prep` → `cves plan` → fill `edit.yaml` → `cves plan` → `cves qc --stage plan` | Templates + params, keyed to `words.json`, serving DIRECTION.md | A short summary only | No |
 | 5 Edit plan | `cves moodboard` | Read `EDIT-PLAN.md`; review `moodboard.jpg` once; fix `edit.yaml` | **`EDIT-PLAN.html`** (timeline + every shot with its build frames) | **Yes: approval 2** |
+| 5b Treatments (open or creative brief only, §2b) | `cves treatments make` → `cves treatments render` → `cves treatments compare` → `cves treatments pick <name>` | Which 2-3 treatments fit the brief; look at `sheet.jpg` once: clearly different, each tasteful | `compare/sheet.jpg` + `compare.mp4`, one line per treatment | **Yes: the user picks one** (it can ride with approval 2) |
 | 6 Render + mix | `cves build` (render + mix + encode + fast QC) | Nothing (a local step) | Nothing yet | No |
 | 7 QC | `cves qc` | Fix `edit.yaml` until there are 0 FAILs | Nothing until it passes | No |
 | 7b Critique | `cves critique` (§4a) | Score the rubric honestly; fix anything < 7 that is fixable; log the scores | Nothing yet | No |
@@ -94,6 +95,22 @@ Do the steps in order. Don't skip a step, and don't start a step whose input has
 Before you fill `edit.yaml`, write `PROJECT/Edit/DIRECTION.md` (`knowledge-base/CREATIVE.md` §1): the one-line concept, the emotional arc along the beats, the ONE signature moment (time + how it is built), the motif that recurs, what this video will NOT do, and the goal / platform. Keep it to one screen and inside the client's style profile and the restraint budget (style `creative:`). Plan `edit.yaml` to serve it. Show it to the user alongside the cut list (if you write it then) or the edit plan at step 5; it is not a third approval, and any change they ask for is a note.
 
 Tick `knowledge-base/CHECKLISTS.md` for each stage as you finish it. Any "no" is fixed before the next stage, or logged with a reason.
+
+### 2b. Treatments (after the edit plan, when the brief is open or creative)
+Use `docs/TREATMENTS.md`. When the brief leaves the look open ("make it pop", "try something", a launch, a new client
+with no inspirations or brand look), offer 2-3 treatments as proxies instead of one finished cut:
+1. `cves treatments list`: the built-ins (`punchy`, `cinematic`, `minimal`) and any `PROJECT/treatments/*.yaml`; a
+   learned `treatments.prefer` for this client or goal comes first. Pick 2-3 that serve `DIRECTION.md` (a quiet brand
+   film does not need `punchy`). For a client-specific take, write `PROJECT/treatments/<name>.yaml` (style keys of
+   `default.yaml` only + `structure:` hints).
+2. `cves treatments make [a,b,c]`, read the printed changes and metrics (cuts, caption style, transitions, punch-ins).
+3. `cves treatments render` (proxies: half size, fast encode, plates reused), then `cves treatments compare`.
+4. Look at `Edit/treatments/compare/sheet.jpg` once. The rows must read as clearly different and each must be tasteful
+   (legible captions, nothing cramped, no effect soup). Fix a weak one in its treatment file and `make` / `render` it again.
+5. Show the user the sheet and `compare.mp4` with one line per treatment (its label + summary). On their choice:
+   `cves treatments pick <name>` (backs up `edit.yaml`, sets the treatment style layer, journals the choice for
+   `cves learn`), then continue at step 6 (`cves build`).
+Skip it when the brief, the inspirations or the brand already fix the look: build one plan well.
 
 ### Motion pieces (`m_*` templates)
 The motion layer (`docs/MOTION.md`) gives senior-grade animation: kinetic titles, glass cards, stat counters, list builds, lower thirds, quotes, highlight sweeps, progress bars, map-pin callouts, logo stings, split reveals, before/after, steps, bar charts, CTAs. `cves motion list` lists them; `/cves:motion` previews one.
