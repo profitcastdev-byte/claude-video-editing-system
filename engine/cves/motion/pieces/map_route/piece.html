@@ -1,0 +1,123 @@
+<div class="safe center">
+  <div class="mp" id="mp">
+    <div class="cam" id="cam"><svg id="sv" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="pin a" id="pa"><i data-el="start"></i></div>
+      <div class="pin b" id="pb"><svg data-el="pin" viewBox="0 0 100 130"><path d="M50 126 C50 126 12 78 12 46 C12 22 29 6 50 6 C71 6 88 22 88 46 C88 78 50 126 50 126 Z"/><circle cx="50" cy="46" r="15"/></svg></div>
+      <div class="chip fl" id="fl"></div>
+      <div class="lbl" id="tl"></div>
+    </div>
+    <div class="eta glass" id="et"></div>
+  </div>
+</div>
+<style>
+  .mp { position: relative; width: min(100%, calc(var(--u) * 86)); aspect-ratio: 4 / 5; flex: none; border-radius: calc(var(--r) * 1.2); overflow: hidden; background: var(--surface);
+        box-shadow: 0 calc(var(--u) * 2.4) calc(var(--u) * 7) rgb(0 0 0 / 0.45), 0 0 0 max(1px, calc(var(--u) * 0.14)) rgb(var(--text-rgb) / 0.14); }
+  .cam { position: absolute; inset: 0; transform-origin: 60% 40%; }
+  #sv { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .land { fill: var(--surface); } .park { fill: rgb(var(--accent-rgb) / 0.07); } .water { fill: rgb(var(--accent-dark-rgb) / 0.32); }
+  .blk { fill: rgb(var(--text-rgb) / 0.035); }
+  .st { stroke: rgb(var(--text-rgb) / 0.09); fill: none; stroke-linecap: round; }
+  .st.major { stroke: rgb(var(--text-rgb) / 0.16); }
+  .rt-glow { stroke: rgb(var(--accent-rgb) / 0.35); fill: none; stroke-linecap: round; stroke-linejoin: round; filter: blur(calc(var(--u) * 0.8)); }
+  .rt { stroke: var(--accent); fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .rt-bed { stroke: rgb(var(--bg-rgb) / 0.55); fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .head { fill: var(--text); }
+  .pin { position: absolute; left: 0; top: 0; z-index: 3; }
+  .pin.a i { position: absolute; width: calc(var(--u) * 3.6); height: calc(var(--u) * 3.6); left: calc(var(--u) * -1.8); top: calc(var(--u) * -1.8); border-radius: 50%;
+             background: var(--text); border: calc(var(--u) * 0.8) solid var(--accent); box-shadow: 0 0 0 calc(var(--u) * 1.4) rgb(var(--accent-rgb) / 0.22); }
+  .pin.b svg { position: absolute; width: calc(var(--u) * 8); height: calc(var(--u) * 10.4); left: calc(var(--u) * -4); top: calc(var(--u) * -10.2); transform-origin: 50% 100%;
+               filter: drop-shadow(0 calc(var(--u) * 0.8) calc(var(--u) * 1.4) rgb(0 0 0 / 0.45)); }
+  .pin.b path { fill: var(--accent); } .pin.b circle { fill: var(--bg); }
+  .chip.fl { position: absolute; left: 0; top: 0; z-index: 4; font-size: var(--t-1); background: rgb(var(--card-rgb) / 0.9); color: var(--text); border-color: rgb(var(--text-rgb) / 0.2); white-space: nowrap; }
+  .lbl { position: absolute; left: 0; top: 0; z-index: 4; font-size: var(--t-3); font-weight: 700; line-height: 1.1; color: var(--text); white-space: nowrap;
+         padding: calc(var(--u) * 1.4) calc(var(--u) * 2.4); border-radius: var(--r-s); background: rgb(var(--card-rgb) / 0.92);
+         box-shadow: 0 calc(var(--u) * 1) calc(var(--u) * 3) rgb(0 0 0 / 0.4); }
+  .eta { position: absolute; left: calc(var(--u) * 3); right: calc(var(--u) * 3); bottom: calc(var(--u) * 3); z-index: 5; padding: calc(var(--u) * 2.4) calc(var(--u) * 3);
+         font-size: var(--t-3); font-weight: 700; display: flex; align-items: center; gap: calc(var(--u) * 1.8); }
+  .eta .dot { width: 0.55em; height: 0.55em; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0.3em rgb(var(--accent-rgb) / 0.25); flex: none; }
+  @media (min-aspect-ratio: 1/1) { .mp { width: auto; height: min(100%, calc(var(--u) * 84)); aspect-ratio: 16 / 10; } .eta { left: auto; } }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let mp, cam, sv, pa, pb, fl, lb, et, route, glow, bed, head, len, pts, tl, VW, VH, ptA, ptB;
+  const NS = 'http://www.w3.org/2000/svg';
+  const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); (parent || sv).appendChild(e); return e; };
+  // a polyline with rounded corners (radius r, in view units)
+  const rounded = (P, r) => {
+    let d = `M${P[0][0].toFixed(2)} ${P[0][1].toFixed(2)}`;
+    for (let i = 1; i < P.length - 1; i++) {
+      const [ax, ay] = P[i - 1], [bx, by] = P[i], [cx, cy] = P[i + 1];
+      const l1 = Math.hypot(bx - ax, by - ay), l2 = Math.hypot(cx - bx, cy - by), k = Math.min(r, l1 / 2, l2 / 2);
+      d += ` L${(bx - (bx - ax) / l1 * k).toFixed(2)} ${(by - (by - ay) / l1 * k).toFixed(2)} Q${bx.toFixed(2)} ${by.toFixed(2)} ${(bx + (cx - bx) / l2 * k).toFixed(2)} ${(by + (cy - by) / l2 * k).toFixed(2)}`;
+    }
+    const z = P[P.length - 1]; return d + ` L${z[0].toFixed(2)} ${z[1].toFixed(2)}`;
+  };
+  C.piece({
+    setup(P, ctx) {
+      mp = document.getElementById('mp'); cam = document.getElementById('cam'); sv = document.getElementById('sv'); pa = document.getElementById('pa'); pb = document.getElementById('pb');
+      fl = document.getElementById('fl'); lb = document.getElementById('tl'); et = document.getElementById('et');
+      VW = 100; VH = 100 * mp.clientHeight / mp.clientWidth; sv.setAttribute('viewBox', `0 0 ${VW} ${VH.toFixed(3)}`);
+      const R = C.rand(P.seed ?? 7), k = ctx.u / (mp.clientWidth / VW), g = 10.75 * k, u = k;   // k: view units per canvas u
+      mk('rect', { x: 0, y: 0, width: VW, height: VH, class: 'land' });
+      // water along one edge, a couple of parks, faint blocks
+      const wy = VH * (0.08 + 0.1 * R());
+      mk('path', { class: 'water', d: `M0 0 L${VW} 0 L${VW} ${(wy * 0.6).toFixed(2)} C${VW * 0.7} ${(wy * 1.5).toFixed(2)} ${VW * 0.35} ${(wy * 0.4).toFixed(2)} 0 ${(wy * 1.2).toFixed(2)} Z` });
+      for (let i = 0; i < 26; i++) { const bx = Math.floor(R() * VW / g) * g + 1.6 * k, by = Math.floor(R() * (VH / g)) * g + 1.6 * k;
+        mk('rect', { class: 'blk', x: bx.toFixed(2), y: by.toFixed(2), width: (g - 3.2 * k).toFixed(2), height: (g - 3.2 * k).toFixed(2), rx: 1.2 * k }); }
+      for (let i = 0; i < 2; i++) { const px = (1 + Math.floor(R() * (VW / g - 3))) * g + 1.6 * k, py = (2 + Math.floor(R() * (VH / g - 3))) * g + 1.6 * k;
+        mk('rect', { class: 'park', x: px.toFixed(2), y: py.toFixed(2), width: (2 * g - 3.2 * k).toFixed(2), height: (g - 3.2 * k).toFixed(2), rx: 2 * k }); }
+      for (let x = g; x < VW; x += g) mk('line', { class: 'st' + (Math.round(x / g) % 3 === 1 ? ' major' : ''), x1: x, y1: 0, x2: x, y2: VH, 'stroke-width': (Math.round(x / g) % 3 === 1 ? 1.1 : 0.55) * k });
+      for (let y = g; y < VH; y += g) mk('line', { class: 'st' + (Math.round(y / g) % 3 === 2 ? ' major' : ''), x1: 0, y1: y, x2: VW, y2: y, 'stroke-width': (Math.round(y / g) % 3 === 2 ? 1.1 : 0.55) * k });
+      // the route: given points, else along the streets from bottom-left to top-right
+      if (Array.isArray(P.points) && P.points.length >= 2) pts = P.points.map((p) => [p[0] * VW, p[1] * VH]);
+      else {
+        const y0 = Math.floor((VH - (P.eta && ctx.w < ctx.h ? 2.4 : 0.9) * g) / g) * g, y1 = Math.max(2, Math.round(VH / g * 0.3)) * g, ym = Math.round((y0 + y1) / 2 / g) * g;
+        const cx = (f) => Math.round(f * VW / g) * g;
+        pts = [[cx(0.22), y0], [cx(0.22), ym], [cx(0.55), ym], [cx(0.55), y1], [cx(0.7), y1]];
+      }
+      pts = pts.filter((p, i) => i === 0 || Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) > 0.01);   // no zero-length legs
+      const d = rounded(pts, 4 * u);
+      glow = mk('path', { class: 'rt-glow', d, 'stroke-width': 3.4 * k }); bed = mk('path', { class: 'rt-bed', d, 'stroke-width': 2.8 * k }); route = mk('path', { class: 'rt', d, 'stroke-width': 1.5 * k });
+      len = route.getTotalLength(); [glow, bed, route].forEach((p) => { p.style.strokeDasharray = `${len} ${len}`; });
+      head = mk('circle', { class: 'head', r: 1.3 * k, cx: pts[0][0], cy: pts[0][1] });
+      const sc = mp.clientWidth / VW; ptA = [pts[0][0] * sc, pts[0][1] * sc]; ptB = [pts[pts.length - 1][0] * sc, pts[pts.length - 1][1] * sc];
+      pa.style.left = ptA[0] + 'px'; pa.style.top = ptA[1] + 'px'; pb.style.left = ptB[0] + 'px'; pb.style.top = ptB[1] + 'px';
+      if (P.from) { fl.textContent = C.plain(P.from); fl.dataset.text = fl.textContent; fl.style.left = (ptA[0] + 3 * ctx.u) + 'px'; fl.style.top = (ptA[1] - fl.offsetHeight / 2) + 'px'; } else fl.remove();
+      lb.textContent = C.plain(P.to); lb.dataset.text = lb.textContent;
+      C.fit(lb, mp.clientWidth * 0.62, ctx.h, 1, 0.5);
+      const lw = lb.offsetWidth, lh = lb.offsetHeight;
+      lb.style.left = C.clamp(ptB[0] - lw / 2, 2 * ctx.u, mp.clientWidth - lw - 2 * ctx.u) + 'px'; lb.style.top = Math.max(2 * ctx.u, ptB[1] - 12 * ctx.u - lh) + 'px';
+      if (lb.offsetTop + lh > ptB[1] - 10.4 * ctx.u) lb.style.top = (ptB[1] + 2 * ctx.u) + 'px';    // no room above the pin: put it below
+      if (P.eta) { C.el('span', 'dot', et); et.appendChild(document.createTextNode(C.plain(P.eta))); et.dataset.text = C.plain(P.eta); } else et.remove();
+      const ds = D(P.draw_s || 1.6);
+      tl = C.timeline().at('mp', 0, D(0.6)).at('pa', D(0.3), D(0.45)).at('fl', D(0.45), D(0.5)).at('route', D(0.55), ds)
+        .at('pb', D(0.55) + ds - D(0.1), D(0.5)).at('lb', D(0.55) + ds + D(0.15), D(0.55)).at('et', D(0.55) + ds + D(0.3), D(0.55));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), pm = tl.p('mp', t);
+      C.set(mp, { y: (1 - pm) * 4 * u - ex * 3 * u, s: 0.95 + 0.05 * pm, o: Math.min(1, tl.raw('mp', t) * 2.5) * (1 - ex) });
+      // a slow camera push for the whole piece (linear-ish, never stops dead)
+      cam.style.transform = `scale(${(1 + 0.06 * C.easings.outQuad(C.clamp(t / Math.max(1, ctx.dur)))).toFixed(4)})`;
+      const pr = C.MOVE(tl.raw('route', t)), off = (len * (1 - pr)).toFixed(3);
+      [glow, bed, route].forEach((p) => { p.style.strokeDashoffset = off; });
+      const hp = route.getPointAtLength(len * pr); head.setAttribute('cx', hp.x.toFixed(3)); head.setAttribute('cy', hp.y.toFixed(3));
+      head.style.opacity = tl.raw('route', t) > 0 && tl.raw('route', t) < 1 ? '1' : '0';
+      const pA = tl.raw('pa', t); C.set(pa, { s: C.easings.outBack(pA), o: Math.min(1, pA * 3) });
+      const pB = tl.raw('pb', t), dropY = (1 - C.easings.outCubic(Math.min(1, pB * 1.4))) * -8 * u;
+      const squash = pB > 0.7 ? Math.sin((pB - 0.7) / 0.3 * Math.PI) * 0.14 : 0;
+      C.set(pb, { y: dropY, o: Math.min(1, pB * 4) });
+      pb.querySelector('svg').style.transform = `scale(${(1 + squash).toFixed(4)}, ${(1 - squash).toFixed(4)})`;
+      if (fl.isConnected) C.rise(fl, t, tl.t0('fl'), D(0.5), 2 * u, { axis: 'x' });
+      C.rise(lb, t, tl.t0('lb'), D(0.55), 2 * u);
+      if (et.isConnected) C.rise(et, t, tl.t0('et'), D(0.55), 3 * u, { extra: ex ? { o: 1 - ex } : {} });
+    },
+    cues(P) {
+      C.cue(tl.t0('pa'), 'pop', -22, { pitch: 2 });
+      C.cue(tl.t0('route'), 'whoosh', -26, { trim: [0, 0.8] });
+      C.cue(tl.t0('pb'), 'pop', -17, { pitch: -1 });
+      C.cue(tl.t0('lb'), 'card', -22);
+      if (P.eta) C.cue(tl.t0('et'), 'ding', -24);
+    },
+  });
+})();
+</script>

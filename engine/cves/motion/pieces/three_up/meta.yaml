@@ -1,0 +1,26 @@
+title: Three-up
+description: Three cards cascade in on a stagger (a row on wide canvases, a stack on tall ones), each with a picture, an icon or a number, a title and a line; then the chosen card lifts forward with an accent edge while the other two settle back.
+kinds: [cutaway, overlay]
+duration: 4.0
+params:
+  title: {type: str, default: "", help: "heading above the cards; *stars* for accent"}
+  items: {type: list, required: true, help: "three {title, text} (strings work too)"}
+  image_1: {type: path, default: "", help: picture for card 1 (asset id or path)}
+  image_2: {type: path, default: ""}
+  image_3: {type: path, default: ""}
+  icon_1: {type: icon, default: "", help: "icon for card 1 when it has no picture (assets/icons name or path); else its number"}
+  icon_2: {type: icon, default: ""}
+  icon_3: {type: icon, default: ""}
+  highlight: {type: int, default: 0, help: "1-3: the card that lifts at the end (0: none)"}
+  stagger: {type: number, default: 0.22, help: seconds between cards}
+preview:
+  duration: 4.0
+  params:
+    title: "How it *works*"
+    items: [{title: "Call us", text: "A real person picks up"}, {title: "We visit", text: "Same day, on the hour"}, {title: "Fixed price", text: "Quoted before we start"}]
+    icon_1: call
+    icon_2: place
+    icon_3: star
+    highlight: 3
+cues:
+  - [0.3, card, -18]

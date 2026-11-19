@@ -147,3 +147,74 @@ Every built-in piece follows these rules:
 - **Motion:** eased on the house curves; staggered (never all at once); overshoot used once per piece at most; velocity blur only on fast frames; entries fade with their travel, so nothing pops in.
 - **Layout:** type from the scale, shrunk to fit rather than clipped; inside the safe zone; legible over video (plates or shadows on overlay pieces).
 - **Restraint:** the skill allows one hero piece per ~8-10 s (`motion.hero_min_gap_s`), and `cves render` warns when two hero pieces sit closer.
+
+## Craft (motion moves between and inside shots)
+Code: `engine/cves/craft.py` (pure functions: the same inputs give the same pixels in every worker) and
+`engine/cves/templates/craft.py` (`text_behind`). Every look and every limit comes from the style (`craft.*`,
+`transitions.<kind>_s`; [STYLE.md](STYLE.md)). **No effect soup:** each move counts against the restraint budget
+(`creative.craft_per_30s`, and transitions against `creative.transition_kinds_max`); `cves render` warns when an edit is
+over it and `cves critique` reports it. Transitions are also rate-limited at render (below).
+
+### Text behind the speaker
+`roto: [{segment: 01_hook_0, template: text_behind, params: {text: "2 *SECONDS*", at: 0.45}}]`
+
+The type is drawn on the background plate and the subject is composited back on top through its matte, so the head
+occludes the letters (the roto slot's order: plate -> type -> subject). It is placed from the presenter's face landmarks
+(eye midpoint, head top, chin), smoothed over `craft.behind.smooth_frames` frames with a triangular window, and follows the
+head by `craft.behind.track` of its motion (0 = locked where it entered, 1 = glued). `position: above` (default) sets the
+last line's baseline so the head covers its lower `craft.behind.overlap`; `behind` centres it on the eyes; `low` puts it
+behind the shoulders. The letters rise out from behind the head (`entry_s`), breathe in their tracking and hold with a
+slow 2.5 % push. One element per block (`behind.text`, role `roto`): QC measures its contrast with the person masked out.
+
+**No matte.** A segment without `Edit/matte/<seg>.mkv` renders with an empty matte (the roto layer lands in front), and
+`text_behind` lifts the type clear above the head (`craft.behind.no_matte: above`) or keeps it with a legibility bed
+(`front`): it never prints across the face.
+
+### Speed ramps
+On a `broll:` shot (or a `video_broll` cutaway's params):
+```yaml
+broll:
+  - {asset: city, start: 6.6, end: 8.2, in: 0.6, ramp: {preset: slam}}                       # style presets
+  - {asset: run, start: 8.2, end: 10, in: 2, out: 6.5, ramp: {keys: [[0, 2], [0.5, 0.25], [1, 1]], ease: inOutExpo, blend: blend, audio: pitch}}
+```
+`keys` are `[shot fraction, speed]`, eased between (`craft.ramp.ease`), floored at `craft.ramp.min_speed`. Source time is the
+running integral of the speed curve, so it is strictly increasing; with `out` the curve is normalised so the shot's first
+frame is `in` and its last is `out` exactly, else it consumes `speed x duration x mean ramp speed`. Frames: `blend` (default)
+crossfades the two neighbouring source frames on slow sections (no stutter) and averages a shutter's worth
+(`craft.ramp.shutter`) on fast ones (motion blur); `nearest` takes the nearest frame. The shot's own sound (`audio: true`)
+is muted (`craft.ramp.audio: mute`) or played tape-style, pitch following speed (`pitch`).
+
+### Camera moves
+`camera: {move: push | pull | pan_left | pan_right | pan_up | pan_down | drift | none, amount, ease, handheld: true}` on a
+`broll:` shot (also `image` / `video_broll` params, without the roll). Eased curves (`craft.camera.ease`); `handheld` (or
+`move: drift`) adds a seeded smooth wobble (`drift_u`, `drift_hz`, `drift_rot`): the same shot always wobbles the same way.
+Pans and drift zoom in just enough never to show an edge.
+
+**2.5D parallax.** A still with `depth: <asset>` (a grayscale depth map, white = near, or an image whose alpha is the
+subject) is split into two planes at `craft.camera.depth_split`: the background has the subject area inpainted, and the
+foreground moves `(1 + parallax)` times as much as the background (`camera.parallax`, default `craft.camera.parallax`).
+
+### Match cuts
+`match: saliency | centroid | {mode, scale_range}` on a `broll:` shot that starts where the previous shot ends. The engine
+finds the salient shape of the outgoing shot's last frame and of this shot's first frame (`saliency`: spectral residual;
+`centroid`: the bright, high-contrast shape), then scales this shot about its shape (clamped to `craft.match.scale_range`,
+>= 1 so the fill crop never shows an edge) and moves it so the shapes coincide. `craft.match.settle_s` > 0 eases back to
+the shot's own framing. `craft.find_in(a, frame_at, t0, t1)` searches a clip for the in-point whose shape lines up best.
+
+### Transitions
+`cutaways[].in / out`, `broll[].transition`, `end_card.in`, `transitions: [{t, kind}]` take, besides cut / whip / glitch /
+fade:
+
+| kind | what | look keys |
+|---|---|---|
+| `whip_pan` | the frame slides out with a directional smear, the next slides in from the other side | `craft.transitions.whip_dir` |
+| `zoom_through` | the outgoing shot rushes in to the centre with radial blur, the incoming one lands from slightly in | |
+| `mask_wipe` | a feathered shape covers the outgoing shot and uncovers the incoming one, with a lit leading edge | `wipe_shape` (bar / circle / matte), `wipe_color` |
+| `luma_fade` | dip to colour by brightness: shadows go first, highlights come back first | `dip_color` |
+| `glitch_lite` | a short RGB split and a few slipped slices, no scanlines | |
+| `light_leak` | a procedural warm leak (seeded blobs + a streak, screen-blended), no third-party media | `leak_color`, `leak_strength` |
+| `dip` | a soft dip to a style colour | `dip_color` |
+
+Each lasts `transitions.<kind>_s` either side of the cut and is seeded by its cut time (deterministic). Rate limit
+(`craft.transitions.enforce`): a non-cut transition within `craft.transitions.min_gap_s` of the previous kept one, or a kind
+beyond `creative.transition_kinds_max`, becomes a cut (and loses its whoosh); `cves render` prints each downgrade.

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Build the synthetic demo project: no real person, no client, no licensed media.
 
-    python tools/make_demo.py OUT_DIR [--fps 30] [--small] [--kind aroll|voiceover|music|broll] [--size WxH]
+    python tools/make_demo.py OUT_DIR [--fps 30] [--small] [--kind aroll|voiceover|music|broll] [--size WxH] [--craft]
 
 It writes a complete CVES project in the state ingest leaves it in, so render, mix, QC, deliver and export can run on any
 machine without whisper, RVM or DeepFilterNet (CI uses it; teammates can use it to try the engine).
 
 --kind picks the timeline spine (docs/FORMATS.md); --size the canvas (style canvas.size, written to edit.yaml style:).
+--craft swaps in the motion-craft edit (docs/MOTION.md "Craft"): aroll = text behind the speaker (hook + CTA), a speed-ramped
+B-roll shot with a push, a whip pan and a light leak, m_notification_stack and m_follow_card_end; voiceover = a 2.5D camera push on a
+still with a depth matte and a match cut between two drawn orb clips.
   aroll      (default) the drawn presenter below
   voiceover  a synthetic VO as the spine (Assets/vo.wav, registered) + a broll: track of drawn clips cut on the words
   music      no voice: a synthetic 100 BPM track drives the cut; the broll: track comes from `cves autocut` (on the bars)
@@ -136,13 +139,16 @@ def main():
     ap.add_argument("--small", action="store_true", help="fewer words (CI speed)")
     ap.add_argument("--kind", choices=("aroll", "voiceover", "music", "broll"), default="aroll", help="the timeline spine (docs/FORMATS.md)")
     ap.add_argument("--size", default=None, help="canvas WxH (even numbers), e.g. 1920x1080; default 1080x1920")
+    ap.add_argument("--craft", action="store_true", help="the motion-craft edit (aroll, voiceover)")
     a = ap.parse_args(); fps = a.fps; out = os.path.abspath(a.out)
     if a.size:
         try: W, H = (int(v) for v in a.size.lower().split("x"))
         except ValueError: raise SystemExit("--size WxH, e.g. 1920x1080")
         if W % 2 or H % 2: raise SystemExit("--size: width and height must be even")
         K = min(W / 1080, H / 1920)
-    if a.kind != "aroll": return build_spine(a, out, fps)
+    if a.kind != "aroll":
+        build_spine(a, out, fps)
+        return craft_overlay(out, a.kind, fps) if a.craft else None
     import soundfile as sf
     if os.path.exists(out): shutil.rmtree(out)
     for d in ("Raw", "Inspirations", "Brand", "Music", "Edit/plate", "Edit/matte", "Moodboard", "Export", "Assets"): os.makedirs(os.path.join(out, d), exist_ok=True)
@@ -198,6 +204,7 @@ def main():
     edit = merge_demo(edit, tmpl, st, en)
     yaml.safe_dump(edit, open(os.path.join(E, "edit.yaml"), "w", encoding="utf-8"), sort_keys=False, allow_unicode=True)
     print(f"demo project: {out}  ({dur:.1f} s, {sum(len(v) for v in faces.values())} frames at {fps} fps, {len(segs)} segments)")
+    if a.craft: craft_overlay(out, "aroll", fps, st, en)
 
 def merge_demo(edit, tmpl, st, en):
     """tools/demo_edit.yaml holds the template choices + params; {start:clip}/{end:clip} placeholders resolve to cut times"""
@@ -211,6 +218,89 @@ def merge_demo(edit, tmpl, st, en):
     t = res(tmpl)
     for k, v in t.items(): edit[k] = v
     return edit
+
+# ------------------------------------------------------------------ the motion-craft edit (--craft)
+def orb_clip(path, w, h, fps, seconds, cx, cy, r, vx, vy, seed):
+    """a drawn clip with ONE bright orb drifting over a dusk gradient with soft stripes: a clear shape for a match cut"""
+    rng = np.random.default_rng(seed); n = int(round(seconds * fps)); yy, xx = np.mgrid[0:h, 0:w].astype(np.float32); u = min(w, h)
+    top, bot = np.array(rng.uniform(40, 70, 3), np.float32), np.array(rng.uniform(90, 130, 3), np.float32)
+    orb = np.array([236, 214, 170], np.float32)
+    pw = pipe_writer(path, fps, "rgb24", "yuv420p", ["-c:v", "libx264", "-crf", "18", "-preset", "veryfast"], size=(w, h))
+    for k in range(n):
+        t = k / fps; g = (yy / h)[..., None]
+        img = top * (1 - g) + bot * g + 6 * np.sin(2 * np.pi * (yy / h * 5 + xx / w * .6 + t * .15))[..., None]
+        ox, oy = (cx + vx * t) * w, (cy + vy * t) * h; d = np.sqrt((xx - ox) ** 2 + (yy - oy) ** 2) / (r * u)
+        glow = np.exp(-np.maximum(0, d - 1) * 3.0)[..., None] * .35
+        body = np.clip((1.02 - d) * 18, 0, 1)[..., None]
+        shade = (1 - .35 * np.clip(((xx - ox) + (yy - oy)) / (r * u), -1, 1))[..., None]
+        img = img * (1 - body) + orb * shade * body + glow * (orb - img) * (1 - body)
+        pw.stdin.write(np.clip(img, 20, 236).astype(np.uint8).tobytes())
+    pw.stdin.close(); pw.wait()
+
+def depth_still(path, depth_path, w, h):
+    """a still with a near subject (a lit capsule on a plinth) and its depth matte (white = near), for the 2.5D move"""
+    from PIL import Image
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32); u = min(w, h)
+    sky = np.stack([70 + 50 * (yy / h), 82 + 46 * (yy / h), 110 + 30 * (yy / h)], -1)
+    for k in range(7):                                         # far: soft vertical light bars (they slide less than the subject)
+        bx = w * (.08 + .14 * k); sky += (18 * np.exp(-((xx - bx) / (.03 * w)) ** 2))[..., None] * np.array([1, .95, .8])
+    floor = yy > h * .72; sky[floor] = sky[floor] * .7 + np.array([40, 34, 30]) * .3
+    cx, cy, rw, rh = w * .5, h * .5, .16 * u, .3 * u
+    caps = (np.abs(xx - cx) <= rw) & (np.abs(yy - cy) <= rh - rw) | (((xx - cx) ** 2 + (np.abs(yy - cy) - (rh - rw)) ** 2) <= rw * rw)
+    plinth = (np.abs(xx - cx) <= .3 * u) & (yy >= cy + rh) & (yy <= cy + rh + .09 * u)
+    lit = np.clip(1.15 - .5 * ((xx - cx) / rw + .6), .55, 1.2)[..., None]
+    img = sky.copy(); img[plinth] = np.array([58, 52, 50]); img = np.where(caps[..., None], np.array([206, 120, 84]) * lit, img)
+    Image.fromarray(np.clip(img, 20, 236).astype(np.uint8)).save(path)
+    Image.fromarray(((caps | plinth) * 255).astype(np.uint8)).save(depth_path)
+
+def craft_overlay(out, kind, fps, st=None, en=None):
+    """replace the demo edit with the motion-craft edit (docs/MOTION.md "Craft")"""
+    import yaml
+    sys.path.insert(0, os.path.join(ROOT, "engine"))
+    from cves import project, assets as AS
+    pr = project.Project(out); E = pr.edit; A = os.path.join(out, "Assets"); os.makedirs(A, exist_ok=True)
+    def add(name, path, kind_="render"):
+        AS.add(pr, name, path, source=kind_, prompt=None, licence="synthetic (tools/make_demo.py)")
+        E.setdefault("assets", {})[name] = {"path": os.path.relpath(path, out).replace(os.sep, "/"), "licence": "synthetic (tools/make_demo.py)"}
+    if kind == "aroll":
+        lh = _even(max(H, W * 9 / 16)); land = (_even(lh * 16 / 9), lh)
+        drawn_clip(os.path.join(A, "broll_city.mp4"), land[0], land[1], fps, 5.0, 1); add("broll_city", os.path.join(A, "broll_city.mp4"))
+        p0, p1, o0, c0 = st("03_proof"), en("03_proof"), st("04_offer"), st("05_cta")
+        b_end = round(p0 + 1.6, 2)
+        E["chest"] = []                                                    # the hook keeps its captions (topic keyword on screen)
+        E.setdefault("style", {})["grade"] = {"relight": True, "background_stops": 0.0}   # edge decontamination + dehalo, wall level unchanged (FRAME-03)
+        E.setdefault("aroll", {})["snap"] = {"start": 0.45, "end": 1.45, "zoom": 1.3}     # the punch-in lands with the type slam
+        dark = {"color": "card"}                                           # a light wall: charcoal type reads (GFX-15), one size for both (GFX-20)
+        E["roto"] = [{"segment": "01_hook_0", "template": "text_behind", "params": dict(dark, text="2 SECONDS", at=0.45, entry="slam", size=150)},
+                     {"segment": "05_cta_0", "template": "text_behind", "params": dict(dark, text="TODAY", at=round(c0 + .75, 2), size=140)}]
+        cuts = E["cutaways"]; cuts[0]["in"] = "whip_pan"; c1p = cuts[0]["params"]
+        lead = round(c1p["at"] - st("02_problem"), 2)                   # the list's title lands with the whip, not after it
+        c1p["at"] = round(c1p["at"] - lead, 2)
+        for it in c1p.get("items") or []: it["at"] = round(it["at"] - lead, 2)
+        c2 = next(c for c in cuts if c["id"] == "c2"); c2.update(start=b_end, snap=False)
+        c2["params"].update(count=[round(b_end + .2, 2), 1.2], label_at=round(b_end + .3, 2))
+        cuts.append({"id": "c3", "template": "m_notification_stack", "start": round(o0 + .9, 2), "end": round(c0, 2), "snap": False,   # the offer, shown
+                     "params": {"position": "center", "items": [{"app": "CVES", "title": "Edit ready", "body": "Cut, captioned and graded", "at": round(o0 + 1.0, 2)},
+                                                                {"app": "CVES", "title": "Music on the beat", "body": "Every cut lands on a downbeat", "at": round(o0 + 1.7, 2)}]}})
+        E["broll"] = [{"asset": "broll_city", "start": round(p0, 2), "end": b_end, "in": 0.6, "snap": False,
+                       "ramp": {"preset": "slam"}, "camera": {"move": "push", "amount": 0.06}}]
+        E["end_card"] = {"template": "m_follow_card_end", "duration": 2.0, "in": "light_leak",
+                         "params": {"name": "CVES Demo", "handle": "@cves.demo", "button": "Follow", "done": "Following", "platform": "Edit with CVES"}}
+    elif kind == "voiceover":
+        sz = (_even(W * 1.25), _even(H * 1.25)) if W > H else (_even(W * 1.25), _even(H * 1.25))
+        orb_clip(os.path.join(A, "orb_a.mp4"), *sz, fps, 3.0, .68, .38, .11, -.03, .01, 11)
+        orb_clip(os.path.join(A, "orb_b.mp4"), *sz, fps, 3.0, .47, .52, .075, .02, -.01, 12)
+        depth_still(os.path.join(A, "capsule.png"), os.path.join(A, "capsule_depth.png"), *sz)
+        for nm in ("orb_a", "orb_b"): add(nm, os.path.join(A, nm + ".mp4"))
+        add("capsule", os.path.join(A, "capsule.png")); add("capsule_depth", os.path.join(A, "capsule_depth.png"))
+        tr = E["broll"]
+        tr[1].update(asset="orb_a", framing="fill", **{"in": 0.2}); tr[1].pop("speed", None)
+        tr[2].update(asset="orb_b", framing="fill", match="centroid", **{"in": 0.0}); tr[2].pop("speed", None); tr[2].pop("kenburns", None)
+        k = next((j for j, x in enumerate(tr) if j > 2 and not any(c["start"] < x["end"] and x["start"] < c["end"] for c in E.get("cutaways") or [])), len(tr) - 1)   # a shot no title card covers
+        tr[k].update(asset="capsule", camera={"move": "push", "amount": 0.1, "parallax": 0.7, "handheld": True}, depth="capsule_depth")
+        for x in ("in", "speed", "framing"): tr[k].pop(x, None)
+    pr.save_edit(E)
+    print(f"craft edit: {kind} ({len(E.get('broll') or [])} B-roll shots)")
 
 # ------------------------------------------------------------------ the other spines (voiceover / music / broll)
 def _rotate_flag(src, dst, deg):

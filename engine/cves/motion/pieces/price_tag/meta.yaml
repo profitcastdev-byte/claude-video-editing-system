@@ -1,0 +1,16 @@
+title: Price tag offer
+description: The old price settles and an accent line strikes it through, the new price lands with weight under it, a starburst badge spins in and settles at an angle, and an optional deadline chip slides in.
+kinds: [cutaway, overlay]
+hero: true
+duration: 3.4
+params:
+  price: {type: str, required: true, help: "the offer price, e.g. 49 or 49.00"}
+  old_price: {type: str, default: "", help: the struck-through price (empty = none)}
+  currency: {type: str, default: "", help: "e.g. $ or ₹ (set small before the numbers)"}
+  badge: {type: str, default: "", help: "starburst text, e.g. SAVE 40%"}
+  label: {type: str, default: "", help: small tracked label above}
+  note: {type: str, default: "", help: "deadline / condition chip under the price, e.g. Ends Sunday"}
+preview:
+  params: {label: "Launch offer", old_price: "129", price: "79", currency: "$", badge: "SAVE 40%", note: "Ends Sunday midnight"}
+cues:
+  - [0.0, swipe, -22]

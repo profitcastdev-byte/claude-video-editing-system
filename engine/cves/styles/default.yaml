@@ -80,11 +80,18 @@ captions:
     pop: {max_chars: 24, max_lines: 2}
     bounce: {max_chars: 24, max_lines: 2}
 transitions:
-  in: cut                     # default transition into a cutaway: cut | whip | glitch | fade
+  in: cut                     # default transition into a cutaway: cut | whip | glitch | fade | the craft kinds below (look: craft.transitions)
   out: cut
   whip_s: 0.15
   glitch_s: 0.10
   fade_s: 0.20
+  whip_pan_s: 0.20            # half-window (s each side of the cut) of each craft transition kind (docs/MOTION.md "Craft")
+  zoom_through_s: 0.22
+  mask_wipe_s: 0.30
+  luma_fade_s: 0.30
+  glitch_lite_s: 0.07
+  light_leak_s: 0.35
+  dip_s: 0.25
 framing:
   zoom_levels: [1.0, 1.18, 1.38]
   min_step: 1.15              # every direct A-roll cut changes scale by at least this (hides jump cuts)
@@ -107,7 +114,7 @@ sound:
   sfx_offset_db: -3           # non-reveal cues sit this far back
   master_lufs: -14
   true_peak: -1.0
-  transition_sfx: {whip: whoosh, glitch: swipe, cut: null, fade: null}   # sound per transition kind (null = none); a whoosh is placed by its peak on the cut (SND-08)
+  transition_sfx: {whip: whoosh, glitch: swipe, cut: null, fade: null, whip_pan: whoosh, zoom_through: whoosh, mask_wipe: swipe, glitch_lite: null, luma_fade: null, light_leak: null, dip: null}   # sound per transition kind (null = none); a whoosh is placed by its peak on the cut (SND-08)
   repeat_pitch_st: 1          # SND-09: an identical back-to-back cue is pitched +/- this many semitones (alternating, deterministic)
   repeat_gain_db: 1.5         # ... and its gain moved by -/+ this much
   phrase_tolerance_s: 0.05    # SND-33: the drop section must start this close to the payoff (cut s)
@@ -292,6 +299,7 @@ creative:                     # restraint budget (knowledge-base/CREATIVE.md); `
   motion_pieces_per_30s: 6    # animated graphics (cutaways, roto, chest, motion pieces, end card) per 30 s of runtime
   accent_colors_max: 1        # accent colours beyond the text colour and the stage (colour discipline)
   sound_accents_per_30s: 3    # automatic risers + impacts (sound.accents) per 30 s of runtime (a shorter video still gets one 30 s allowance)
+  craft_per_30s: 4            # craft moves (speed ramps, camera moves, match cuts, text behind) per 30 s; render warns, critique reports
 review:                       # `cves review` (docs/REVIEW.md): the render review pack, machine findings and the review loop
   max_rounds: 3               # review rounds per loop; at the cap Claude must sign off (ship | revise) and record what is still wrong
   cut_offsets: [-2, -1, 0, 1, 2]   # frames shown around every cut in cuts/cut_NN.jpg (0 = first frame of the incoming shot)
@@ -328,3 +336,59 @@ treatments:                   # `cves treatments` (docs/TREATMENTS.md): creative
   compare_thumb: 360          # sheet thumbnail height (portrait) or width (landscape), px
   compare_max_s: 12           # length of each treatment in the comparison MP4, s
   compare_layout: stacked     # stacked (side by side / one above the other, audio of the first) | sequential (one after another, own sound)
+craft:                        # motion craft (docs/MOTION.md "Craft"); every move counts against creative.* (restraint)
+  behind:                     # text_behind (roto): type between the plate and the subject matte, placed from the face track
+    size: 300                 # px at a 1080 short side (shrinks to fit craft.behind.max_width)
+    weight: xb                # font weight slot: m | sb | b | xb
+    tracking: -4              # px at a 1080 short side (tight display tracking)
+    case: upper               # upper | as_is
+    max_width: 0.92           # of the safe-zone width
+    max_lines: 2
+    position: above           # above (the head covers the lower `overlap` of the type) | behind (centred on the eyes) | low (behind the shoulders)
+    overlap: 0.42             # fraction of the cap height the head covers in `above`
+    one_line_min: 0.42        # keep the text on one line if it fits at >= this fraction of `size` (no orphan words), else wrap
+    track: 0.6                # how much of the head's motion the type follows: 0 locked at its entry, 1 glued
+    smooth_frames: 9          # face-landmark smoothing radius (frames, triangular window)
+    color: text               # palette slot or hex
+    accent: accent            # colour of *starred* words
+    entry: rise               # rise (the letters rise out from behind the head) | slam (whole on its first frame, oversized, settling)
+    entry_s: 0.5              # entry length
+    exit_s: 0.25
+    no_matte: above           # no subject matte: lift the type clear above the head (above) | keep it in front with a legibility bed (front)
+    sfx: lowhit               # cue on entry (null = none)
+    bed: false                # a legibility bed under the type (a soft glow reads cheap behind a head: choose a colour that reads instead)
+  ramp:                       # speed ramps on broll: shots / video_broll (`ramp: {preset | keys, ease, blend, audio}`)
+    default: slam             # preset used by `ramp: {}`
+    presets:                  # [shot fraction, speed multiplier] keys, eased between
+      slam: [[0, 1.0], [0.35, 1.0], [0.5, 0.22], [0.82, 0.22], [1, 1.0]]
+      punch_in: [[0, 2.4], [0.4, 2.4], [0.6, 0.35], [1, 0.35]]
+      ease_out: [[0, 1.0], [1, 0.3]]
+      speed_up: [[0, 0.5], [0.6, 0.5], [1, 2.5]]
+      hold: [[0, 1.0], [0.4, 0.08], [0.75, 0.08], [1, 1.0]]
+    ease: inOutCubic          # curve between keys (names as the motion runtime)
+    blend: auto               # auto (= blend) | blend (crossfade neighbours when slow, shutter average when fast) | nearest
+    shutter: 0.5              # blend window when fast, fraction of an output frame
+    min_speed: 0.08           # floor of the speed curve (keeps the remap strictly increasing)
+    audio: mute               # mute | pitch (tape-style varispeed) a ramped shot's own sound
+  camera:                     # camera moves on broll: shots and image / video_broll (`camera: {move, amount, ease, handheld}`)
+    move: none                # default move: none | push | pull | pan_left | pan_right | pan_up | pan_down | drift
+    amount: 0.08              # zoom change (push / pull) or travel zoom (pans)
+    ease: inOutSine
+    drift_u: 0.5              # handheld drift amplitude, u (1 % of the short side)
+    drift_hz: 0.3             # handheld drift speed
+    drift_rot: 0.25           # handheld roll, degrees
+    parallax: 0.5             # 2.5D: the foreground moves (1 + parallax) x the background (stills with `depth:`)
+    depth_split: 0.5          # depth / matte value above which a pixel is foreground
+  match:                      # match cuts (`match: saliency | centroid | {mode, scale_range}` on a broll: shot)
+    mode: saliency            # saliency (spectral residual) | centroid (the bright / high-contrast shape)
+    scale_range: [1.0, 1.6]   # scale applied to the incoming shot (>= 1: a fill crop never shows an edge)
+    settle_s: 0.0             # 0 = hold the alignment; > 0 = ease back to the shot's own framing over this long
+  transitions:                # the craft transition kinds (durations: transitions.<kind>_s)
+    min_gap_s: 1.5            # a non-cut transition this close to the previous one becomes a cut (rate limit)
+    enforce: true             # apply the rate limit and creative.transition_kinds_max at render (false: report only in critique)
+    whip_dir: left            # whip_pan direction: left | right | up | down
+    wipe_shape: bar           # mask_wipe: bar (diagonal) | circle | matte (on A-roll: background first, the subject last)
+    wipe_color: accent        # mask_wipe fill: palette slot, stage, black, white or hex
+    dip_color: stage          # dip / luma_fade colour
+    leak_color: gold          # light_leak tint (procedural, no media)
+    leak_strength: 0.55

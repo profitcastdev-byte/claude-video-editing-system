@@ -13,6 +13,7 @@ import numpy as np, cv2
 from PIL import Image, ImageDraw, ImageOps
 from .. import gfx as G
 from ..gfx import prog, ease_out, ease_in, ease_io, back, clamp
+from .. import craft as CR
 from . import El
 
 KIND = "cutaway"                                  # full-screen pictures; render passes the A-roll only to NEEDS_AROLL templates
@@ -156,6 +157,13 @@ def media_frame(t, spec, ctx, at, default_end="hold"):
     c = clip(path, spec.get("fps") or (None if not os.path.isdir(path) else _fps(ctx)))
     fps = _fps(ctx); local = (round(t * fps) - round(at * fps)) / fps
     if local < 0: local = 0.0
+    if spec.get("ramp"):                     # speed ramp: eased time remap + frame blending (craft.ramp_*)
+        S = _S(ctx); dur = max(1 / fps, float(spec.get("ramp_dur") or (ctx.get("end", at + 1) - at)))
+        st, v = CR.ramp_src(local, dur, spec["ramp"], S, float(spec.get("in", 0) or 0), float(spec.get("speed", 1) or 1), spec.get("out"))
+        st = min(max(0.0, st), c.duration - .5 / c.fps)
+        r = spec["ramp"] if isinstance(spec["ramp"], dict) else {}
+        a = CR.ramp_frame(c, st, v, fps, r.get("blend") or S.get("craft.ramp.blend", "auto"), float(S.get("craft.ramp.shutter", .5)))
+        return a, name, bool(c.seq) or a[0, 0, 3] < 255
     st = _src_time(local, spec, c, default_end)
     if st is None: return None, name, False
     a = c.frame(int(math.floor(st * c.fps + 1e-6)))
@@ -241,6 +249,9 @@ def _lerp(a, b, e): return a + (b - a) * e
 
 def _kb(t, p, ctx, S, default_zoom):
     """Ken Burns (zoom, pan_x, pan_y) at t. zoom: [from, to] or a number; pan: [[x0, y0], [x1, y1]] or [x, y] (end; -1..1)"""
+    if p.get("camera"):                      # a craft camera move instead of the linear Ken Burns (no handheld roll here)
+        a = p.get("at", ctx["start"]); d = max(.1, float(p.get("kb_s", ctx["end"] - a)))
+        cam = CR.camera(prog(t, a, d), p["camera"], S, CR.seed_of(p.get("asset"), a), d); return cam["z"], cam["px"], cam["py"]
     z = p.get("zoom", default_zoom); z = [z, z] if isinstance(z, (int, float)) else list(z)
     pn = p.get("pan", [0, 0]); pn = [[0, 0], pn] if pn and not isinstance(pn[0], (list, tuple)) else pn
     a = p.get("at", ctx["start"]); d = max(.1, float(p.get("kb_s", ctx["end"] - a)))
@@ -318,6 +329,12 @@ def _entry_cue(p, ctx, S):
 def _audio_cue(p, ctx):
     """the clip's own sound, routed to the mix (kw asset -> mix resolves the file; see docs/MEDIA.md)"""
     if not p.get("audio"): return []
+    if p.get("ramp"):                        # a ramped clip's sound: muted, or tape-style varispeed (style craft.ramp.audio)
+        S = _S(ctx); at = p.get("at", ctx["start"]); dur = max(1e-3, ctx["end"] - at); sin = float(p.get("in", 0))
+        if CR.ramp_audio_mode(p["ramp"], S) == "mute": return []
+        kw = CR.ramp_audio_kw(p["ramp"], S, dur, sin, float(p.get("speed", 1.0)), p.get("out"))
+        span = (kw["sout"] - sin) if kw["sout"] is not None else CR.ramp_span(dur, p["ramp"], S, kw["base"])
+        return [(at, f"asset:{p['asset']}", p.get("gain", -12), {"asset": p["asset"], "trim": (sin, sin + span), "ramp": dict(kw, sin=0.0, sout=None if kw["sout"] is None else span), "reveal": True})]
     at = p.get("at", ctx["start"]); sin = float(p.get("in", 0)); dur = max(0, ctx["end"] - at) * float(p.get("speed", 1.0))
     if p.get("out") is not None: dur = min(dur, float(p["out"]) - sin)
     return [(at, f"asset:{p['asset']}", p.get("gain", -12), {"asset": p["asset"], "trim": (sin, sin + dur), "speed": p.get("speed", 1.0), "reveal": True})]
@@ -631,11 +648,14 @@ def broll_shot(t, p, ctx):
     sampled by time (media_frame), so nothing is ever stretched: fill crops to the canvas aspect, fit letterboxes onto a
     blurred, dimmed copy of itself (style broll.fit_blur / broll.fit_dim)."""
     S = _S(ctx); at = ctx["start"]
-    spec = {"asset": p.get("asset"), "in": p.get("in", 0), "speed": p.get("speed", 1.0), "out": p.get("out"), "fps": p.get("fps")}
+    spec = {"asset": p.get("asset"), "in": p.get("in", 0), "speed": p.get("speed", 1.0), "out": p.get("out"), "fps": p.get("fps"), "ramp": p.get("ramp")}
     fr, name, al = media_frame(t, spec, ctx, at, p.get("after", "hold"))
     if fr is None: return []
-    kb = p.get("kenburns")
-    z, px, py = _kb(t, dict(kb, at=kb.get("at", at)), ctx, S, 1.0) if kb else (1.0, 0.0, 0.0)
+    kb = p.get("kenburns"); cam = None
+    if p.get("camera"):                      # craft camera move (push / pull / pan / handheld drift), eased
+        d = max(.1, ctx["end"] - at); cam = CR.camera(prog(t, at, d), p["camera"], S, CR.seed_of(p.get("asset"), p.get("name"), at), d)
+        z, px, py = cam["z"], cam["px"], cam["py"]
+    else: z, px, py = _kb(t, dict(kb, at=kb.get("at", at)), ctx, S, 1.0) if kb else (1.0, 0.0, 0.0)
     sh, sw = fr.shape[:2]; ax, ay = (p.get("anchor") or (.5, .5))[:2]
     if p.get("framing", "fill") == "fit":
         s = fit_scale(sw, sh, G.W, G.H, "contain") * z; hw, hh = G.W / 2 / s, G.H / 2 / s
@@ -645,10 +665,49 @@ def broll_shot(t, p, ctx):
         a = fg[..., 3:4].astype(np.float32) / 255
         pic = np.dstack([(fg[..., :3] * a + bed[..., :3] * (1 - a)).astype(np.uint8), np.full((G.H, G.W), 255, np.uint8)])
     else:
-        s = fit_scale(sw, sh, G.W, G.H, "cover") * z; hw, hh = G.W / 2 / s, G.H / 2 / s
+        s0 = fit_scale(sw, sh, G.W, G.H, "cover"); s = s0 * z; hw, hh = G.W / 2 / s, G.H / 2 / s
         u = ax * sw + px * max(0, sw / 2 - hw); v = ay * sh + py * max(0, sh / 2 - hh)
-        pic = view(fr, G.W, G.H, s, (u, v), alpha=al)
+        if cam is not None: u, v = u - cam["ox"] / s, v - cam["oy"] / s
+        if p.get("match_prev"):              # match cut: the incoming shape sits on the outgoing one (craft.match_*)
+            m = _match(p, ctx, S)
+            if m is not None:
+                k = 1.0 - CR.ease("inOutCubic", prog(t, at, float(S.get("craft.match.settle_s", 0)))) if float(S.get("craft.match.settle_s", 0)) > 0 else 1.0
+                r, dX, dY = CR.match_view_shift(m, G.W, G.H); r = 1 + (r - 1) * k
+                u, v = u + dX * k / s, v + dY * k / s; s *= r
+        camd = p["camera"] if isinstance(p.get("camera"), dict) else {}
+        dep = p.get("depth") or camd.get("depth"); path = _asset(p.get("asset"), ctx)[0] if dep else None
+        if dep and _is_still(path):          # 2.5D: the foreground (depth / matte) moves (1 + parallax) times the background
+            lay = CR.parallax_layers(path, _asset(dep, ctx)[0], float(S.get("craft.camera.depth_split", .5)))
+            par = float(camd.get("parallax", S.get("craft.camera.parallax", .5)))
+            c0 = (ax * sw, ay * sh)
+            pic = CR.parallax_view(lay, lambda im, sc, c, a_: view(im, G.W, G.H, sc, c, alpha=a_, clamp_view=not a_), s0, c0, s, (u, v), par)
+        else: pic = view(fr, G.W, G.H, s, (u, v), alpha=al)
+        if cam is not None and cam["rot"]: pic = CR.rotate(pic, cam["rot"])
     return [El(canvas_layer(pic, 0, 0), p.get("name", "broll"), "media", asset=name, t_key=at)]
+
+
+def _shot_first_last(pp, ctx, t):
+    """the canvas picture of a broll_shot params dict at cut time t (RGBA uint8)"""
+    els = broll_shot(t, pp, ctx)
+    return np.asarray(els[0].im) if els else None
+
+
+_MATCH = {}
+def _match(p, ctx, S):
+    """the match-cut transform of a shot onto the last frame of the shot before it (cached per process: pure data)"""
+    import json
+    mp = p["match_prev"]; mm = p.get("match") or {}
+    key = json.dumps([p.get("asset"), p.get("in"), p.get("camera"), mp, mm, ctx["start"], G.W, G.H], sort_keys=True, default=str)
+    if key not in _MATCH:
+        fps = _fps(ctx); prev_ctx = dict(ctx, start=mp["start"], end=mp["end"])
+        a = _shot_first_last(mp["params"], prev_ctx, mp["end"] - 1 / fps)
+        bp = {k: v for k, v in p.items() if k not in ("match_prev", "match")}
+        b = _shot_first_last(bp, ctx, ctx["start"])
+        if a is None or b is None: _MATCH[key] = None
+        else:
+            rng = mm.get("scale_range") or S.get("craft.match.scale_range", [1.0, 1.6])
+            _MATCH[key] = CR.match_transform(a, b, mm.get("mode") or S.get("craft.match.mode", "saliency"), tuple(rng))
+    return _MATCH[key]
 
 def broll_shot_cues(p, ctx):
     """the shot's own sound (audio: true), trimmed to the shot and played at its speed"""

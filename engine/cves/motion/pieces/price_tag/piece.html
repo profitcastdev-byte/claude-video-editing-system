@@ -1,0 +1,76 @@
+<div class="safe center" id="root">
+  <div class="eyebrow" id="lb"></div>
+  <div class="blk" id="blk">
+    <div class="old" id="old"><span class="ot" id="ot"></span><span class="sk" id="sk"></span></div>
+    <div class="new num" id="nw"></div>
+    <div class="burst" id="bu" data-el="badge"><svg viewBox="0 0 100 100" id="bsv"></svg><span id="bt"></span></div>
+  </div>
+  <div class="chip" id="nt"></div>
+</div>
+<style>
+  #root { gap: var(--s-3); }
+  .blk { position: relative; display: flex; flex-direction: column; align-items: center; padding: 0 calc(var(--u) * 6); }
+  .old { position: relative; font-size: var(--t-6); font-weight: 700; color: var(--muted); letter-spacing: -0.02em; line-height: 1; }
+  .old .cur { font-size: 0.6em; vertical-align: 0.5em; margin-right: 0.04em; }
+  .sk { position: absolute; left: -0.12em; right: -0.12em; top: 52%; height: max(3px, calc(var(--u) * 0.6)); border-radius: 99px; background: var(--negative);
+        transform-origin: left center; transform: rotate(-8deg) scaleX(0); box-shadow: 0 0 calc(var(--u) * 1.4) rgb(var(--negative-rgb) / 0.5); }
+  .new { font-size: calc(var(--t-9) * 1.7); color: var(--text); white-space: nowrap; margin-top: calc(var(--u) * 1); text-shadow: 0 calc(var(--u) * 0.6) calc(var(--u) * 5) rgb(var(--accent-rgb) / 0.35); }
+  .new .cur { color: var(--accent); font-size: 0.42em; vertical-align: 0.95em; margin-right: 0.05em; display: inline-block; }
+  .burst { position: absolute; right: calc(var(--u) * -17); top: 30%; width: calc(var(--u) * 24); height: calc(var(--u) * 24); display: grid; place-items: center; z-index: 2; }
+  .burst svg { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 calc(var(--u) * 1) calc(var(--u) * 2.4) rgb(0 0 0 / 0.4)); }
+  .burst polygon { fill: var(--accent); }
+  .burst circle { fill: none; stroke: rgb(var(--bg-rgb) / 0.35); stroke-width: 0.8; stroke-dasharray: 1.6 1.6; }
+  #bt { position: relative; color: var(--bg); font-weight: 800; line-height: 0.92; text-align: center; letter-spacing: 0.01em; text-transform: uppercase; }
+  #nt { font-size: var(--t-2); padding: calc(var(--u) * 1.6) calc(var(--u) * 3); margin-top: var(--s-2); }
+  #nt .dot { width: 0.5em; height: 0.5em; border-radius: 50%; background: currentColor; margin-right: 0.3em; }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let lb, old, ot, sk, nw, bu, bt, nt, dot, tl;
+  C.piece({
+    setup(P, ctx) {
+      lb = document.getElementById('lb'); old = document.getElementById('old'); ot = document.getElementById('ot'); sk = document.getElementById('sk');
+      nw = document.getElementById('nw'); bu = document.getElementById('bu'); bt = document.getElementById('bt'); nt = document.getElementById('nt');
+      const cur = C.plain(P.currency || '');
+      if (P.label) { lb.textContent = C.plain(P.label); lb.dataset.text = lb.textContent; } else lb.remove();
+      if (P.old_price) { if (cur) C.el('span', 'cur', ot, cur); ot.appendChild(document.createTextNode(C.plain(P.old_price))); old.dataset.text = cur + C.plain(P.old_price); } else old.remove();
+      if (cur) C.el('span', 'cur', nw, cur); nw.appendChild(document.createTextNode(C.plain(P.price))); nw.dataset.text = cur + C.plain(P.price);
+      C.fit(nw, document.getElementById('root').clientWidth * (P.badge && ctx.w < ctx.h ? 0.62 : 0.8), ctx.h * 0.32, 1, 0.3);
+      if (P.badge) {
+        const pts = []; for (let i = 0; i < 32; i++) { const a = (i / 32) * Math.PI * 2, r = i % 2 ? 41 : 49; pts.push(`${(50 + r * Math.cos(a)).toFixed(2)},${(50 + r * Math.sin(a)).toFixed(2)}`); }
+        document.getElementById('bsv').innerHTML = `<polygon points="${pts.join(' ')}"/><circle cx="50" cy="50" r="34"/>`;
+        bt.textContent = C.plain(P.badge); bt.dataset.text = bt.textContent;
+        const words = bt.textContent.split(' '); bt.innerHTML = words.map((w) => w.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join('<br>');
+        let fs = bu.clientWidth * 0.3; bt.style.fontSize = fs + 'px';
+        for (let n = 0; n < 40 && (bt.scrollWidth > bu.clientWidth * 0.66 || bt.offsetHeight > bu.clientHeight * 0.56); n++) { fs *= 0.94; bt.style.fontSize = fs + 'px'; }
+      } else bu.remove();
+      if (P.note) { dot = C.el('span', 'dot', nt); nt.appendChild(document.createTextNode(C.plain(P.note))); nt.dataset.text = C.plain(P.note); } else nt.remove();
+      tl = C.timeline().at('lb', 0, D(0.5));
+      if (P.old_price) tl.at('old', D(0.1), D(0.5)).at('sk', D(0.55), D(0.35));
+      tl.at('new', P.old_price ? D(0.85) : D(0.2), D(0.55)).at('bu', tl.end('new') - D(0.1), D(0.7)).at('nt', tl.end('new') + D(0.15), D(0.6));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), fade = 1 - ex;
+      if (lb.isConnected) { C.rise(lb, t, 0, D(0.5), 1.6 * u); if (ex) C.set(lb, { o: fade }); }
+      if (old.isConnected) {
+        C.rise(old, t, tl.t0('old'), D(0.5), 2 * u, { extra: ex ? { o: fade } : {} });
+        sk.style.transform = `rotate(-8deg) scaleX(${C.MOVE(tl.raw('sk', t)).toFixed(4)})`;
+      }
+      // the new price lands with weight: drops a little, slightly oversized and soft, decelerating hard into place
+      const pn = tl.p('new', t, 'outQuint'), rn = tl.raw('new', t);
+      C.set(nw, { y: (pn - 1) * 5 * u - ex * 3 * u, s: 1.12 - 0.12 * pn, o: Math.min(1, rn * 3) * fade, blur: (1 - pn) * 1.4 * u });
+      if (bu.isConnected) {
+        const pb = tl.raw('bu', t);
+        C.set(bu, { s: C.easings.outBack(pb), r: -14 - (1 - C.IN(pb)) * 120 + 2 * Math.sin(Math.max(0, t - tl.end('bu')) * 1.6), o: Math.min(1, pb * 4) * fade });
+      }
+      if (nt.isConnected) { C.rise(nt, t, tl.t0('nt'), D(0.6), 2 * u, { extra: ex ? { o: fade } : {} }); dot.style.opacity = (0.55 + 0.45 * Math.cos(Math.max(0, t - tl.end('nt')) * 5)).toFixed(3); }
+    },
+    cues(P) {
+      if (P.old_price) { C.cue(tl.t0('old'), 'swipe', -24, { trim: [0, 0.3] }); C.cue(tl.t0('sk'), 'scribble', -22, { trim: [0, 0.35] }); }
+      C.cue(tl.t0('new'), 'lowhit', -12, { reveal: true });
+      if (P.badge) C.cue(tl.t0('bu'), 'pop', -18, { pitch: 3 });
+      if (P.note) C.cue(tl.t0('nt'), 'card', -22);
+    },
+  });
+})();
+</script>

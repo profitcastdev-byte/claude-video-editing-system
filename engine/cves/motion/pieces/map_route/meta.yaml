@@ -1,0 +1,15 @@
+title: Map route
+description: A stylised street map (drawn from the style's tones, no map tiles) pushes in slowly while the start pin lands, a glowing route draws along the streets with a travelling head, the destination pin drops at its end, and the place label and ETA chip rise.
+kinds: [cutaway, overlay]
+duration: 4.0
+params:
+  from: {type: str, default: "", help: start label (empty = no chip)}
+  to: {type: str, required: true, help: destination label}
+  eta: {type: str, default: "", help: "ETA / distance chip, e.g. 12 min · 4.2 km"}
+  points: {type: list, default: [], help: "optional route [[x, y], ...] as 0..1 fractions of the map (else a route along the streets)"}
+  seed: {type: int, default: 7, help: changes the generated streets and parks}
+  draw_s: {type: number, default: 1.6, help: seconds the route takes to draw}
+preview:
+  params: {from: "You", to: "Harbour Street Studio", eta: "12 min · 4.2 km"}
+cues:
+  - [0.2, pop, -20]

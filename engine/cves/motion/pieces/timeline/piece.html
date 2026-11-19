@@ -1,0 +1,83 @@
+<div class="safe center">
+  <div class="tlw" id="tlw">
+    <h2 class="title" id="tt"></h2>
+    <div class="ax" id="ax"><div class="line" id="line"><div class="lf" id="lf"></div></div></div>
+  </div>
+</div>
+<style>
+  .tlw { width: min(100%, calc(var(--u) * 84)); text-align: left; font-size: var(--t-4); }
+  #tt { font-size: var(--t-5); margin-bottom: var(--s-5); }
+  .ax { position: relative; display: flex; flex-direction: column; gap: calc(var(--u) * 6.5); padding-left: calc(var(--u) * 9); }
+  .line { position: absolute; left: calc(var(--u) * 2.6); top: 0; bottom: 0; width: max(2px, calc(var(--u) * 0.36)); margin-left: calc(var(--u) * -0.18);
+          background: rgb(var(--text-rgb) / 0.14); border-radius: 99px; }
+  .lf { position: absolute; inset: 0; border-radius: 99px; transform-origin: top center; background: linear-gradient(180deg, var(--accent-dark), var(--accent)); }
+  .ev { position: relative; display: flex; flex-direction: column; gap: 0.18em; }
+  .dot { position: absolute; left: calc(var(--u) * -6.4 - var(--u) * 1.6); top: 0.42em; width: calc(var(--u) * 3.2); height: calc(var(--u) * 3.2); border-radius: 50%;
+         background: var(--card); border: calc(var(--u) * 0.5) solid rgb(var(--text-rgb) / 0.3); }
+  .dot.on { border-color: var(--accent); background: var(--accent); }
+  .dot .ring { position: absolute; inset: calc(var(--u) * -1.6); border-radius: 50%; border: calc(var(--u) * 0.3) solid rgb(var(--accent-rgb) / 0.5); opacity: 0; }
+  .ev .dt { font-size: 0.62em; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-variant-numeric: tabular-nums lining-nums; }
+  .ev.lit .dt { color: var(--accent); }
+  .ev b { font-weight: 700; line-height: 1.12; color: rgb(var(--text-rgb) / 0.62); }
+  .ev.lit b { color: var(--text); }
+  @media (min-aspect-ratio: 1/1) {
+    .tlw { width: min(100%, calc(var(--u) * 165)); font-size: var(--t-3); text-align: center; }
+    #tt { text-align: center; }
+    .ax { flex-direction: row; padding: calc(var(--u) * 7) 0 0; gap: calc(var(--u) * 3); }
+    .ev { flex: 1; align-items: center; text-align: center; }
+    .line { left: 0; right: 0; top: calc(var(--u) * 1.6); bottom: auto; width: auto; height: max(2px, calc(var(--u) * 0.36)); margin: calc(var(--u) * -0.18) 0 0; }
+    .lf { transform-origin: left center; background: linear-gradient(90deg, var(--accent-dark), var(--accent)); }
+    .dot { left: calc(50% - var(--u) * 1.6); top: calc(var(--u) * -7); }
+  }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let tt, line, lf, ax, evs = [], tl, land;
+  C.piece({
+    setup(P, ctx) {
+      tt = document.getElementById('tt'); line = document.getElementById('line'); lf = document.getElementById('lf'); ax = document.getElementById('ax'); land = ctx.w > ctx.h;
+      if (P.title) C.words(tt, P.title); else tt.remove();
+      const list = (P.events || []).map((x) => (typeof x === 'string' ? { text: x } : x));
+      const t0 = P.title ? D(0.5) : D(0.15), st = D(P.stagger || 0.6);
+      list.forEach((e, i) => {
+        const el = C.el('div', 'ev', ax); const dot = C.el('div', 'dot', el); const ring = C.el('div', 'ring', dot);
+        const dt = e.date !== undefined && e.date !== '' ? C.el('div', 'dt', el, C.plain(String(e.date))) : null; const b = C.el('b', '', el, C.plain(e.text || ''));
+        el.dataset.text = [e.date, e.text].filter((x) => x !== undefined && x !== '').map((x) => C.plain(String(x))).join(' ');
+        evs.push({ el, dot, ring, dt, b, at: typeof e.at === 'number' ? e.at : t0 + D(0.3) + i * st });
+      });
+      const tlw = document.getElementById('tlw'), maxH = tlw.parentElement.clientHeight * 0.96; let fs = parseFloat(getComputedStyle(tlw).fontSize);
+      for (let n = 0; n < 30 && tlw.getBoundingClientRect().height > maxH; n++) { fs *= 0.94; tlw.style.fontSize = fs + 'px'; }
+      // the axis runs from just before the first dot to just past the last one
+      const ar = ax.getBoundingClientRect(), d0 = evs[0].dot.getBoundingClientRect(), d1 = evs[evs.length - 1].dot.getBoundingClientRect();
+      if (land) { line.style.left = Math.max(0, d0.left - ar.left - 6 * ctx.u) + 'px'; line.style.right = Math.max(0, ar.right - d1.right - 6 * ctx.u) + 'px'; }
+      else { line.style.top = (d0.top - ar.top - 2 * ctx.u) + 'px'; line.style.bottom = Math.max(0, ar.bottom - d1.bottom - 4 * ctx.u) + 'px'; }
+      // where (0..1 along the axis) each dot sits
+      const lr = line.getBoundingClientRect();
+      evs.forEach((e) => { const r = e.dot.getBoundingClientRect(); e.f = land ? (r.left + r.width / 2 - lr.left) / lr.width : (r.top + r.height / 2 - lr.top) / lr.height; });
+      tl = C.timeline().at('tt', 0, D(0.6)).at('line', t0, D(0.4));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), n = evs.length;
+      if (tt.isConnected) { tt.querySelectorAll('.wi').forEach((wi, i) => C.rise(wi, t, i * D(0.04), D(0.6), wi.offsetHeight)); if (ex) C.set(tt, { o: 1 - ex }); }
+      C.set(line, { o: Math.min(1, tl.raw('line', t) * 2) * (1 - ex) });
+      // fill: reaches dot i at evs[i].at, eased between dots; a short lead-in before the first
+      let f = evs[0].f * C.MOVE(C.prog(t, tl.t0('line'), Math.max(0.05, evs[0].at - tl.t0('line'))));
+      for (let i = 0; i < n - 1; i++) f += (evs[i + 1].f - evs[i].f) * C.MOVE(C.prog(t, evs[i].at, Math.max(0.05, evs[i + 1].at - evs[i].at)));
+      lf.style.transform = land ? `scaleX(${f.toFixed(4)})` : `scaleY(${f.toFixed(4)})`;
+      let lit = -1; evs.forEach((e, i) => { if (t >= e.at) lit = i; });
+      if (P.current !== undefined && P.current >= 0 && lit >= P.current) lit = Math.min(P.current, n - 1);
+      evs.forEach((e, i) => {
+        const pd = C.prog(t, e.at, D(0.4));
+        e.dot.classList.toggle('on', t >= e.at); e.el.classList.toggle('lit', i === lit);
+        C.set(e.dot, { s: 0.4 + 0.6 * C.easings.outBack(pd), o: Math.min(1, C.prog(t, tl.t0('line'), D(0.3)) * 2) * (1 - ex) });
+        const pr = C.prog(t, e.at + D(0.12), D(0.5));
+        e.ring.style.opacity = i === lit ? (C.prog(t, e.at + D(0.2), D(0.4)) * 0.9).toFixed(3) : '0';
+        e.ring.style.transform = `scale(${(0.6 + 0.4 * C.IN(C.prog(t, e.at + D(0.2), D(0.5)))).toFixed(4)})`;
+        [e.dt, e.b].forEach((x, k) => { if (!x) return; const p = C.prog(t, e.at + D(0.08) + k * D(0.07), D(0.5));
+          C.set(x, { x: land ? 0 : (1 - C.IN(p)) * 2.5 * u, y: land ? (1 - C.IN(p)) * 2 * u : 0, o: Math.min(1, p * 2.2) * (1 - ex) }); });
+      });
+    },
+    cues() { evs.forEach((e, i) => C.cue(e.at, 'pop', -20, { pitch: i * 1.1 })); },
+  });
+})();
+</script>

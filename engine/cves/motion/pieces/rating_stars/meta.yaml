@@ -1,0 +1,14 @@
+title: Rating stars
+description: The score counts up in big type while five stars fill left to right one after another (the last one fractionally), then the review count and its source settle in underneath.
+kinds: [cutaway, overlay]
+duration: 3.2
+params:
+  score: {type: number, required: true, help: "the rating, 0..5 (e.g. 4.9)"}
+  count: {type: str, default: "", help: "e.g. 212 reviews"}
+  source: {type: str, default: "", help: "where the reviews are from, e.g. verified reviews"}
+  decimals: {type: int, default: 1}
+  label: {type: str, default: "", help: small tracked label above the score}
+preview:
+  params: {score: 4.9, count: "212 reviews", source: "verified customers", label: "Rated by locals"}
+cues:
+  - [0.0, pop, -20]

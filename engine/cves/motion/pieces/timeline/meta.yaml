@@ -1,0 +1,13 @@
+title: Timeline
+description: A time axis draws on (down a tall canvas, across a wide one) and reaches each dated event in turn; its dot lands, the date and label rise beside it, and the latest event stays lit with a soft ring.
+kinds: [cutaway, overlay]
+duration: 4.0
+params:
+  title: {type: str, default: "", help: heading above the axis}
+  events: {type: list, required: true, help: "strings, or {date, text, at} (at: cut-time second the axis reaches it)"}
+  stagger: {type: number, default: 0.6, help: seconds between events when they have no `at`}
+  current: {type: int, default: -1, help: "index of the event to keep lit (-1 = the latest reached)"}
+preview:
+  params: {title: "How we got here", events: [{date: "2019", text: "One van, one city"}, {date: "2021", text: "First 1,000 jobs"}, {date: "2023", text: "Second location opens"}, {date: "Today", text: "40 crews, same promise"}]}
+cues:
+  - [0.2, pop, -20]

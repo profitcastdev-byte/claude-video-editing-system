@@ -119,7 +119,7 @@ class Ctx:
     def in_trans(self, f, pad=0.):
         t = f / self.FPS
         for tb, kind in self.trans:
-            d = TRANS_DUR.get(kind, .12)
+            d = 0 if kind in (None, "cut") else float(self.S.get(f"transitions.{kind}_s", TRANS_DUR.get(kind, .12)))   # the window render drew (craft.trans_dur)
             if d and abs(t - tb) < d + pad: return (tb, kind)
         return None
     def in_snap(self, f): return bool(self.snap) and self.snap[0] <= f / self.FPS < self.snap[1]

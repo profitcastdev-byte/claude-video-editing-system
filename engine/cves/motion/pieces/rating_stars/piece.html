@@ -1,0 +1,65 @@
+<div class="safe center" id="root">
+  <div class="eyebrow" id="lb"></div>
+  <div class="num" id="sc"></div>
+  <div class="stars" id="stars"></div>
+  <p class="body" id="ct"></p>
+</div>
+<style>
+  #root { gap: var(--s-3); }
+  #sc { font-size: calc(var(--t-9) * 1.3); color: var(--text); white-space: nowrap; text-shadow: 0 0 calc(var(--u) * 6) rgb(var(--star-rgb) / 0.25); }
+  .stars { display: flex; gap: calc(var(--u) * 1.6); margin-top: calc(var(--u) * 0.5); }
+  .star { position: relative; width: calc(var(--u) * 11); height: calc(var(--u) * 11); }
+  .star svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .star .bg path { fill: rgb(var(--text-rgb) / 0.12); stroke: rgb(var(--text-rgb) / 0.22); stroke-width: 1.5; }
+  .star .fg path { fill: var(--star); filter: drop-shadow(0 0 calc(var(--u) * 1.2) rgb(var(--star-rgb) / 0.5)); }
+  #ct { font-size: var(--t-3); text-align: center; }
+  #ct b { color: var(--text); font-weight: 700; }
+  @media (min-aspect-ratio: 1/1) { .star { width: calc(var(--u) * 9.5); height: calc(var(--u) * 9.5); } }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D;
+  const STAR = '<path d="M50 6 L62.5 36.5 L95 39 L70 60.5 L78 93 L50 75.5 L22 93 L30 60.5 L5 39 L37.5 36.5 Z" stroke-linejoin="round"/>';
+  let lb, sc, ct, stars = [], tl, score;
+  C.piece({
+    setup(P, ctx) {
+      lb = document.getElementById('lb'); sc = document.getElementById('sc'); ct = document.getElementById('ct');
+      score = C.clamp(+P.score || 0, 0, 5);
+      if (P.label) { lb.textContent = C.plain(P.label); lb.dataset.text = lb.textContent; } else lb.remove();
+      sc.textContent = score.toFixed(P.decimals ?? 1); sc.dataset.text = sc.textContent;
+      C.fit(sc, sc.parentElement.clientWidth * 0.9, ctx.h * 0.3, 1, 0.4);
+      sc.style.minWidth = sc.getBoundingClientRect().width + 'px'; sc.style.textAlign = 'center';
+      const host = document.getElementById('stars');
+      for (let i = 0; i < 5; i++) {
+        const s = C.el('div', 'star', host); s.dataset.el = 'star'; C.svg(s, STAR, '0 0 100 100', 'bg'); const fg = C.svg(s, STAR, '0 0 100 100', 'fg');
+        stars.push({ s, fg, fill: C.clamp(score - i, 0, 1) });
+      }
+      const bits = [P.count, P.source].filter(Boolean).map(C.plain);
+      if (bits.length) { ct.innerHTML = ''; if (P.count) C.el('b', '', ct, C.plain(P.count)); if (P.source) ct.appendChild(document.createTextNode((P.count ? ' · ' : '') + C.plain(P.source))); ct.dataset.text = bits.join(' · '); }
+      else ct.remove();
+      tl = C.timeline().at('lb', 0, D(0.5)).at('sc', D(0.1), D(0.6)).at('count', D(0.15), D(1.3));
+      stars.forEach((x, i) => { x.at = D(0.3) + i * D(0.16); });
+      tl.at('ct', stars[4].at + D(0.25), D(0.6));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t);
+      if (lb.isConnected) { C.rise(lb, t, 0, D(0.5), 1.6 * u); if (ex) C.set(lb, { o: 1 - ex }); }
+      const pc = C.easings.outExpo(tl.raw('count', t));
+      sc.textContent = (tl.raw('count', t) >= 1 ? score : score * pc).toFixed(P.decimals ?? 1);
+      const ps = tl.p('sc', t);
+      C.set(sc, { y: (1 - ps) * 4 * u - ex * 3 * u, s: 0.92 + 0.08 * ps, o: Math.min(1, tl.raw('sc', t) * 2.5) * (1 - ex), blur: (1 - ps) * u });
+      stars.forEach((x, i) => {
+        const p = C.prog(t, x.at, D(0.5)), pf = C.easings.outCubic(C.prog(t, x.at + D(0.06), D(0.45)));
+        C.set(x.s, { s: 0.55 + 0.45 * (i === 4 ? C.easings.outBack(p) : C.IN(p)), r: (1 - C.IN(p)) * -14, o: Math.min(1, p * 3) * (1 - ex), y: -ex * 2 * u });
+        const f = x.fill * pf; x.fg.style.clipPath = `inset(0 ${((1 - f) * 100).toFixed(2)}% 0 0)`;
+      });
+      if (ct.isConnected) { C.rise(ct, t, tl.t0('ct'), D(0.6), 1.6 * u); if (ex) C.set(ct, { o: 1 - ex }); }
+    },
+    cues() {
+      C.cue(tl.t0('sc'), 'pop', -22, { pitch: 3 });
+      stars.forEach((x, i) => { if (x.fill > 0) C.cue(x.at, 'pop', -24, { pitch: 2 + i * 1.5 }); });
+      if (ct.isConnected) C.cue(tl.t0('ct'), 'ding', -24);
+    },
+  });
+})();
+</script>

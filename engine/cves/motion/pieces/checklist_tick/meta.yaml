@@ -1,0 +1,14 @@
+title: Checklist tick
+description: Rows settle in as an empty checklist, then each square box is ticked in turn with a drawn stroke, done rows strike through (or light up) and a progress counter climbs to the total.
+kinds: [cutaway, overlay]
+duration: 4.0
+params:
+  title: {type: str, default: "", help: heading above the list}
+  items: {type: list, required: true, help: "strings, or {text, at (tick time), done: true|false}"}
+  strike: {type: bool, default: false, help: "strike ticked rows through (a to-do list) instead of lighting them (a feature list)"}
+  counter: {type: bool, default: true, help: show the ticked / total counter}
+  stagger: {type: number, default: 0.5, help: seconds between ticks when items have no `at`}
+preview:
+  params: {title: "Before you post", items: ["Hook in the first second", "Captions on every word", "Cut every pause", {text: "Ask for the follow", done: false}]}
+cues:
+  - [0.0, card, -18]

@@ -354,11 +354,21 @@ project.size` wins over it.
 
 | key | default | meaning |
 |---|---|---|
-| `transitions.in` | `cut` | default transition into a cutaway: cut / whip / glitch / fade |
+| `transitions.in` | `cut` | default transition into a cutaway: cut / whip / glitch / fade, or a craft kind (whip_pan / zoom_through / mask_wipe / luma_fade / glitch_lite / light_leak / dip; look in `craft.transitions`) |
 | `transitions.out` | `cut` | default transition out of a cutaway |
 | `transitions.whip_s` | `0.15` | whip half-duration either side of the cut, s |
 | `transitions.glitch_s` | `0.1` | glitch half-duration, s |
 | `transitions.fade_s` | `0.2` | fade (dip to black) half-duration, s |
+| `transitions.whip_pan_s` | `0.2` | whip pan (directional smear) half-duration, s |
+| `transitions.zoom_through_s` | `0.22` | zoom-through half-duration, s |
+| `transitions.mask_wipe_s` | `0.3` | mask wipe half-duration, s |
+| `transitions.luma_fade_s` | `0.3` | luma fade (shadows out first, highlights in first) half-duration, s |
+| `transitions.glitch_lite_s` | `0.07` | glitch-lite (RGB split + a few slices, no scanlines) half-duration, s |
+| `transitions.light_leak_s` | `0.35` | procedural light leak half-duration, s |
+| `transitions.dip_s` | `0.25` | dip to colour (`craft.transitions.dip_color`) half-duration, s |
+
+QC reads the same `transitions.<kind>_s` windows to exempt transition frames (MOT-12, the A-roll pass), so the window it
+skips is the one the renderer drew.
 
 #### `framing`
 
@@ -400,6 +410,13 @@ pacing rules the QC gates enforce; null = not enforced for this client
 | `sound.transition_sfx.glitch` | `swipe` | cue for a glitch |
 | `sound.transition_sfx.cut` |  | cue for a hard cut (null = none) |
 | `sound.transition_sfx.fade` |  | sound per transition kind (null = none); a whoosh is placed by its peak on the cut (SND-08) |
+| `sound.transition_sfx.whip_pan` | `whoosh` | cue for a whip pan (craft) |
+| `sound.transition_sfx.zoom_through` | `whoosh` | cue for a zoom-through |
+| `sound.transition_sfx.mask_wipe` | `swipe` | cue for a mask wipe |
+| `sound.transition_sfx.glitch_lite` |  | cue for a glitch-lite (null = none) |
+| `sound.transition_sfx.luma_fade` |  | cue for a luma fade (null = none) |
+| `sound.transition_sfx.light_leak` |  | cue for a light leak (null = none) |
+| `sound.transition_sfx.dip` |  | cue for a dip to colour (null = none) |
 | `sound.repeat_pitch_st` | `1` | SND-09: an identical back-to-back cue is pitched +/- this many semitones (alternating, deterministic) |
 | `sound.repeat_gain_db` | `1.5` | ... and its gain moved by -/+ this much |
 | `sound.phrase_tolerance_s` | `0.05` | SND-33: the drop section must start this close to the payoff, s |
@@ -700,6 +717,7 @@ advisory (not a QC gate). Per-30 s budgets give a video shorter than 30 s one fu
 | `creative.motion_pieces_per_30s` | `6` | animated graphics (cutaways, roto, chest, motion pieces, end card) per 30 s |
 | `creative.accent_colors_max` | `1` | accent colours beyond the text colour and the stage |
 | `creative.sound_accents_per_30s` | `3` | automatic risers + impacts (`sound.accents`) per 30 s of runtime (a shorter video still gets one 30 s allowance) |
+| `creative.craft_per_30s` | `4` | craft moves (speed ramps, camera moves, match cuts, text behind the speaker) per 30 s; `cves render` warns and `cves critique` reports it |
 
 #### `review`
 
@@ -750,3 +768,61 @@ no gate covers, and the loop cap.
 | `treatments.compare_thumb` | `360` | sheet thumbnail height (portrait) or width (landscape), px |
 | `treatments.compare_max_s` | `12` | seconds of each treatment in the comparison MP4 |
 | `treatments.compare_layout` | `stacked` | `stacked` (side by side, or one above the other on landscape; audio of the first) or `sequential` (one after another, each with its own sound) |
+
+#### `craft`
+
+Motion craft (docs/MOTION.md "Craft"): text behind the speaker, speed ramps, camera moves, match cuts and the transition
+library. Every move counts against the `creative` budget; transitions are also rate-limited at render.
+
+| key | default | meaning |
+|---|---|---|
+| `craft.behind.size` | `300` | `text_behind` type size, px at a 1080 short side (shrinks to fit `max_width`) |
+| `craft.behind.weight` | `xb` | font weight slot (m / sb / b / xb) |
+| `craft.behind.tracking` | `-4` | tracking, px at a 1080 short side |
+| `craft.behind.case` | `upper` | upper / as_is |
+| `craft.behind.max_width` | `0.92` | widest line, fraction of the safe-zone width |
+| `craft.behind.max_lines` | `2` | lines the text may wrap to |
+| `craft.behind.position` | `above` | above (the head covers the lower `overlap` of the type) / behind (centred on the eyes) / low (behind the shoulders) |
+| `craft.behind.overlap` | `0.42` | fraction of the cap height the head covers in `above` |
+| `craft.behind.one_line_min` | `0.42` | keep the text on one line when it fits at >= this fraction of `size` (no orphan word on its own line), else wrap |
+| `craft.behind.track` | `0.6` | how much of the head's motion the type follows: 0 locked at its entry, 1 glued |
+| `craft.behind.smooth_frames` | `9` | face-landmark smoothing radius, frames (triangular window) |
+| `craft.behind.color` | `text` | type colour (palette slot or hex) |
+| `craft.behind.accent` | `accent` | colour of `*starred*` words |
+| `craft.behind.entry` | `rise` | rise (the letters rise out from behind the head) / slam (whole on its first frame, oversized, settling: a hard visual event) |
+| `craft.behind.entry_s` | `0.5` | entry length, s |
+| `craft.behind.exit_s` | `0.25` | exit length (ends 0.25 s before the shot by default) |
+| `craft.behind.no_matte` | `above` | no subject matte: above (lift the type clear above the head) / front (keep it, with a legibility bed) |
+| `craft.behind.sfx` | `lowhit` | entry cue (null = none) |
+| `craft.behind.bed` | `false` | draw a legibility bed under the type (always on with no matte and `no_matte: front`); prefer a colour that reads on the wall |
+| `craft.ramp.default` | `slam` | preset used by `ramp: {}` |
+| `craft.ramp.presets` |  | `[shot fraction, speed]` keys per preset, eased between (add your own) |
+| `craft.ramp.presets.slam` | `[[0, 1], [0.35, 1], [0.5, 0.22], [0.82, 0.22], [1, 1]]` | real time, a hard slow-down through the middle, back to real time |
+| `craft.ramp.presets.punch_in` | `[[0, 2.4], [0.4, 2.4], [0.6, 0.35], [1, 0.35]]` | fast in, then slow-motion to the end |
+| `craft.ramp.presets.ease_out` | `[[0, 1], [1, 0.3]]` | a gentle slow-down |
+| `craft.ramp.presets.speed_up` | `[[0, 0.5], [0.6, 0.5], [1, 2.5]]` | slow, then a speed-up into the next cut |
+| `craft.ramp.presets.hold` | `[[0, 1], [0.4, 0.08], [0.75, 0.08], [1, 1]]` | a near freeze in the middle |
+| `craft.ramp.ease` | `inOutCubic` | the curve between keys (motion-runtime names) |
+| `craft.ramp.blend` | `auto` | auto (= blend) / blend (crossfade neighbours when slow, shutter average when fast) / nearest |
+| `craft.ramp.shutter` | `0.5` | blend window on fast sections, fraction of an output frame |
+| `craft.ramp.min_speed` | `0.08` | floor of the speed curve (the remap stays strictly increasing) |
+| `craft.ramp.audio` | `mute` | a ramped shot's own sound: mute / pitch (tape varispeed) |
+| `craft.camera.move` | `none` | default move: none / push / pull / pan_left / pan_right / pan_up / pan_down / drift |
+| `craft.camera.amount` | `0.08` | zoom change (push / pull) or travel zoom (pans) |
+| `craft.camera.ease` | `inOutSine` | move curve |
+| `craft.camera.drift_u` | `0.5` | handheld drift amplitude, u (1 % of the short side) |
+| `craft.camera.drift_hz` | `0.3` | handheld drift speed |
+| `craft.camera.drift_rot` | `0.25` | handheld roll, degrees |
+| `craft.camera.parallax` | `0.5` | 2.5D: the foreground moves (1 + parallax) x the background (stills with `depth:`) |
+| `craft.camera.depth_split` | `0.5` | depth / matte value above which a pixel is foreground |
+| `craft.match.mode` | `saliency` | match-cut shape: saliency (spectral residual) / centroid (the bright, high-contrast shape) |
+| `craft.match.scale_range` | `[1.0, 1.6]` | scale applied to the incoming shot (>= 1: the fill crop never shows an edge) |
+| `craft.match.settle_s` | `0.0` | 0 holds the alignment; > 0 eases back to the shot's own framing over this long |
+| `craft.transitions.min_gap_s` | `1.5` | a non-cut transition this close to the previous kept one becomes a cut |
+| `craft.transitions.enforce` | `true` | apply that rate limit and `creative.transition_kinds_max` at render |
+| `craft.transitions.whip_dir` | `left` | whip_pan direction: left / right / up / down |
+| `craft.transitions.wipe_shape` | `bar` | mask_wipe shape: bar (diagonal) / circle / matte (A-roll: the background goes first, the subject last) |
+| `craft.transitions.wipe_color` | `accent` | mask_wipe fill: palette slot, stage, black, white or hex |
+| `craft.transitions.dip_color` | `stage` | dip / luma_fade colour |
+| `craft.transitions.leak_color` | `gold` | light_leak tint (procedural, no media) |
+| `craft.transitions.leak_strength` | `0.55` | light_leak screen-blend strength at the cut |

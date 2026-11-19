@@ -1,0 +1,19 @@
+title: Countdown
+description: A big number counts down one step at a time, each digit rolling out of a mask as the next rolls in while an accent ring depletes per step, then the end word lands with one soft overshoot; clock mode ticks a HH:MM:SS timer with the changing digits rolling and a bar draining.
+kinds: [cutaway, overlay]
+hero: true
+duration: 4.0
+params:
+  mode: {type: str, default: digits, help: "digits (from -> to, then end_text) | clock (HH:MM:SS from seconds_left)"}
+  from: {type: int, default: 3, help: "digits: first number"}
+  to: {type: int, default: 1, help: "digits: last number"}
+  step_s: {type: number, default: 0.8, help: "digits: seconds each number holds"}
+  end_text: {type: str, default: "", help: "digits: the word that lands after the last number (empty: none)"}
+  seconds_left: {type: int, default: 86399, help: "clock: seconds on the clock at the piece's start"}
+  label: {type: str, default: "", help: small tracked label above}
+  caption: {type: str, default: "", help: a line under the number}
+preview:
+  duration: 3.6
+  params: {from: 3, to: 1, step_s: 0.7, end_text: "GO", label: "Offer ends in"}
+cues:
+  - [0.0, pop, -20]

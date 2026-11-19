@@ -169,11 +169,13 @@ def mix(pr):
         mus = y.astype(np.float32); music_target = bed_lu
     sfx = np.zeros(N, np.float32); cache = {}; snaps = []; acc = []; cues = all_cues(TL, plan=P, log=snaps, accent_log=acc)
     for t, name, gain, kw in cues:
-        sp = float(kw.get("speed", 1) or 1); key = (name, str(kw.get("trim")), kw.get("pitch", 0), sp, bool(kw.get("raw")))
+        sp = float(kw.get("speed", 1) or 1); key = (name, str(kw.get("trim")), kw.get("pitch", 0), sp, bool(kw.get("raw")), str(kw.get("ramp")))
         if key not in cache:
             y = load_audio(find(name))
             if kw.get("trim"): y = y[int(kw["trim"][0] * SR):int(kw["trim"][1] * SR)]
-            if sp != 1 and len(y) > 2048: y = librosa.effects.time_stretch(y, rate=sp)      # media clip played at speed
+            if kw.get("ramp"):                                                            # a speed-ramped clip: tape varispeed (docs/MOTION.md "Craft")
+                from . import craft as CR; y = CR.varispeed(y, SR, kw["ramp"])
+            elif sp != 1 and len(y) > 2048: y = librosa.effects.time_stretch(y, rate=sp)      # media clip played at speed
             if kw.get("pitch"): y = librosa.effects.pitch_shift(y, sr=SR, n_steps=kw["pitch"])
             f = min(int(.006 * SR), len(y) // 4)
             if f: y[:f] *= np.linspace(0, 1, f); y[-f:] *= np.linspace(1, 0, f)

@@ -8,7 +8,7 @@ import multiprocessing as _mp
 Pool = _mp.get_context("spawn").Pool   # same on every OS; fork deadlocks once torch/OpenCV threads exist (Linux)
 from PIL import Image, ImageFilter
 from fractions import Fraction
-from . import gfx as G, templates as TPL, style as STY, captions as CAP, spines as SP
+from . import gfx as G, templates as TPL, style as STY, captions as CAP, spines as SP, craft as CR
 from .gfx import prog, clamp          # the canvas is G.W / G.H, read at call time (set per process by Timeline)
 from .look import grade
 
@@ -55,7 +55,7 @@ class Timeline:
             for s in edl["segments"]:
                 n = round((s["out"] - s["in"]) * self.FPS); self.segs.append(dict(s, f0=f0, n=n, t0=f0 / self.FPS, t1=(f0 + n) / self.FPS, kind="aroll")); f0 += n
         else:                                                                # picture segments = the broll shots (+ gaps)
-            self.segs = SP.tiles(self.broll, SP.duration(pr, self.spine, E), self.FPS); f0 = sum(s["n"] for s in self.segs)
+            self.segs = SP.tiles(self.broll, SP.duration(pr, self.spine, E), self.FPS, self.S); f0 = sum(s["n"] for s in self.segs)
         self.A_FRAMES = f0; self.T_END = f0 / self.FPS
         end = E.get("end_card") or {}; self.END = end.get("duration", 0)
         self.N = self.A_FRAMES + round(self.END * self.FPS)
@@ -73,7 +73,9 @@ class Timeline:
             self.trans.append((c["start"], c.get("in", self.S.get("transitions.in", "cut")))); self.trans.append((c["end"], c.get("out", self.S.get("transitions.out", "cut"))))
         if self.END: self.trans.append((self.T_END, end.get("in", self.S.get("transitions.in", "cut"))))
         for tr in E.get("transitions", []): self.trans.append((self.snap_t(tr["t"]), tr["kind"]))
+        self.craft_notes = CR.limit_transitions(self)                       # restraint: rate-limited transitions (docs/MOTION.md "Craft")
         self.roto = {r["segment"]: r for r in E.get("roto", [])} if self.aroll else {}     # roto / chest need a presenter
+        self.matte_ok = {s["id"]: os.path.exists(pr.e("matte", f"{s['id']}.mkv")) for s in self.segs} if self.aroll else {}
         self.chest = {}
         for c in (E.get("chest", []) if self.aroll else []):
             for sid in ([c["segment"]] if isinstance(c["segment"], str) else c["segment"]): self.chest.setdefault(sid, []).append(c)
@@ -376,21 +378,25 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         sid = s["id"]; f = TL.faces[sid][min(k, len(TL.faces[sid]) - 1)]
         sm = smooth_face(TL, sid, k)
         cx, cy, fh = sm
+        z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
+        if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
+        M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # lift: anchor at the frame bottom raises the face
+        z0 = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
+        M0 = M if z0 == z else affine(z0, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # the shot's framing without a snap
+        if TL.snap and TL.snap[0] < s["t1"] and s["t0"] < TL.snap[1]:     # a snap punch-in in this shot: roto type fits the tighter view
+            Ms = affine(max(z0, TL.snap[2]), cx, G.H if sid in TL.lift else cy - fh * .05, True); M0 = Ms if Ms[0, 0] > M0[0, 0] else M0
         if mode in ("overlay", "chest"): img = None
         else:
             g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
             img = grade(np.clip(P * g, 0, 1) if np.any(g != 1) else P, A, (cx, cy), TL.S.get("grade"))
             r = TL.roto.get(sid)
             if r:
-                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"]))
+                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], view=M, seg_view=M0, **CR.roto_ctx(TL, s, k)))
                 if rels:
                     a = cv2.GaussianBlur(cv2.erode(A.astype(np.float32) / 255, np.ones((3, 3), np.uint8)), (0, 0), 1.2)[..., None]
                     person = img.copy()
                     for el in rels: img = G.over(img, el.im)
                     img = img * (1 - a) + person * a; els += rels
-        z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
-        if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
-        M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # lift: anchor at the frame bottom raises the face
         if img is not None: img = warp(img, M, cv2.INTER_CUBIC)
         _, scy, sfh = smooth_face(TL, sid, k, r=12)                         # smoothed: raw boxes made chest graphics shake (MOT-03)
         chin = (scy + sfh / 2) * M[1, 1] + M[1, 2]
@@ -421,6 +427,11 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
             z = 1 + (.22 if after else .35) * e ** 1.5; img = zoom_blur(warp(img, affine(z, G.W / 2, G.H * .4, False)), e ** 1.2)
         elif kind == "glitch": img = glitch(img, e, i)
         elif kind == "fade": img = img * (1 - e)          # dip through black
+        elif kind in CR.TRANSITIONS:                         # the craft library (style craft.transitions.*)
+            mt = None
+            if kind == "mask_wipe" and A is not None and cut is None and s is not None and s.get("kind", "aroll") == "aroll" and TL.S.get("craft.transitions.wipe_shape") == "matte":
+                mt = warp(A.astype(np.float32) / 255, M)
+            img = CR.transition(kind, img, e, after, CR.seed_of(kind, round(CR.boundary(TL, t), 4)), TL.S, mt)
     return img, log_records(i, els, M)
 
 def _caption_front(TL, t, img, els):
@@ -452,7 +463,7 @@ def smooth_face(TL, sid, k, r=6):
 
 def trans_strength(TL, t):
     for tb, kind in TL.trans:
-        d = 0 if kind == "cut" else TL.S.get(f"transitions.{kind}_s", .12)
+        d = CR.trans_dur(TL.S, kind)
         if d and abs(t - tb) < d: return kind, 1 - abs(t - tb) / d, t >= tb
     return None, 0, False
 
@@ -473,6 +484,9 @@ def log_records(i, els, M):
 def _decode(path, fmt):
     import av
     for f in av.open(path).decode(video=0): yield f.to_ndarray(format=fmt)
+
+def _zeros(TL):
+    while True: yield np.zeros((G.H, G.W), np.uint8)
 
 def _write(TL, out_dir, i, img, logf):
     t = i / TL.FPS
@@ -503,7 +517,7 @@ def job_seg(sid, only, out_dir, mode):
     if not frames: return 0
     need = s.get("kind", "aroll") == "aroll" and (mode == "aroll" or any(not TL.in_cut(f / TL.FPS) or (TL.in_cut(f / TL.FPS) or {}).get("template") in NEEDS_AROLL for f in frames))
     Pg = _decode(TL.pr.e("plate", f"{sid}.mkv"), "rgb48le") if need else None
-    Ag = _decode(TL.pr.e("matte", f"{sid}.mkv"), "gray") if need else None
+    Ag = (_decode(TL.pr.e("matte", f"{sid}.mkv"), "gray") if TL.matte_ok.get(sid, True) else _zeros(TL)) if need else None   # no matte: degrade (roto in front)
     if need and TL.proxy:      # proxy: the full-size plate / matte, resized as it decodes (never re-ingested)
         Pg = (cv2.resize(x, TL.size, interpolation=cv2.INTER_AREA) for x in Pg); Ag = (cv2.resize(x, TL.size, interpolation=cv2.INTER_AREA) for x in Ag)
     last = max(frames) - s["f0"]
@@ -533,6 +547,9 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None):
     out_dir = out_dir or pr.e("frames"); os.makedirs(out_dir, exist_ok=True)
     TL = Timeline(pr, proxy=proxy)    # also computes + caches exposure gains before forking
     if isinstance(only, str): only = TL.frames_for(only)
+    for n in TL.craft_notes: print(f"craft: {n}")
+    used, allowed = CR.budget(TL.E, TL.S, TL.N / TL.FPS)
+    if used > allowed: print(f"craft: {used} craft moves (ramps, camera moves, match cuts, text behind) > creative.craft_per_30s budget {allowed}: restraint")
     from . import motion as MOT; MOT.prerender(pr, TL)     # motion pieces (HTML) render their frames ONCE here, before the spawn pool: workers only read the cache
     for f in glob.glob(os.path.join(out_dir, "_log_*.jsonl")): os.remove(f)
     want = None if only is None else set(only)

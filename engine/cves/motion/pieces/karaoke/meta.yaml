@@ -1,0 +1,16 @@
+title: Karaoke words
+description: The whole line settles in dim, then each word lights up on its own time (full colour, a small lift, the accent on the active word) while a pill (or underline) glides from word to word under it, line breaks included.
+kinds: [overlay, cutaway, roto]
+duration: 4.0
+params:
+  text: {type: str, default: "", help: "the line (*stars* mark accent words); ignored when words is given"}
+  words: {type: list, default: [], help: "optional timings: [{word, at}] (at = cut-time second the word lights)"}
+  wps: {type: number, default: 2.6, help: words per second when there are no timings}
+  style: {type: str, default: pill, help: pill | underline}
+  align: {type: str, default: center, help: center | left}
+  position: {type: str, default: center, help: "center | low (lower third of the safe zone, over video)"}
+preview:
+  duration: 4.0
+  params: {text: "Every call answered, every *job* finished on time."}
+cues:
+  - [0.0, swipe, -26]
