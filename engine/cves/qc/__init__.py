@@ -28,15 +28,131 @@ def na_gate(gate, spine, captions):
         return gate(gid, ok, summary, details, status)
     return g
 
+import time as _time
+_T0 = [0.0]
+def tick(label):
+    """CVES_QC_TIMING=1: wall-clock checkpoints on stderr (profiling the QC families; no effect on any gate)"""
+    if os.environ.get("CVES_QC_TIMING"):
+        import sys; t = _time.time(); import resource; ch = resource.getrusage(resource.RUSAGE_CHILDREN)
+        sys.stderr.write(f"[qc {_time.strftime('%H:%M:%S', _time.localtime(t))}.{int(t % 1 * 10)} pid {os.getpid()} cpu {_time.process_time():.0f}s children {ch.ru_utime + ch.ru_stime:.0f}s] {label}\n"); sys.stderr.flush()
+
+
+# ---------------------------------------------------------------- shared measurements of the master (qc/cache.py)
+def picture_pass(pr, video, SW, SH, review=False):
+    """the one OpenCV decode of the master: per-frame mean luma step at SWxSH (float32, as before), YuNet face present
+    on every 2nd frame (copied to the next; detection on a worker thread while the next frames decode), frame 0 luma and
+    the frame count. Streamed: no frame list in memory. Cached per master in Edit/qc_cache/. With `review` the same
+    decode also keeps the small grey frames `cves review` reads (off by default: a full-size area resize per frame costs
+    QC ~20 s of CPU; review caches its own decode instead)."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from . import cache as QCC
+    meta = {"size": [SW, SH], "yunet": os.path.basename(C.get("yunet")), "cv2": cv2.__version__}
+    hit = QCC.load_arrays(pr, video, "picture", meta)
+    if hit is not None and (not review or QCC.load_arrays(pr, video, "review_gray") is not None):
+        return {"diff": hit["diff"], "face": hit["face"].astype(bool), "g0": float(hit["g0"]), "N": int(hit["N"])}
+    cap = cv2.VideoCapture(video); diff, faces, prev, g0, i = [0.0], {}, None, 0.0, 0
+    rg, rsize = [], None
+    tl = threading.local(); jobs = int(os.environ.get("CVES_QC_FACE_JOBS", "") or 1)
+    def detect(im):
+        if not hasattr(tl, "det"): tl.det = cv2.FaceDetectorYN.create(C.get("yunet"), "", (SW, SH), .7, .3, 5000)
+        _, f = tl.det.detect(im); return f is not None and len(f) > 0
+    slots = threading.BoundedSemaphore(4 * jobs)
+    def job(im):
+        try: return detect(im)
+        finally: slots.release()
+    with ThreadPoolExecutor(jobs) as ex:
+        while True:
+            ok, fr = cap.read()
+            if not ok: break
+            sm = cv2.resize(fr, (SW, SH), interpolation=cv2.INTER_AREA)
+            if i % 2 == 0: slots.acquire(); faces[i] = ex.submit(job, sm)
+            g = cv2.cvtColor(sm, cv2.COLOR_BGR2GRAY).astype(np.float32)
+            if prev is None: g0 = float(g.mean())
+            else: diff.append(float(np.mean(np.abs(g - prev))))
+            prev = g
+            if review:
+                if rsize is None: rsize = small_size(fr.shape[1], fr.shape[0], area=160 * 284)
+                rg.append(cv2.cvtColor(cv2.resize(fr, rsize, interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY))
+            i += 1
+        cap.release()
+        N = i; face = np.zeros(N, bool)
+        for k, fu in faces.items():
+            face[k] = fu.result()
+            if k + 1 < N: face[k + 1] = face[k]
+    d = np.array(diff[:N] if N else [], np.float64)
+    out = {"diff": d, "face": face, "g0": g0, "N": N}
+    QCC.save_arrays(pr, video, "picture", {"diff": d, "face": face, "g0": np.float64(g0), "N": np.int64(N)}, meta)
+    if review and rsize is not None:
+        QCC.save_arrays(pr, video, "review_gray", {"g": np.stack(rg)}, {"size": list(rsize)})
+    return out
+
+
+def media_pass(pr, video, ret_size=None):
+    """one ffmpeg decode for three measurements: blackdetect runs (PLAT-12), the luma of every 12th frame (COL-02) and,
+    with ret_size=(w, h), the area-scaled grey frames of the retention gates. A split filter graph: each branch sees the
+    same decoded frames the three separate commands saw (byte-identical outputs, DECISIONS.md). Cached per master."""
+    from . import cache as QCC
+    meta = {"ret": list(ret_size) if ret_size else None}
+    hit = QCC.load_arrays(pr, video, "media", meta)
+    if hit is not None:
+        return {"blk": [tuple(map(float, x)) for x in hit["blk"].reshape(-1, 2)], "pct": float(hit["pct"]), "ext": int(hit["ext"]),
+                "ysize": int(hit["ysize"]), "ret": hit["ret"] if ret_size else None}
+    d = tempfile.mkdtemp(prefix="cves_qcmedia_"); yp, rp = os.path.join(d, "y.raw"), os.path.join(d, "r.raw")
+    ff = C.get("ffmpeg"); vfB = "select='not(mod(n,12))',extractplanes=y"
+    graph = f"[0:v]split={3 if ret_size else 2}[a][b]{'[c]' if ret_size else ''};[a]blackdetect=d=0.03:pix_th=0.10[ao];[b]{vfB}[bo]"
+    if ret_size: graph += f";[c]scale={ret_size[0]}:{ret_size[1]}:flags=area,format=gray[co]"
+    cmd = [ff, "-hide_banner", "-i", video, "-filter_complex", graph, "-map", "[ao]", "-f", "null", "-",
+           "-map", "[bo]", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "gray", "-y", yp]
+    if ret_size: cmd += ["-map", "[co]", "-f", "rawvideo", "-pix_fmt", "gray", "-y", rp]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        if r.returncode == 0:
+            bd = r.stderr; Y = np.fromfile(yp, np.uint8); R_ = np.fromfile(rp, np.uint8) if ret_size else None
+        else:            # an ffmpeg without the split graph: the three commands as before
+            bd = subprocess.run([ff, "-hide_banner", "-i", video, "-vf", "blackdetect=d=0.03:pix_th=0.10", "-an", "-f", "null", "-"], capture_output=True, text=True).stderr
+            Y = np.frombuffer(subprocess.run([ff, "-v", "error", "-i", video, "-vf", vfB, "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"], capture_output=True).stdout, np.uint8)
+            R_ = np.frombuffer(subprocess.run([ff, "-v", "error", "-i", video, "-vf", f"scale={ret_size[0]}:{ret_size[1]}:flags=area,format=gray", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"],
+                                              capture_output=True).stdout, np.uint8) if ret_size else None
+    finally:
+        import shutil; shutil.rmtree(d, ignore_errors=True)
+    blk = [(float(x), float(y)) for x, y in re.findall(r"black_start:([\d.]+) black_end:([\d.]+)", bd)]
+    pct = float(((Y < 16) | (Y > 235)).mean() * 100); ext = int(((Y < 5) | (Y > 246)).sum())
+    ret = None
+    if ret_size:
+        w, h = ret_size; n = len(R_) // (w * h); ret = R_[:n * w * h].reshape(n, h, w)
+    QCC.save_arrays(pr, video, "media", {"blk": np.array(blk, np.float64).reshape(-1, 2), "pct": np.float64(pct), "ext": np.int64(ext),
+                                         "ysize": np.int64(Y.size), "ret": ret if ret is not None else np.zeros(0, np.uint8)}, meta)
+    return {"blk": blk, "pct": pct, "ext": ext, "ysize": int(Y.size), "ret": ret}
+
+
 # every threshold below comes from the style profile (cves.style; docs/STYLE.md). The QC gates judge the edit against
 # the look the client asked for, not a fixed house look. Platform constants (safe zone, delivery size) live in `platform:`.
 
-def run(pr, video, fast=False, stage=None):
+def run(pr, video, fast=False, stage=None, tier=None):
+    """tier: full (default) | fast (= fast=True: no CUT-01 / CUT-03 whisper re-checks) | draft (qc/tiers.py: the cheap
+    gates, never a delivery stamp). Independent families measure side by side: the extra gates in a worker process,
+    ffmpeg / whisper on threads, the OpenCV picture pass here; rows are joined in the serial order, so the report and
+    Edit/qc.json are the ones the serial run wrote (DECISIONS.md, QC speed)."""
+    from .tiers import resolve, DRAFT
+    from . import cache as QCC, _worker
+    from concurrent.futures import ThreadPoolExecutor
+    tier = resolve(tier, fast); fast = tier != "full"; draft = tier == "draft"; _T0[0] = _time.time(); tick(f"start tier {tier}")
+    old_wd = QCC.WHISPER_DIR; QCC.WHISPER_DIR = pr.e("qc_cache", "whisper")
+    bg = ThreadPoolExecutor(6)
+    try: return _run(pr, video, tier, fast, draft, DRAFT, bg, _worker)
+    finally:
+        bg.shutdown(wait=True); QCC.WHISPER_DIR = old_wd
+
+
+def _run(pr, video, tier, fast, draft, DRAFT, bg, _worker):
     R = []; tmp = tempfile.mkdtemp()
-    def gate0(gid, ok, summary, details="", status=None): R.append((gid, status or ("PASS" if ok else "FAIL"), summary, details))
-    def sh(cmd, text=True): return subprocess.run(cmd, capture_output=True, text=text)
-    def lufs(path):
-        r = sh([C.get("ffmpeg"), "-hide_banner", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"]).stderr
+    def gate0(gid, ok, summary, details="", status=None):
+        if draft and gid not in DRAFT: return
+        R.append((gid, status or ("PASS" if ok else "FAIL"), summary, details))
+    def sh(cmd, text=True): return subprocess.run(cmd, capture_output=True, text=True) if text else subprocess.run(cmd, capture_output=True)
+    def lufs(path):        # audio only (-vn): the same ebur128 numbers without decoding the picture
+        r = sh([C.get("ffmpeg"), "-hide_banner", "-i", path, "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"]).stderr
         I = re.findall(r"I:\s+(-?[\d.]+) LUFS", r); P = re.findall(r"Peak:\s+(-?[\d.inf]+) dBFS", r)
         return (float(I[-1]) if I else float("nan")), (float(P[-1]) if P else float("nan"))
     from .. import style as STY
@@ -58,9 +174,30 @@ def run(pr, video, fast=False, stage=None):
     G_ = S.get("grammar") or {}
     faces = pr.json("faces.json", {})
 
+    # ---------------- the independent families start now and are joined where the serial run measured them
+    j_extra = _worker.Job("extra", pr, video, spine, captions, tier)             # extra gates: their own process
+    from . import retention as RT
+    j_lufs = bg.submit(lufs, video)
+    tail = Q.get("brand_tail", []) if has_vo else []
+    def tail_words():
+        tw_ = os.path.join(tmp, "tail.wav"); sh([C.get("ffmpeg"), "-v", "error", "-y", "-sseof", "-6", "-i", pr.e("voice_final.wav"), "-ac", "1", "-ar", "16000", tw_])
+        return re.sub(r"[^a-z ]", " ", AG._whisper(tw_, lang=__import__("cves.ingest", fromlist=["x"]).whisper_language(pr)).lower()).split()
+    j_tail = bg.submit(tail_words) if tail and not draft else None
+    j_words = bg.submit(AG.words, pr.e("voice_final.wav"), pr.e("voice_raw.wav")) if not fast and has_vo else None
+    j_stut = bg.submit(AG.stutters, pr) if not fast and has_ar else None
+
     # ---------------- delivery
     pj = json.loads(sh([C.get("ffprobe"), "-v", "error", "-show_entries", "stream=codec_type,width,height,sample_aspect_ratio,r_frame_rate,avg_frame_rate,codec_name,profile,pix_fmt,color_space,color_primaries,color_transfer,color_range,sample_rate,bit_rate:format=duration,size", "-of", "json", video]).stdout)
     v = next(s for s in pj["streams"] if s["codec_type"] == "video"); a = next((s for s in pj["streams"] if s["codec_type"] == "audio"), {})
+    ret_size = None
+    if not draft:
+        from fractions import Fraction as _Fr
+        ret_size = RT.gray_size(int(v["width"]), int(v["height"])); ret_fps = float(_Fr(v.get("r_frame_rate", "30/1")))
+        j_media = bg.submit(media_pass, pr, video, ret_size)
+        j_audio = bg.submit(RT.decode_audio, video)
+    for nm_, j_ in (("lufs", j_lufs), ("tail", j_tail), ("words", j_words), ("stutters", j_stut)) + ((("media", j_media), ("audio", j_audio)) if not draft else ()):
+        if j_ is not None: j_.add_done_callback(lambda f, nm_=nm_: tick(f"{nm_} done"))
+    tick("probe done")
     gate("DEL-01", (v.get("width"), v.get("height")) == (PW, PH) and v.get("sample_aspect_ratio", "1:1") in ("1:1", "N/A"), f"{v.get('width')}x{v.get('height')}")
     want = f"{FR[0]}/{FR[1]}" if FR else None
     from fractions import Fraction as _F
@@ -76,38 +213,31 @@ def run(pr, video, fast=False, stage=None):
     tags = (v.get("color_space"), v.get("color_primaries"), v.get("color_transfer"), v.get("color_range"))
     gate("COL-01", tags == ("bt709", "bt709", "bt709", "tv"), "/".join(map(str, tags)))
 
-    # ---------------- picture (decode once small)
-    cap = cv2.VideoCapture(video); small = []
-    while True:
-        ok, fr = cap.read()
-        if not ok: break
-        small.append(cv2.resize(fr, (SW, SH), interpolation=cv2.INTER_AREA))
-    N = len(small); T = N / FPS
-    gray = [cv2.cvtColor(f, cv2.COLOR_BGR2GRAY).astype(np.float32) for f in small]
-    diff = np.array([0] + [float(np.mean(np.abs(gray[i] - gray[i - 1]))) for i in range(1, N)])
-    det = cv2.FaceDetectorYN.create(C.get("yunet"), "", (SW, SH), .7, .3, 5000); face = np.zeros(N, bool)
-    for i in range(0, N, 2):
-        _, f = det.detect(small[i]); face[i] = f is not None and len(f) > 0
-        if i + 1 < N: face[i + 1] = face[i]
-    if G_.get("face_on_first_frame"): gate("RET-13", face[0] and gray[0].mean() > 16, f"face at frame 0: {bool(face[0])}, luma {gray[0].mean():.0f}")
-    else: gate("RET-13", gray[0].mean() > 16, f"frame 0 not black (luma {gray[0].mean():.0f}); face {bool(face[0])} (style does not require one)")
-    ev = np.where(diff > max(6.0, np.median(diff[1:]) * 4))[0]; first_ev = ev[0] / FPS if len(ev) else T
-    gate("RET-09", first_ev <= 1.0, f"first visual event {first_ev:.2f} s")
-    gate("RET-10", diff[1:16].mean() >= 3 * max(.05, np.percentile(diff[1:], 5)), f"frame-1 motion {diff[1:16].mean():.2f}")
-    runs, cur = [], 0
-    for x in face: cur = 0 if x else cur + 1; runs.append(cur)
-    body = int(TLm.get("a_frames", N)); share = 1 - face[:body].mean(); nf = max(runs[:body] or [0]) / FPS   # body only: the end card is not a cutaway
-    mx = G_.get("max_cutaway_s", 8); band = G_.get("cutaway_share")
-    in_band = band is None or band[0] <= share <= band[1]
-    gate("RET-22", nf <= mx and in_band, f"longest without face {nf:.1f} s (max {mx}); cutaway share {share:.0%}" + (f" (style {band[0]:.0%}-{band[1]:.0%})" if band else ""),
-         status=None if nf <= mx else "FAIL") if any(face) else gate("RET-22", True, "no presenter in this edit: face pacing not applicable", status="PASS")
-    bd = sh([C.get("ffmpeg"), "-hide_banner", "-i", video, "-vf", "blackdetect=d=0.03:pix_th=0.10", "-an", "-f", "null", "-"]).stderr
-    blk = [(float(x), float(y)) for x, y in re.findall(r"black_start:([\d.]+) black_end:([\d.]+)", bd)]
-    gate("PLAT-12", not [b for b in blk if b[0] < .5 or b[1] > T - 1], f"{len(blk)} black runs")
-    Y = np.frombuffer(sh([C.get("ffmpeg"), "-v", "error", "-i", video, "-vf", "select='not(mod(n,12))',extractplanes=y", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"], text=False).stdout, np.uint8)
-    pct = float(((Y < 16) | (Y > 235)).mean() * 100); ext = int(((Y < 5) | (Y > 246)).sum())
-    gate("COL-02", pct <= .5 and ext / max(1, Y.size) < 1e-5, f"{pct:.2f}% luma outside 16-235")
+    # ---------------- picture (decode once small; streamed, never the whole clip in memory)
+    if not draft:
+        P_ = picture_pass(pr, video, SW, SH); N = P_["N"]; T = N / FPS; diff = P_["diff"]; face = P_["face"]; g0 = P_["g0"]
+        if G_.get("face_on_first_frame"): gate("RET-13", face[0] and g0 > 16, f"face at frame 0: {bool(face[0])}, luma {g0:.0f}")
+        else: gate("RET-13", g0 > 16, f"frame 0 not black (luma {g0:.0f}); face {bool(face[0])} (style does not require one)")
+        ev = np.where(diff > max(6.0, np.median(diff[1:]) * 4))[0]; first_ev = ev[0] / FPS if len(ev) else T
+        gate("RET-09", first_ev <= 1.0, f"first visual event {first_ev:.2f} s")
+        gate("RET-10", diff[1:16].mean() >= 3 * max(.05, np.percentile(diff[1:], 5)), f"frame-1 motion {diff[1:16].mean():.2f}")
+        runs, cur = [], 0
+        for x in face: cur = 0 if x else cur + 1; runs.append(cur)
+        body = int(TLm.get("a_frames", N)); share = 1 - face[:body].mean(); nf = max(runs[:body] or [0]) / FPS   # body only: the end card is not a cutaway
+        mx = G_.get("max_cutaway_s", 8); band = G_.get("cutaway_share")
+        in_band = band is None or band[0] <= share <= band[1]
+        gate("RET-22", nf <= mx and in_band, f"longest without face {nf:.1f} s (max {mx}); cutaway share {share:.0%}" + (f" (style {band[0]:.0%}-{band[1]:.0%})" if band else ""),
+             status=None if nf <= mx else "FAIL") if any(face) else gate("RET-22", True, "no presenter in this edit: face pacing not applicable", status="PASS")
+        MP = j_media.result(); blk = MP["blk"]
+        gate("PLAT-12", not [b for b in blk if b[0] < .5 or b[1] > T - 1], f"{len(blk)} black runs")
+        pct, ext = MP["pct"], MP["ext"]
+        gate("COL-02", pct <= .5 and ext / max(1, MP["ysize"]) < 1e-5, f"{pct:.2f}% luma outside 16-235")
+    else:        # draft: no decode. The frame count is the video packet count (one packet per frame), for PLAT-11 and the header
+        try: N = int(json.loads(sh([C.get("ffprobe"), "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries", "stream=nb_read_packets", "-of", "json", video]).stdout)["streams"][0]["nb_read_packets"])
+        except (Exception, SystemExit): N = int(round(dur * FPS))
+        T = N / FPS
 
+    tick("picture done")
     # ---------------- timeline + element log gates
     segs = TLm.get("segments", []); cuts = TLm.get("cutaways", []); zoom = TLm.get("zoom", {}); creep = TLm.get("creep", 0.0)
     in_broll = lambda t: any(c.get("broll") and c["start"] <= t < c["end"] for c in cuts)
@@ -175,12 +305,14 @@ def run(pr, video, fast=False, stage=None):
         gate("GFX-23", not icons, "icons only from the Material set")
     else:
         gate("ELEMENT-LOG", False, "Edit/elements.jsonl missing: render with `cves render` first", status="WARN")
-    holds = sorted(set([round(s["t0"], 2) for s in segs] + [round(x / FPS, 2) for x in ev] + [round(T, 2)]))
-    worst = max((b - a, a) for a, b in zip(holds[:-1], holds[1:]))
-    ms = G_.get("max_shot_s", 4.0); gate("RET-16", worst[0] <= ms, f"longest visual hold {worst[0]:.2f} s at {worst[1]:.2f} s", "frame-diff misses small graphic events: check by eye", status=None if worst[0] <= ms else "WARN")
+    if not draft:
+        holds = sorted(set([round(s["t0"], 2) for s in segs] + [round(x / FPS, 2) for x in ev] + [round(T, 2)]))
+        worst = max((b - a, a) for a, b in zip(holds[:-1], holds[1:]))
+        ms = G_.get("max_shot_s", 4.0); gate("RET-16", worst[0] <= ms, f"longest visual hold {worst[0]:.2f} s at {worst[1]:.2f} s", "frame-diff misses small graphic events: check by eye", status=None if worst[0] <= ms else "WARN")
 
+    tick("els done")
     # ---------------- sound
-    I, P = lufs(video); LT = S.get("sound.master_lufs", -14); TP = S.get("sound.true_peak", -1.0)
+    I, P = j_lufs.result(); LT = S.get("sound.master_lufs", -14); TP = S.get("sound.true_peak", -1.0)
     gate("SND-01", LT - .5 <= I <= LT + .5, f"{I:.1f} LUFS (target {LT})", status=None if not (LT - .5 <= I <= LT + .5) else ("WARN" if I > LT else "PASS"))
     gate("SND-02", P <= TP, f"true peak {P:.1f} dBTP (max {TP})")
     if has_vo and os.path.exists(pr.e("stems", "voice.wav")):
@@ -215,6 +347,7 @@ def run(pr, video, fast=False, stage=None):
         gen = [p for p in vc.get("steps", []) if p.get("generative")]
         gate("SND-30", not gen, "voice chain: " + " -> ".join(p.get("name", "?") for p in vc.get("steps", [])), "generative steps: " + ", ".join(p["name"] for p in gen))
 
+    tick("sound done")
     # ---------------- words, hook, sign-off (whisper)
     Wd = pr.json("words.json", []); words = [re.sub(r"[^a-z0-9']", "", w[2].lower()) for w in Wd]
     kws = Q.get("topic_keywords", [])
@@ -224,59 +357,73 @@ def run(pr, video, fast=False, stage=None):
     hd = " ".join(w[2] for w in Wd if w[0] < 3).lower()
     bans = [p for p in [r"craziest", r"won'?t believe", r"watch till the end", r"wait for it", r"stay till the end", r"^\s*(hi|hello|hey) (guys|everyone)"] if re.search(p, hd)]
     gate("RET-08", not bans, "no banned openers in the first 3 s", ", ".join(bans))
-    tail = Q.get("brand_tail", []) if has_vo else []
-    if tail:
-        tw_ = os.path.join(tmp, "tail.wav"); sh([C.get("ffmpeg"), "-v", "error", "-y", "-sseof", "-6", "-i", pr.e("voice_final.wav"), "-ac", "1", "-ar", "16000", tw_])
-        tt = re.sub(r"[^a-z ]", " ", AG._whisper(tw_, lang=__import__("cves.ingest", fromlist=["x"]).whisper_language(pr)).lower()).split(); joined = "".join(tt[-6:])
+    if j_tail is not None:
+        tt = j_tail.result(); joined = "".join(tt[-6:])
         gate("STORY-10", all(t in joined for t in tail), f"sign-off heard: {' '.join(tt[-5:])}")
         gate("STORY-09", bool(tt) and any(t in tt[-1] for t in tail), f"last spoken word: {tt[-1] if tt else '?'}")
     if not fast:
         if has_vo:
-            r, bad, ok = AG.words(pr.e("voice_final.wav"), pr.e("voice_raw.wav"))
+            r, bad, ok = j_words.result()
             gate("CUT-01", ok, f"voice stem vs raw: match {r:.3f}", "\n".join(bad))
         else: na("CUT-01")
-        if has_ar: st = AG.stutters(pr); gate("CUT-03", not st, f"{len(pr.json('edl.json')['segments'])} kept segments checked verbatim", "\n".join(st))
+        if has_ar: st = j_stut.result(); gate("CUT-03", not st, f"{len(pr.json('edl.json')['segments'])} kept segments checked verbatim", "\n".join(st))
         else: na("CUT-03")
-    from .extra import run_extra; run_extra(pr, video, gate)
+    tick("whisper joined")
+    R.extend(j_extra.result())                                       # run_extra's rows, through the same N/A wrapper (and tier filter)
+    tick("extra joined")
     try:
         from ..assets import qc_assets; qc_assets(pr, gate)          # AST-01: every asset registered, unchanged, with provenance
     except ImportError: pass
-    from . import retention as RT                                     # RET-24..RET-32: hook, interrupts, loop, payoff, platform, dead air, guide
-    try: RT.run_retention(pr, video, gate, S)
-    except Exception as e:
-        done = {r[0] for r in R}
-        for g in RT.IDS:
-            if g not in done: gate(g, False, f"not measured: {type(e).__name__}: {e}", status="WARN")
+    if not draft:                                                     # RET-24..RET-32: hook, interrupts, loop, payoff, platform, dead air, guide
+        try: RT.run_retention(pr, video, gate, S, pre={"frames": j_media.result()["ret"], "fps": ret_fps, "audio": j_audio.result()})
+        except Exception as e:
+            done = {r[0] for r in R}
+            for g in RT.IDS:
+                if g not in done: gate(g, False, f"not measured: {type(e).__name__}: {e}", status="WARN")
+    tick("retention done")
+    if draft: R[:] = [r for r in R if r[0] in DRAFT]
 
     order = {"FAIL": 0, "WARN": 1, "PASS": 2, "N/A": 3}; R.sort(key=lambda x: (order.get(x[1], 4), x[0]))
     nf, nw, npass, nna = (sum(r[1] == s for r in R) for s in ("FAIL", "WARN", "PASS", "N/A"))
-    lines = [f"QC REPORT  {os.path.basename(video)}  ({T:.2f} s, {PW}x{PH}, spine {spine})", f"{nf} FAIL   {nw} WARN   {npass} PASS   {nna} N/A   of {len(R)} gates", ""]
+    if draft:
+        lines = [f"DRAFT QC (NOT DELIVERABLE)  {os.path.basename(video)}  ({T:.2f} s, {PW}x{PH}, spine {spine})",
+                 f"{nf} FAIL   {nw} WARN   {npass} PASS   {nna} N/A   of {len(R)} draft gates; the picture, speech and retention gates were NOT run.",
+                 "This is a draft check for iteration: it never stamps the master. Run `cves qc` (full) before `cves deliver`.", ""]
+    else: lines = [f"QC REPORT  {os.path.basename(video)}  ({T:.2f} s, {PW}x{PH}, spine {spine})", f"{nf} FAIL   {nw} WARN   {npass} PASS   {nna} N/A   of {len(R)} gates", ""]
     for gid, st_, summ, det_ in R:
         lines.append(f"[{st_:4s}] {gid:10s} {summ}")
         if st_ not in ("PASS", "N/A") and det_: lines += ["             " + l for l in det_.splitlines() if l.strip()]
+    if draft:        # never Edit/qc.json or QC-REPORT.txt: a draft cannot stand in for the delivery QC (cves deliver, qc_guard)
+        lines.append("\nDRAFT QC: not a delivery check. `cves deliver` needs `cves qc`.")
+        open(pr.e("QC-DRAFT.txt"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
+        write_stamp(pr, video, R, fast=True, out=pr.e("qc_draft.json"), tier="draft")
+        return nf, "\n".join(lines)
     open(pr.e("QC-REPORT.txt"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
-    write_stamp(pr, video, R, fast=fast)     # Edit/qc.json: the machine-readable stamp `cves deliver` and the hook check
+    write_stamp(pr, video, R, fast=fast, tier=tier)     # Edit/qc.json: the machine-readable stamp `cves deliver` and the hook check
     return nf, "\n".join(lines)
 
 
 def sha256(path, bs=1 << 20):
-    import hashlib
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for b in iter(lambda: f.read(bs), b""): h.update(b)
-    return h.hexdigest()
+    from .cache import sha256 as _s
+    return _s(path, bs)
 
 
-def write_stamp(pr, video, R, fast=False, out=None):
-    """qc.json = {video, sha256, fail, warn, pass, gates: [{id, status, summary}], created, cves_version, fast}.
-    `cves deliver` refuses unless fail == 0 AND sha256 matches the master it is about to deliver (docs/DELIVERY.md)."""
+def write_stamp(pr, video, R, fast=False, out=None, tier=None):
+    """qc.json = {video, sha256, fail, warn, pass, gates: [{id, status, summary}], created, cves_version, fast, tier}.
+    `cves deliver` refuses unless fail == 0 AND sha256 matches the master it is about to deliver (docs/DELIVERY.md).
+    A draft stamp is never written to Edit/qc.json (it goes to Edit/qc_draft.json with deliverable: false)."""
+    if tier == "draft" and os.path.abspath(out or pr.e("qc.json")) == os.path.abspath(pr.e("qc.json")):
+        raise ValueError("a draft QC never writes Edit/qc.json")
     import datetime
     from .. import __version__
-    d = {"video": os.path.abspath(video), "sha256": sha256(video), "size": os.path.getsize(video),
+    from .cache import master_sha      # memoised on (path, size, mtime): the QC cache key and the stamp hash the file once
+    d = {"video": os.path.abspath(video), "sha256": master_sha(video), "size": os.path.getsize(video),
          "fail": sum(r[1] == "FAIL" for r in R), "warn": sum(r[1] == "WARN" for r in R), "pass": sum(r[1] == "PASS" for r in R),
          "na": sum(r[1] == "N/A" for r in R),
          "gates": [{"id": g, "status": s, "summary": m} for g, s, m, _ in R],
          "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"), "cves_version": __version__, "fast": bool(fast)}
+    if tier: d["tier"] = tier
+    if tier == "draft": d["deliverable"] = False
     with open(out or pr.e("qc.json"), "w", encoding="utf-8") as f: json.dump(d, f, indent=1, ensure_ascii=False)
     return d
 

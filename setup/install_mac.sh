@@ -109,7 +109,7 @@ say "Main venv (Python 3.12) at $CVES/venv"
 if [ ! -x "$CVES/venv/bin/python" ] || ! "$CVES/venv/bin/python" -c 'import sys; sys.exit(sys.version_info[:2] != (3, 12))'; then
   rm -rf "$CVES/venv"; "$UV" venv --python 3.12 "$CVES/venv"
 fi
-"$UV" pip install --python "$CVES/venv/bin/python" -r "$REPO/setup/requirements.txt"
+"$UV" pip install --python "$CVES/venv/bin/python" -r "$REPO/setup/requirements.txt"   # incl. pytest + pytest-xdist (pytest -n auto)
 "$UV" pip install --python "$CVES/venv/bin/python" -e "$REPO/engine"
 "$CVES/venv/bin/python" -c 'import torch; print("    torch", torch.__version__, "MPS available:", torch.backends.mps.is_available())'
 # motion layer: the Chromium build Playwright drives (idempotent: an installed build is skipped)

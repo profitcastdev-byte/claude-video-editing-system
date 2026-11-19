@@ -8,6 +8,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
+        # the suite split by marker (tests/conftest.py): unit = everything that does not render a demo; e2e = render /
+        # mix / encode / QC of the demo projects. Both run in parallel on pytest-xdist (-n auto, demo builds shared)
+        suite: [unit, e2e]
+    name: ${{ matrix.os }} / ${{ matrix.suite }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -47,8 +51,12 @@ jobs:
           print("yunet ok", p)
           PY
       - name: Lint (portability + no hard-coded style)
+        if: matrix.suite == 'unit'
         run: python tools/lint.py && python tools/gate_status.py --check
-      - name: Unit + golden tests
-        run: python -m pytest -q tests
+      - name: Tests (${{ matrix.suite }}, pytest-xdist)
+        run: |
+          if [ "${{ matrix.suite }}" = "unit" ]; then M="not e2e"; else M="e2e"; fi
+          python -m pytest -q -n auto --dist loadgroup -m "$M" --durations=15 tests
       - name: Control-mode export self-test
+        if: matrix.suite == 'unit'
         run: cves export selftest --no-gui

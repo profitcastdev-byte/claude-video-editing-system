@@ -2,10 +2,22 @@
 it skips sentences on long files (transcribe in ~8 s chunks), invents words over music tails (use the voice stem),
 and hides disfluencies unless prompted verbatim."""
 import os, re, difflib, subprocess, tempfile, unicodedata
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np, soundfile as sf, librosa
 from .. import config as C
+from . import cache as QCC
 
 DEFAULT_LANG = "en"     # used when a caller passes no lang; gates with a project pass ingest.whisper_language(pr)
+
+def workers():
+    """whisper processes run side by side (each call is independent; results are joined in order): CVES_QC_WHISPER_JOBS"""
+    try: return max(1, int(os.environ.get("CVES_QC_WHISPER_JOBS", "") or min(3, max(1, (os.cpu_count() or 2) // 3))))
+    except ValueError: return 1
+
+def _pmap(fn, items):
+    items = list(items); n = min(workers(), len(items))
+    if n <= 1: return [fn(x) for x in items]
+    with ThreadPoolExecutor(n) as ex: return list(ex.map(fn, items))
 
 def gaps(wav, mx=.25):
     y, sr = sf.read(wav); y = y.mean(1) if y.ndim > 1 else y
@@ -20,7 +32,13 @@ def _whisper(path, prompt=None, lang=None):
     lang = (lang or DEFAULT_LANG).lower()
     if prompt and not lang.startswith("en"): prompt = None
     cmd = [C.get("whisper"), "-m", C.get("whisper_model"), "-l", lang, "-nt", "-f", path] + (["--prompt", prompt] if prompt else [])
-    return subprocess.run(cmd, capture_output=True, text=True).stdout
+    # inside `cves qc` the transcript is cached by the audio bytes + this command line (qc/cache.py): a re-run hears the same
+    key = [C.get("whisper"), C.get("whisper_model"), "-l", lang, "-nt"] + (["--prompt", prompt] if prompt else [])
+    hit, k = QCC.whisper_get(path, key)
+    if hit is not None: return hit
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode == 0: QCC.whisper_put(k, r.stdout)
+    return r.stdout
 
 def transcribe_chunked(path, lang=None):
     y, sr = sf.read(path); y = y.mean(1) if y.ndim > 1 else y
@@ -28,10 +46,10 @@ def transcribe_chunked(path, lang=None):
     rms = np.sqrt(np.convolve(y ** 2, np.ones(480) / 480, "same")); cuts = [0]
     while cuts[-1] + 9 * sr < len(y):
         a, b = cuts[-1] + 6 * sr, cuts[-1] + 9 * sr; cuts.append(a + int(np.argmin(rms[a:b])))
-    cuts.append(len(y)); text = []; d = tempfile.mkdtemp()
+    cuts.append(len(y)); d = tempfile.mkdtemp(); paths = []
     for k, (a, b) in enumerate(zip(cuts[:-1], cuts[1:])):
-        p = os.path.join(d, f"c{k}.wav"); sf.write(p, y[a:b], sr); text.append(_whisper(p, lang=lang))
-    return " ".join(text)
+        p = os.path.join(d, f"c{k}.wav"); sf.write(p, y[a:b], sr); paths.append(p)
+    return " ".join(_pmap(lambda p: _whisper(p, lang=lang), paths))
 
 NUM = {"four triple nine": "4999", "four nine nine nine": "4999", "4 to 9": "4999", "thirty": "30", "three": "3"}
 def _strip_punct(s, keep=""):
@@ -53,10 +71,10 @@ def words(processed, reference, lang=None):
 
 def stutters(pr, lang=None):
     from .. import ingest as ING
-    edl = pr.json("edl.json"); fails = []; d = tempfile.mkdtemp(); lang = lang or ING.whisper_language(pr)
+    edl = pr.json("edl.json"); d = tempfile.mkdtemp(); lang = lang or ING.whisper_language(pr)
     prompt = "Verbatim with repetitions and false starts: I, I mean, we, we do, want, want to."
-    for s in edl["segments"]:
-        p = os.path.join(d, "s.wav")
+    def one(js):
+        j, s = js; p = os.path.join(d, f"s{j}.wav")
         subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", "-ss", str(s["in"]), "-to", str(s["out"]), "-i", ING.source_audio(pr, s.get("src")), "-ar", "16000", "-ac", "1", p])
         def reps_of(text):
             w = re.sub(r"\s+", " ", "".join(ch if ch.isspace() or ch == "'" or not unicodedata.category(ch).startswith(("P", "S", "C")) else " " for ch in text.lower())).split()
@@ -65,5 +83,5 @@ def stutters(pr, lang=None):
         text = _whisper(p, prompt, lang); w, r = reps_of(text)
         if r and max(sum(1 for x in w if x == w[i]) for i in r) >= 4:   # prompt loop on proper nouns -> recheck unprompted
             text = _whisper(p, lang=lang); w, r = reps_of(text)
-        if r: fails.append(f"{s['id']} ({s['in']:.2f}-{s['out']:.2f}s raw): {' '.join(text.split())}")
-    return fails
+        return f"{s['id']} ({s['in']:.2f}-{s['out']:.2f}s raw): {' '.join(text.split())}" if r else None
+    return [x for x in _pmap(one, enumerate(edl["segments"])) if x]       # segments are independent: joined in edl order

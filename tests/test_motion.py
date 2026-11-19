@@ -6,7 +6,8 @@ from PIL import Image
 from cves import motion as MO, style as STY, gfx as G
 
 ok, why = MO.available()
-pytestmark = pytest.mark.skipif(not ok, reason=f"motion renderer unavailable: {why}")
+pytestmark = [pytest.mark.skipif(not ok, reason=f"motion renderer unavailable: {why}"),
+              pytest.mark.xdist_group("motion")]      # one worker renders the module fixture once (pytest -n auto --dist loadgroup)
 
 S = STY.load()
 FPS = 10

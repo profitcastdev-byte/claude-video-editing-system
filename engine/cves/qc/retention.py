@@ -27,12 +27,17 @@ def probe(video):
     return json.loads(r.stdout or "{}")
 
 
+def gray_size(W0, H0, width=96):
+    """the decode size of decode_gray: `width` px wide, aspect kept, even height"""
+    return width, max(2, int(round(width * H0 / W0 / 2)) * 2)
+
+
 def decode_gray(video, width=96):
     """-> (frames uint8 (n, h, w), fps). One pass, area-scaled to `width` px wide (aspect kept, even height)."""
     from fractions import Fraction
     p = probe(video); v = next(s for s in p["streams"] if s["codec_type"] == "video")
     fps = float(Fraction(v.get("r_frame_rate", "30/1"))); W0, H0 = int(v["width"]), int(v["height"])
-    w = width; h = max(2, int(round(width * H0 / W0 / 2)) * 2)
+    w, h = gray_size(W0, H0, width)
     out = subprocess.run([C.get("ffmpeg"), "-v", "error", "-i", video, "-vf", f"scale={w}:{h}:flags=area,format=gray",
                           "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"], capture_output=True).stdout
     n = len(out) // (w * h)
@@ -167,11 +172,12 @@ def centre_subject(frame):
 
 
 # ======================================================================== the gates
-def measure(pr, video, S=None):
-    """every retention measurement as a dict (the gates and the tests read it)"""
+def measure(pr, video, S=None, pre=None):
+    """every retention measurement as a dict (the gates and the tests read it). `pre` = {frames, fps, audio} already
+    decoded by qc.run (the same decode_gray / decode_audio output, from the shared media pass): nothing is decoded again"""
     from .. import style as STY
     S = S or STY.load(pr); R = S.get("retention") or {}
-    frames, fps = decode_gray(video); n = len(frames); T = n / fps if fps else 0.0
+    frames, fps = (pre["frames"], pre["fps"]) if pre else decode_gray(video); n = len(frames); T = n / fps if fps else 0.0
     tl = pr.json("timeline.json", {}) or {}
     ef = pr.e("elements.jsonl"); els = []
     if os.path.exists(ef):
@@ -182,14 +188,14 @@ def measure(pr, video, S=None):
     ev = [(t, l) for t, l in ev if 0 <= t < T]
     inter = merge_events(ev, float(R.get("merge_s", 0.05)))
     first = next(((t, l) for t, l in inter if t >= 0.5 / fps), None)
-    audio = decode_audio(video); sr = 16000
+    audio = pre["audio"] if pre else decode_audio(video); sr = 16000
     return {"S": S, "fps": fps, "T": T, "frames": frames, "diffs": diffs, "scenes": scenes, "interrupts": inter, "first_change": first,
             "els": els, "tl": tl, "audio": audio, "sr": sr}
 
 
-def run_retention(pr, video, gate, S=None):
+def run_retention(pr, video, gate, S=None, pre=None):
     from .. import style as STY, guide as GD, platforms as PF
-    M = measure(pr, video, S); S = M["S"]; R = S.get("retention") or {}
+    M = measure(pr, video, S, pre); S = M["S"]; R = S.get("retention") or {}
     viral = STY.goal(pr) == "viral"; fps, T = M["fps"], M["T"]; inter = M["interrupts"]; times = [t for t, _ in inter]
     goal_s = "goal viral" if viral else "goal ad"
 

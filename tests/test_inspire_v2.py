@@ -7,6 +7,9 @@ HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 
+pytestmark = pytest.mark.xdist_group("inspire_v2")      # the module fixture is built once, on one worker (--dist loadgroup)
+
+
 @pytest.fixture(scope="module")
 def proj(tmp_path_factory):
     import _inspire_refs as R

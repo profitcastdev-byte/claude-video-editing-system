@@ -15,7 +15,7 @@
   cves beats [--sync drop|cuts|full] [--apply]          music beats / downbeats / drops -> Edit/beats.json + beat-sync report
   cves mix                                              voice + music + SFX -> Edit/mix.wav + stems
   cves encode                                           single final encode -> Export/<title>.mp4
-  cves qc [--fast] [--video X]                          all measurable gates -> Edit/QC-REPORT.txt (exit 1 on FAIL)
+  cves qc [--fast|--draft] [--video X]                  all measurable gates -> Edit/QC-REPORT.txt (exit 1 on FAIL); --draft: cheap gates, never deliverable
   cves qc --stage story|plan                            early gates: after `cves select` (pauses, stutters, sign-off) / after planning
   cves build [--draft] [--no-cache]                     render (incremental) + mix + encode + qc (short summary; -v for the full report);
                                                         --draft: half size, fast, not deliverable
@@ -105,7 +105,7 @@ def _main(argv, verbose=False):
     ie.add_argument("paths", nargs="+", metavar="[PROJECT] FILE"); ie.add_argument("--from", dest="src", choices=["resolve", "kdenlive", "fcpxml", "otio"])
     ie.add_argument("--captions", help="edited subtitles (.srt / .ass) when FILE has none"); ie.add_argument("--dry-run", action="store_true")
     sp.add_parser("mix"); e = sp.add_parser("encode"); e.add_argument("--out")
-    q = sp.add_parser("qc", parents=[_v]); q.add_argument("--json", action="store_true", help="counts + every gate (details for FAIL / WARN) as JSON"); q.add_argument("--fast", action="store_true"); q.add_argument("--video"); q.add_argument("--stage", choices=["story", "plan"], help="early gates before rendering")
+    q = sp.add_parser("qc", parents=[_v]); q.add_argument("--json", action="store_true", help="counts + every gate (details for FAIL / WARN) as JSON"); q.add_argument("--fast", action="store_true"); q.add_argument("--draft", action="store_true", help="cheap gates only, for iteration: never a delivery stamp (docs/QC.md)"); q.add_argument("--video"); q.add_argument("--stage", choices=["story", "plan"], help="early gates before rendering")
     b = sp.add_parser("build", parents=[_v]); b.add_argument("--draft", action="store_true", help="half size, fast encode, fast QC into Edit/draft/ (never deliverable)")
     b.add_argument("--no-cache", action="store_true", help="re-render every frame (ignore the incremental frame cache)")
     stt = sp.add_parser("status", parents=[_v], help="[PROJECT]: stage reached, last QC counts, open FAILs, the next command"); stt.add_argument("dir", nargs="?"); stt.add_argument("--json", action="store_true")
@@ -348,7 +348,9 @@ def _main(argv, verbose=False):
         if a.stage in ("story", "plan"):
             if a.stage == "plan": from . import schema; schema.require_valid(pr)    # the same validation `cves build` runs: a plan that passes here builds
             nf, rep = qc.run_stage(pr, a.stage); _print_qc(a, rep, None, title=f"QC ({a.stage} stage)"); sys.exit(1 if nf else 0)
-        v = a.video or _latest_export(pr); nf, rep = qc.run(pr, v, fast=a.fast); _print_qc(a, rep, pr.e("QC-REPORT.txt"), video=v)
+        v = a.video or _latest_export(pr)
+        if a.draft: nf, rep = qc.run(pr, v, tier="draft"); _print_qc(a, rep, pr.e("QC-DRAFT.txt"), title="QC DRAFT (not deliverable)", video=v); sys.exit(1 if nf else 0)     # no learning from a draft
+        nf, rep = qc.run(pr, v, fast=a.fast); _print_qc(a, rep, pr.e("QC-REPORT.txt"), video=v)
         from . import learn; learn.on_qc(pr); sys.exit(1 if nf else 0)
     elif a.cmd == "deliver":
         from .deliver import deliver
@@ -360,7 +362,7 @@ def _main(argv, verbose=False):
         from .build import build
         v, nf, rep, T = build(pr, draft=a.draft, cache=False if a.no_cache else None)
         print(("draft (not deliverable): " if a.draft else "master: ") + str(v) + "  (" + ", ".join(f"{k} {t:.0f}s" for k, t in T.items()) + ")")
-        _print_qc(a, rep, pr.e("draft", "QC-REPORT.txt") if a.draft else pr.e("QC-REPORT.txt"), video=v)
+        _print_qc(a, rep, pr.e("draft", "QC-DRAFT.txt") if a.draft else pr.e("QC-REPORT.txt"), title="QC DRAFT (not deliverable)" if a.draft else None, video=v)
         if not a.draft:
             from . import learn; learn.on_build(pr, v); learn.on_qc(pr)
         sys.exit(1 if nf else 0)

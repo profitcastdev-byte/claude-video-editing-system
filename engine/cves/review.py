@@ -54,12 +54,34 @@ def _now(): return datetime.datetime.now(datetime.timezone.utc).isoformat(timesp
 # ======================================================================== media
 def _even(x): return max(2, int(round(x / 2)) * 2)
 
-def decode(video, W, H, need, sizes):
-    """one pass: small gray frames (detectors) + RGB tiles for the frame indices in `need` ({index: size key})"""
+def decode(video, W, H, need, sizes, pr=None):
+    """one pass: small gray frames (detectors) + RGB tiles for the frame indices in `need` ({index: size key}).
+    With `pr`, the small gray frames `cves qc` already decoded from this exact master (Edit/qc_cache/, keyed by its
+    sha256) are reused: the frames are then only grabbed, and converted only where a tile is needed."""
     import cv2
     from .qc import small_size
     sw, sh = small_size(W, H, area=160 * 284)
+    hit = None
+    if pr is not None:
+        from .qc import cache as QCC
+        hit = QCC.load_arrays(pr, video, "review_gray", {"size": [sw, sh]})
+    if hit is not None:
+        g = hit["g"]; tiles = {}; last = max(need) if need else -1
+        cap = cv2.VideoCapture(video); i = 0
+        while i <= last and cap.grab():
+            for key in need.get(i, ()):
+                ok, fr = cap.retrieve()
+                if not ok: break
+                tw, th = sizes[key]
+                tiles[(i, key)] = Image.fromarray(cv2.cvtColor(cv2.resize(fr, (tw, th), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB))
+            i += 1
+        cap.release()
+        return g, tiles
     cap = cv2.VideoCapture(video); gray, tiles, i = [], {}, 0
+    def _save(g):        # the next review of this master (same sha256) grabs frames only
+        if pr is not None:
+            from .qc import cache as QCC
+            QCC.save_arrays(pr, video, "review_gray", {"g": g}, {"size": [sw, sh]})
     while True:
         ok, fr = cap.read()
         if not ok: break
@@ -70,6 +92,7 @@ def decode(video, W, H, need, sizes):
         i += 1
     cap.release()
     g = np.stack(gray) if gray else np.zeros((0, sh, sw), np.uint8)
+    if len(g): _save(g)
     return g, tiles
 
 def _audio(path, sr=48000, ch=2):
@@ -265,7 +288,7 @@ def hook_findings(S, g, cuts, first, fps, dur):
                         f"Add a cut, a punch-in step or a graphic entry before {hc:g} s (structure.hook_change_s)"}], facts
 
 # ======================================================================== audio
-def audio_review(pr, S, video, cuts, fps, dur, body_end):
+def audio_review(pr, S, video, cuts, fps, dur, body_end, earshot_job=None):
     sr = 48000; X = _audio(video, sr, 2); x = X.mean(1) if len(X) else np.zeros(0, np.float32)
     A = {"integrated_lufs": lufs(X, sr) if len(X) else None, "sections": [], "cuts": [], "silences": [], "vmr": None, "earshot": None}
     out = []
@@ -333,7 +356,7 @@ def audio_review(pr, S, video, cuts, fps, dur, body_end):
     A["vmr"], f_vmr = vmr(pr, S, stems)
     out += f_vmr
     # ---- earshot (optional)
-    A["earshot"] = earshot(S, video)
+    A["earshot"] = earshot_job.result() if earshot_job is not None else earshot(S, video)
     return A, out
 
 def vmr(pr, S, stems):
@@ -375,15 +398,25 @@ def vmr(pr, S, stems):
         item["patch"] = {"set": {"music.bed_lu": round(bed - step, 1)}, "safe": True}
     return info, [item]
 
-def earshot(S, video):
-    """`earshot measure --json --light` on the master when earshot is installed (review.earshot: auto | off); never fails the pack"""
+def earshot(S, video, pr=None):
+    """`earshot measure --json --light` on the master when earshot is installed (review.earshot: auto | off); never fails the pack.
+    With `pr` a measurement of this exact master by this exact earshot install is reused (Edit/qc_cache/, keyed by sha256)."""
     if str(_R(S, "earshot", "auto")) == "off": return {"skipped": "review.earshot: off"}
     exe = shutil.which(C.get("earshot")) or (C.get("earshot") if os.path.isfile(C.get("earshot")) else None)
     if not exe: return {"skipped": "earshot not installed (optional: setup installs it as a uv tool)"}
+    key = None
+    if pr is not None:
+        from .qc import cache as QCC
+        try: key = {"exe": os.path.realpath(exe), "mtime": os.path.getmtime(os.path.realpath(exe)), "args": ["measure", "--json", "--light"]}
+        except OSError: key = None
+        got = QCC.load_json(pr, video, "earshot") if key else None
+        if got and got.get("key") == json.loads(json.dumps(key)): return got["value"]
     try:
         r = subprocess.run([exe, "measure", "--json", "--light", video], capture_output=True, text=True, timeout=float(_R(S, "earshot_timeout_s", 180)))
         if r.returncode: return {"skipped": f"earshot exit {r.returncode}: {(r.stderr or '').strip()[-200:]}"}
-        d = json.loads(r.stdout); d.pop("file", None); return d
+        d = json.loads(r.stdout); d.pop("file", None)
+        if key: QCC.save_json(pr, video, "earshot", {"key": key, "value": d})
+        return d
     except (subprocess.TimeoutExpired, ValueError, OSError) as e:
         return {"skipped": f"earshot failed: {type(e).__name__}"}
 
@@ -528,7 +561,10 @@ def build(pr, which=None):
         for f in range(fc - 3, fc + 3): need.setdefault(f, set()).add("index")
     for f in hook_idx: need.setdefault(f, set()).add("hook")
     for f in payoff_idx + end_idx: need.setdefault(f, set()).add("cut")
-    g, tiles = decode(video, W, H, need, sizes)
+    from concurrent.futures import ThreadPoolExecutor
+    ex_ = ThreadPoolExecutor(1); es_job = ex_.submit(earshot, S, video, pr)     # earshot runs while the frames decode
+    try: g, tiles = decode(video, W, H, need, sizes, pr=pr)
+    except BaseException: ex_.shutdown(wait=False); raise
     N = len(g); cuts = refine_cuts([c for c in cuts if c[0] < N], g)
 
     # ---- detectors
@@ -550,7 +586,8 @@ def build(pr, which=None):
         F.append({"severity": "med", "t": round(body_end, 3), "kind": "end_card",
                   "message": f"end card {float(ec['duration']):g} s is shorter than review.end_card_min_s {mn:g} s: nobody can read the CTA",
                   "patch": {"set": {"end_card.duration": mn}, "safe": True}})
-    A, af = audio_review(pr, S, video, cuts, fps, dur, body_end)
+    try: A, af = audio_review(pr, S, video, cuts, fps, dur, body_end, earshot_job=es_job)
+    finally: ex_.shutdown(wait=True)
     if qcst and any(x.get("gate") == "RET-31" for x in qf): af = [x for x in af if x["kind"] != "silence"]
     F += af
     order = {s: i for i, s in enumerate(SEVERITIES)}
