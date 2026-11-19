@@ -82,7 +82,7 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `mix.json` | `cves mix` | master gain, cue count, music placement (+ `sections`, `story` alignment), automatic `accents` (placed / skipped + why), `duck` settings ([SOUND.md](SOUND.md)) |
 | `timeline.json` | render | resolved timeline (spine, zoom, cutaways incl. `broll` shots, transitions, fps_rational, size, segments with `kind`) |
 | `IMPORT-REPORT.md` | `cves import-edits` | editor changes mapped onto edit.yaml / selects.yaml (backups `*.bak-<time>`), and what could not be mapped. `Export/control/layers.json` (schema in CONTROL-MODE.md §3) is the reference it compares against |
-| `elements.jsonl` | render | one record per drawn element per frame (id, role, bbox, text, t_key, asset, font) |
+| `elements.jsonl` | render | one record per drawn element per frame (id, role, bbox, text, t_key, asset, font, size when the template logs it) |
 | `QC-REPORT.txt` / `qc.json` | `cves qc` | gate results; `qc.json` is machine-readable and carries the hash of the file it judged |
 | `journal.jsonl` | `cves` (build, encode, qc, deliver, import-edits, critique, review, treatments make / render / compare / pick) + `cves learn` | append-only events `{t, event, cves, style_hash, ...}` for self-learning ([LEARNING.md](LEARNING.md)); `journal.last_edit.yaml` is the edit.yaml of the last build |
 | `DIRECTION.md` | Claude | creative direction: concept, arc, the one signature moment, motif, what we will not do (knowledge-base/CREATIVE.md) |
@@ -115,7 +115,7 @@ Templates are auto-discovered.
 - `cves render --only` / `Timeline.frames_for(spec)` accept cutaway, segment, `roto.N`, `chest.N`, `end_card` ids, `12.5-14.0` (seconds), `300-420` (frames, inclusive) and comma lists.
 - `cues(params, ctx) -> list[(t, sfx_name, gain_db, kw)]`. `sfx_name` is a bank id / file name, or `@category[:intensity]` (resolved from the SFX bank manifest, [SOUND.md](SOUND.md) §4).
 - **Kind.** Set it per module with `KIND = "cutaway"|"roto"|"chest"|"end"|"media"|"overlay"`, or per template with `KINDS = {name: kind}`.
-- **El(im, id, role, text=, t_key=, asset=, font=).** The `id` must be stable across frames; the QC gates track elements by `id`.
+- **El(im, id, role, text=, t_key=, asset=, font=, size=).** The `id` must be stable across frames; the QC gates track elements by `id`. `size` (optional, type px at a 1080 short side) is logged; GFX-20 compares it when every instance of a class logs it (type a person occludes under-reads its glyph height).
 - **Fonts and colours.** Templates read colours and fonts through `gfx` (`G.MINT` is the accent slot, `G.font(...)`). They never use literal hex values.
 - **Timing and cue helpers (gfx).** Use these instead of hand-rolled maths:
   - `G.enter(t, at, dur, G.fps_of(ctx))`: an entry first visible on the frame of `at`;

@@ -3,6 +3,28 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Fixed (graphics, found on the first client job: a 9:16 60 fps selfie ad)
+- **`text_behind` contrast (GFX-15).** New default `craft.behind.color: auto`: the template measures the graded plate behind its box over the hold (the person masked out, `render.plate_lum`) and uses the light or dark token (`craft.behind.light` / `dark`) that reaches the GFX-15 target; a failing `*accent*` becomes its darker (`accent_dark`, then mixed toward black) or lighter variant, and a soft bed is added when neither token reads (`craft.behind.auto_bed`). White type over a light beige wall reached 1.93-2.2:1.
+- **`text_behind` size (GFX-20).** Every instance without its own `size` uses one size per video, the smallest size any instance fits at (`craft.behind_size`), each fitted once at its shot's tightest zoom (`craft.seg_scale`), so it never re-fits mid-shot. "DENTIST?" and "100% REFUND" were 77 vs 94 px.
+- **`text_behind` shake (MOT-03).** The face track is smoothed with a zero-phase Gaussian whose sigma is in seconds (`craft.behind.smooth_s`, 0.2 s, replaces `smooth_frames`), over the whole segment track; the clamped path is smoothed again so the type no longer stops dead on the safe edge (that was the 5 px/f^2 kink). `craft.behind.track` default 0.6 -> 0.4 (subtle).
+- **Roto card entries (MOT-01).** `map_card`, `listing_card` and `top3_card` rise by whole raster pixels with per-frame steps that never grow, so the ease-out stays monotonic at any frame rate (at 60 fps half-pixel steps rounded to 2, 3, 1, 2).
+- **End card centring (GFX-08).** `gfx.draw_text` measures a centred line's ink with the font that really draws it on the supersampled layer (the 1x font's rounded advances put a headline up to 3 px off its button's axis). Applies to every ink-centred line.
+
+- **Caption accent words (GFX-15).** The caption bed is as dark as the darkest emphasis / highlight colour needs (it was sized for the white only: a blue `100%` on a maroon shirt read 1.95:1).
+- **QC measurement at 60 fps (thresholds unchanged).** GFX-08 needs an element still for ±0.05 s, not just between neighbouring frames (ease-out tails crept < 1 px a frame); GFX-15 / GFX-20 skip glyphs the person cuts when measuring type size, and GFX-20 compares the type size a template logs (`El(..., size=)`, `size` in elements.jsonl; `text_behind` logs it).
+- **`text_behind` exit** is a fade with a slight lift (the larger drift rounded into uneven steps at 60 fps, MOT-01).
+
+### Changed
+- **`end_card`** has its own layout (no longer the `cta` cutaway's): display type scaled from the canvas, the headline wrapped to two balanced lines when one does not fit, button / handle / optional `logo` / `qr` scaled with it, the block centred in the safe zone (shrinks to fit it), every element on one centre axis, at any canvas size. Golden frame `end_card.png` regenerated for it.
+- **Roto cards place themselves** in the free space beside or above the head (`roto.place: auto`, or a card's `place` param): from the subject matte over the slot, the largest scale (down to `roto.min_scale`) at which the presenter covers at most `roto.max_cover` of the card, on the brightest free wall. When nothing fits, the designed position stays and GFX-27 judges it.
+
+### Added
+- **QC gate GFX-27** (roto card hidden by the subject): mean share of a roto card's area covered by the subject matte over its hold; WARN above `roto.occlusion_warn` (0.40), FAIL above `roto.occlusion_fail` (0.65) (knowledge-base/DECISIONS.md). `cves review` turns it into a `roto_hidden` finding at the card's time. `cves qc` now measures 96 gates.
+- New style keys `craft.behind.smooth_s`, `light`, `dark`, `auto_bed` and the `roto:` section (default.yaml, docs/STYLE.md).
+- Tests on synthetic media: auto colour on a light and a dark wall, size harmonisation, the face-track smoothing at 60 fps, monotonic roto entries at 24 / 30 / 60 fps, free-space placement and GFX-27 (`tests/test_gfx_fixes.py`).
+
 ## [0.4.0] - 2026-11-19
 
 ### Added

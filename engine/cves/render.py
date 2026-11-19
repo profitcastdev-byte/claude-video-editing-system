@@ -391,7 +391,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
             img = grade(np.clip(P * g, 0, 1) if np.any(g != 1) else P, A, (cx, cy), TL.S.get("grade"))
             r = TL.roto.get(sid)
             if r:
-                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], view=M, seg_view=M0, **CR.roto_ctx(TL, s, k)))
+                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], view=M, seg_view=M0, plate_lum=lambda ks, s=s: plate_lum(TL, s, ks), **CR.roto_ctx(TL, s, k)))
                 if rels:
                     a = cv2.GaussianBlur(cv2.erode(A.astype(np.float32) / 255, np.ones((3, 3), np.uint8)), (0, 0), 1.2)[..., None]
                     person = img.copy()
@@ -455,6 +455,36 @@ def aroll_frame(TL, s, k, t, P, A):
     M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)
     return warp(img, M, cv2.INTER_CUBIC), warp(A.astype(np.float32) / 255, M)
 
+def plate_lum(TL, s, ks):
+    """[(k, relative luminance HxW float32, subject matte HxW float 0..1)] of segment s at plate frames ks: the graded plate
+    as the A-roll branch shows it before the frame transform (plate px). Roto templates measure the wall behind them with it
+    (text_behind color: auto) and find free space beside the head (roto card placement). Decoded on demand; callers cache
+    what they decide from it, so every worker decides the same."""
+    import av
+    sid = s["id"]; n = max(1, int(s["n"])); ks = sorted(set(min(max(0, int(k)), n - 1) for k in ks))
+    if not ks: return []
+    def grab(path, fmt):
+        got = {}
+        with av.open(path) as c:
+            for j, fr in enumerate(c.decode(video=0)):
+                if j > ks[-1]: break
+                if j in ks: got[j] = fr.to_ndarray(format=fmt)
+        return got
+    P = grab(TL.pr.e("plate", f"{sid}.mkv"), "rgb48le")
+    A = grab(TL.pr.e("matte", f"{sid}.mkv"), "gray") if TL.matte_ok.get(sid, True) else {}
+    out = []
+    for k in ks:
+        if k not in P: continue
+        p_ = P[k].astype(np.float32) / 65535; a_ = A.get(k)
+        if a_ is None: a_ = np.zeros(p_.shape[:2], np.uint8)
+        if TL.proxy: p_ = cv2.resize(p_, TL.size, interpolation=cv2.INTER_AREA); a_ = cv2.resize(a_, TL.size, interpolation=cv2.INTER_AREA)
+        cx, cy, _ = smooth_face(TL, sid, k)
+        g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
+        img = np.clip(grade(np.clip(p_ * g, 0, 1) if np.any(g != 1) else p_, a_, (cx, cy), TL.S.get("grade")), 0, 1)
+        lin = np.where(img <= .04045, img / 12.92, ((img + .055) / 1.055) ** 2.4)
+        out.append((k, (lin @ np.float32([.2126, .7152, .0722])).astype(np.float32), a_.astype(np.float32) / 255))
+    return out
+
 def smooth_face(TL, sid, k, r=6):
     """face centre smoothed over +-r frames (no punch-in shake, MOT-03)"""
     F = TL.faces[sid]; lo, hi = max(0, k - r), min(len(F), k + r + 1)
@@ -477,7 +507,7 @@ def log_records(i, els, M):
         if not post:     # element was drawn before the frame transform (roto / cutaway drift)
             x0, y0 = M[0, 0] * x0 + M[0, 2], M[1, 1] * y0 + M[1, 2]; x1, y1 = M[0, 0] * x1 + M[0, 2], M[1, 1] * y1 + M[1, 2]
         out.append({"f": i, "id": el.id, "role": el.role, "bbox": [round(x0), round(y0), round(x1), round(y1)], "alpha": round(float(a.max()) / 255, 2),
-                    "text": el.text, "t_key": el.t_key, "asset": el.asset, "font": el.font})
+                    "text": el.text, "t_key": el.t_key, "asset": el.asset, "font": el.font, **({"size": el.size} if getattr(el, "size", None) else {})})
     return out
 
 # ------------------------------------------------------------------ jobs

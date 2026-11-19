@@ -337,6 +337,12 @@ treatments:                   # `cves treatments` (docs/TREATMENTS.md): creative
   compare_thumb: 360          # sheet thumbnail height (portrait) or width (landscape), px
   compare_max_s: 12           # length of each treatment in the comparison MP4, s
   compare_layout: stacked     # stacked (side by side / one above the other, audio of the first) | sequential (one after another, own sound)
+roto:                         # cards behind the presenter (map_card, listing_card, top3_card) and their QC (GFX-27)
+  place: auto                 # auto (the free space beside / above the head, from the subject matte) | fixed (the designed position)
+  max_cover: 0.2              # auto: most of a card the subject may cover (it tucks behind the head a little)
+  min_scale: 0.25             # auto: smallest card scale; no fit at this scale keeps the designed position
+  occlusion_warn: 0.40        # GFX-27: share of a card behind the subject over its hold that WARNs
+  occlusion_fail: 0.65        # GFX-27: ... that FAILs (the card reads as a dark rectangle)
 craft:                        # motion craft (docs/MOTION.md "Craft"); every move counts against creative.* (restraint)
   behind:                     # text_behind (roto): type between the plate and the subject matte, placed from the face track
     size: 300                 # px at a 1080 short side (shrinks to fit craft.behind.max_width)
@@ -348,9 +354,12 @@ craft:                        # motion craft (docs/MOTION.md "Craft"); every mov
     position: above           # above (the head covers the lower `overlap` of the type) | behind (centred on the eyes) | low (behind the shoulders)
     overlap: 0.42             # fraction of the cap height the head covers in `above`
     one_line_min: 0.42        # keep the text on one line if it fits at >= this fraction of `size` (no orphan words), else wrap
-    track: 0.6                # how much of the head's motion the type follows: 0 locked at its entry, 1 glued
-    smooth_frames: 9          # face-landmark smoothing radius (frames, triangular window)
-    color: text               # palette slot or hex
+    track: 0.4                # how much of the head's motion the type follows: 0 locked at its entry, 1 glued (keep it subtle)
+    smooth_s: 0.2             # face-track smoothing, s (zero-phase Gaussian sigma; in seconds, so 60 fps is as calm as 30)
+    color: auto               # auto (the light or dark token, whichever reads on the wall behind the type) | palette slot | hex
+    light: text               # color: auto's light text token
+    dark: card                # color: auto's dark text token
+    auto_bed: true            # color: auto adds a soft legibility bed when neither token reaches the GFX-15 contrast
     accent: accent            # colour of *starred* words
     entry: rise               # rise (the letters rise out from behind the head) | slam (whole on its first frame, oversized, settling)
     entry_s: 0.5              # entry length

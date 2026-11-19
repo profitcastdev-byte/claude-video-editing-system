@@ -6,9 +6,10 @@ from .. import gfx as G
 
 class El:
     """one drawn element: an RGBA layer + what it is (for the element log and QC)"""
-    __slots__ = ("im", "id", "role", "text", "t_key", "asset", "font")
-    def __init__(self, im, id, role, text=None, t_key=None, asset=None, font=None):
+    __slots__ = ("im", "id", "role", "text", "t_key", "asset", "font", "size")
+    def __init__(self, im, id, role, text=None, t_key=None, asset=None, font=None, size=None):
         self.im, self.id, self.role, self.text, self.t_key, self.asset, self.font = im, id, role, text, t_key, asset, font
+        self.size = size              # optional: the type size in canvas px (GFX-20 compares it when every instance logs it)
 
 def faded(fn, alpha):
     im = G.layer(fn)

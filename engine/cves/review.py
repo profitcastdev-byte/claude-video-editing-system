@@ -22,7 +22,7 @@ from .critique import FOOTAGE, _font, _probe, resolve_video, structure
 
 SEVERITIES = ("high", "med", "low")
 FADES = {"fade", "dip", "luma_fade", "dissolve", "xfade", "crossfade"}      # transitions that legitimately pass through black / white
-QC_KIND = {"RET-24": "dead_hook", "RET-09": "dead_hook", "RET-31": "silence", "SND-04": "music_masks_voice"}
+QC_KIND = {"RET-24": "dead_hook", "RET-09": "dead_hook", "RET-31": "silence", "SND-04": "music_masks_voice", "GFX-27": "roto_hidden"}
 
 def _R(S, k, d): return S.get(f"review.{k}", d)
 
@@ -394,8 +394,16 @@ def qc_findings(pr, sha):
     out = []
     for g_ in st.get("gates") or []:
         if g_.get("status") not in ("FAIL", "WARN"): continue
-        out.append({"severity": "high" if g_["status"] == "FAIL" else "low", "t": None, "kind": QC_KIND.get(g_["id"], "qc"), "gate": g_["id"],
-                    "message": f"QC {g_['status']} {g_['id']}: {g_.get('summary', '')} (QC-REPORT.txt; never loosen the gate)"})
+        item = {"severity": "high" if g_["status"] == "FAIL" else "low", "t": None, "kind": QC_KIND.get(g_["id"], "qc"), "gate": g_["id"],
+                "message": f"QC {g_['status']} {g_['id']}: {g_.get('summary', '')} (QC-REPORT.txt; never loosen the gate)"}
+        if g_["id"] == "GFX-27":            # a roto card mostly behind the head reads as a dark rectangle
+            m = re.search(r"\(([\w.#]+) at ([\d.]+) s\)", g_.get("summary", ""))
+            item["severity"] = "high" if g_["status"] == "FAIL" else "med"
+            if m: item["t"] = float(m.group(2))
+            item["message"] = (f"QC {g_['status']} GFX-27: {g_.get('summary', '')}. The roto card sits behind the presenter's head and reads as a "
+                               f"dark rectangle: let it find the free space beside / above the head (roto.place: auto, the default; "
+                               f"lower roto.min_scale if it does not fit), or move the moment to a cutaway. Look at the frame, never loosen the gate")
+        out.append(item)
     return out, st
 
 def critique_findings(pr):

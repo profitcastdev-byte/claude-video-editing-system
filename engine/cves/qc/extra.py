@@ -72,7 +72,7 @@ class Inst:
         self.key, self.recs = key, recs; r0 = recs[0]
         self.id, self.role, self.text, self.t_key, self.asset, self.font = r0["id"], r0["role"], r0.get("text"), r0.get("t_key"), r0.get("asset"), r0.get("font")
         self.f = np.array([r["f"] for r in recs]); self.bb = np.array([r["bbox"] for r in recs], float); self.al = np.array([r["alpha"] for r in recs], float)
-        self.f0, self.f1 = int(self.f[0]), int(self.f[-1])
+        self.f0, self.f1 = int(self.f[0]), int(self.f[-1]); self.size = r0.get("size")
         self.cls = re.sub(r"\d+$", "", self.id.split("@")[0])          # list.item0 -> list.item ; caption@1.51 -> caption
     @property
     def decor(self): return any(d in self.id for d in DECOR)
@@ -192,7 +192,8 @@ def decode_plate_frames(cx, path, ks, fmt="gray"):
 # ======================================================================== measurements on one frame
 def text_contrast(yuv, bbox, pad=6, person=None):
     """WCAG ratio per glyph-sized ink component vs its own 3-7 px surround, in the delivered frame.
-    Ink polarity: the Otsu class that touches the bbox border less is the ink. Returns [(ratio, glyph_h)]"""
+    Ink polarity: the Otsu class that touches the bbox border less is the ink. Returns [(ratio, glyph_h)]; glyph_h is
+    negative for a component the person mask cuts (its height is not the glyph's: see whole_h)"""
     x0, y0, x1, y1 = [int(round(v)) for v in bbox]
     x0, y0, x1, y1 = max(0, x0 - pad), max(0, y0 - pad), min(W, x1 + pad + 1), min(H, y1 + pad + 1)
     if x1 - x0 < 6 or y1 - y0 < 6: return []
@@ -218,7 +219,10 @@ def text_contrast(yuv, bbox, pad=6, person=None):
         if ring.sum() < 10: continue
         lf, lb = float(np.median(L[Y0:Y1, X0:X1][core])), float(np.median(L[Y0:Y1, X0:X1][ring]))
         fill_lab = lab_of(np.median(rgb[Y0:Y1, X0:X1][core], 0)[None])[0]
-        out.append(((max(lf, lb) + .05) / (min(lf, lb) + .05), int(h), fill_lab))
+        # a glyph the person cuts (roto type behind the head) keeps its contrast but not its height: a truncated
+        # component is not a glyph size (GFX-20 / the GFX-15 type-size estimate read only whole glyphs)
+        cut = pm.any() and bool((cv2.dilate(comp, np.ones((7, 7), np.uint8)).astype(bool) & pm[Y0:Y1, X0:X1]).any())
+        out.append(((max(lf, lb) + .05) / (min(lf, lb) + .05), -int(h) if cut else int(h), fill_lab))
     # text = runs of same-coloured glyphs: keep colour clusters (dE < 15) with >= 3 components; drops stray blobs (skin, icons)
     keep, used = [], [False] * len(out)
     for a in range(len(out)):
@@ -227,6 +231,11 @@ def text_contrast(yuv, bbox, pad=6, person=None):
         for b in grp: used[b] = True
         if len(grp) >= 3: keep += [out[b][:2] for b in grp]
     return keep
+
+def whole_h(hs):
+    """glyph heights of whole (uncut) components; all of them (as positive) when every one is cut by the person"""
+    w = [h for h in hs if h > 0]
+    return w or [abs(h) for h in hs]
 
 def caption_measure(yuv, bbox):
     """white caption ink inside the logged bbox: line bands, widths, cap height, fill, shadow, plate margin"""
@@ -624,11 +633,13 @@ def gates_graphics(cx, gate):
         worst = max(worst, len(tmpl))
     gate("GFX-26", not where, f"max {worst} non-caption overlay(s) on an A-roll frame", f"{len(where)} frames, first f{where[0]}" if where else "", status=None if not where else "WARN")
     # GFX-08 alignment axis: near-miss left edges / centres (2-12 px) between static elements on the same frame
-    mis = collections.defaultdict(list); static = {}
+    # static = within 1 px over +-0.05 s (not just the neighbouring frames): at 60 fps an ease-out tail creeps < 1 px per
+    # frame while still 3-4 px from rest, and two rows caught mid-settle read as a near miss they are not
+    mis = collections.defaultdict(list); static = {}; kw = max(1, int(round(.05 * FPS)))
     for i in ins:
         if i.role == "caption" or i.decor: continue
-        for j in range(1, len(i.f) - 1):
-            if np.abs(i.bb[j] - i.bb[j - 1]).max() <= 1 and np.abs(i.bb[j + 1] - i.bb[j]).max() <= 1 and i.al[j] >= .9 and not cx.in_trans(int(i.f[j])):
+        for j in range(kw, len(i.f) - kw):
+            if np.abs(i.bb[j - kw:j + kw + 1] - i.bb[j]).max() <= 1 and i.al[j] >= .9 and not cx.in_trans(int(i.f[j])):
                 static.setdefault(int(i.f[j]), []).append((i, i.bb[j]))
     for f in sorted(static)[::3]:
         L = static[f]
@@ -648,9 +659,9 @@ def gates_graphics(cx, gate):
         if res: per[key].append((f, res))
     low, n = [], 0
     kcls = {i.key: i.cls for i in ins}; clsh = collections.defaultdict(list)
-    for key, L in per.items(): clsh[kcls[key]] += [h for _, res in L for _, h in res]
+    for key, L in per.items(): clsh[kcls[key]] += whole_h([h for _, res in L for _, h in res])
     for key, L in per.items():      # type size per element class (all captions share one size): p90 glyph height ~ ascender ~0.74 em
-        hs = [h for _, res in L for _, h in res]; ch = clsh[kcls[key]]; fpx = np.percentile(ch, 90) / .74 if ch else 0; need = 3.0 if fpx >= 48 * U_ else 4.5
+        hs = whole_h([h for _, res in L for _, h in res]); ch = clsh[kcls[key]]; fpx = np.percentile(ch, 90) / .74 if ch else 0; need = 3.0 if fpx >= 48 * U_ else 4.5
         worst_f, worst_c = None, 99
         for f, res in L:
             c = float(np.percentile([r for r, _ in res], 10))
@@ -675,9 +686,58 @@ def gates_graphics(cx, gate):
         insts = [x for x in ins if x.cls == k]
         fs = set(x.font for x in insts)
         if len(fs) > 1: out.append(f"{k}: fonts {fs}")
-        if len(L) > 1 and max(h for _, h in L) / min(h for _, h in L) > 1.15 and len(set(x.id for x in insts)) == 1:
+        if len(insts) > 1 and all(x.size for x in insts):     # the template logs its type size: compare that (exact; roto type is
+            sz = [(x.key, float(x.size)) for x in insts]          # cut by the head, so its visible glyphs under-read the size)
+            if max(v for _, v in sz) / min(v for _, v in sz) > 1.15 and len(set(x.id for x in insts)) == 1:
+                out.append(f"{k}: type sizes {', '.join(f'{a} {v:.0f}px' for a, v in sz)}")
+        elif len(L) > 1 and max(h for _, h in L) / min(h for _, h in L) > 1.15 and len(set(x.id for x in insts)) == 1:
             out.append(f"{k}: glyph heights {', '.join(f'{a} {h:.0f}px' for a, h in L)}")
     gate("GFX-20", not out, f"captions one style ({'; '.join(st[0]) if st else '?'}); {len(gh)} repeated element classes compared by font and glyph size", "\n".join(out))
+
+
+# ======================================================================== gates: roto cards hidden by the subject
+def roto_cards(cx):
+    """roto CARDS (panels drawn behind the presenter: map / listing / ranked cards, not type and not their pins, rows or
+    badges): role roto, not text, not decoration, not a child of another roto element, at least 2% of the frame (a placed card at roto.min_scale is ~2.3%)"""
+    R = [i for i in cx.inst if i.role == "roto" and not i.is_text and not i.decor]
+    ids = {i.id for i in R}; out = []
+    for i in R:
+        if any(i.id.startswith(o + ".") for o in ids if o != i.id): continue
+        bb = i.bb; area = float(np.median((bb[:, 2] - bb[:, 0]) * (bb[:, 3] - bb[:, 1])))
+        if area >= .02 * W * H: out.append(i)
+    return out
+
+def hold_frames(i, n=8):
+    """up to n A-roll frames of an element's hold (fully faded in), evenly spread"""
+    full = [int(i.f[j]) for j in range(len(i.f)) if i.al[j] >= .95 * i.al.max()]
+    if not full: return []
+    return sorted(set(full[int(k * (len(full) - 1) / max(1, n - 1))] for k in range(min(n, len(full)))))
+
+def gate_roto_cover(cx, gate, card_fr, mattes):
+    """GFX-27: share of a roto card's area the subject covers over its hold (mean over the hold frames). A card that sits
+    mostly behind the head reads as a dark rectangle: WARN above roto.occlusion_warn, FAIL above roto.occlusion_fail"""
+    wl, fl = float(cx.S.get("roto.occlusion_warn", .40)), float(cx.S.get("roto.occlusion_fail", .65))
+    rows, worst, lv, wkey = [], 0.0, set(), ""
+    for i in roto_cards(cx):
+        cov = []
+        for f in card_fr.get(i.key, []):
+            M = cx.aroll_M(f)
+            if f not in mattes or not M: continue
+            x0, y0, x1, y1 = [int(round(v)) for v in next(r["bbox"] for r in i.recs if r["f"] == f)]
+            x0, y0, x1, y1 = max(0, x0), max(0, y0), min(W, x1 + 1), min(H, y1 + 1)
+            if x1 - x0 < 4 or y1 - y0 < 4: continue
+            person = cv2.warpAffine(mattes[f], M[0], (W, H), borderMode=cv2.BORDER_REPLICATE) > 127
+            cov.append(float(person[y0:y1, x0:x1].mean()))
+        if not cov: continue
+        c = float(np.mean(cov))
+        if c >= worst: worst, wkey = c, f"{i.key} at {i.f0 / cx.FPS:.2f} s"
+        lvl = "FAIL" if c > fl else "WARN" if c > wl else "ok"
+        lv.add(lvl)
+        rows.append(f"{i.key} f{i.f0}-{i.f1} ({i.f0 / cx.FPS:.2f}-{i.f1 / cx.FPS:.2f} s): {c:.0%} covered by the subject over {len(cov)} hold frames"
+                    + ("" if lvl == "ok" else f" ({lvl}: move it into the free space beside / above the head, roto.place: auto, or shrink it)"))
+    status = "FAIL" if "FAIL" in lv else "WARN" if "WARN" in lv else "PASS"
+    gate("GFX-27", status == "PASS", f"{len(rows)} roto card(s); worst {worst:.0%} of a card behind the subject{' (' + wkey + ')' if wkey else ''}; warn > {wl:.0%}, fail > {fl:.0%}",
+         "\n".join(rows), status=status)
 
 
 # ======================================================================== gates: frame + colour (from the A-roll pass)
@@ -967,6 +1027,8 @@ def run_extra(pr, video, gate):
                                            and np.abs(i.bb[j + 1] - i.bb[j]).max() <= 1))]     # static on both sides (as GFX-08): not mid-entry
         text_fr[i.key] = (fr[::6] or fr[:1])[:8]
     roto_fr = sorted(set(f for i in cx.inst if i.role == "roto" and i.is_text for f in text_fr.get(i.key, [])))
+    card_fr = {i.key: hold_frames(i) for i in roto_cards(cx)}            # GFX-27: the subject matte over each roto card's hold
+    roto_fr = sorted(set(roto_fr) | {f for v in card_fr.values() for f in v})
     mattes = {}             # plate-space mattes for sampled A-roll frames and for roto text frames (person mask)
     for s in cx.segs:
         fs = set(per[s["id"]]["pick"] if s["id"] in per else []) | {f for f in roto_fr if s["f0"] <= f < s["f0"] + s["n"]}
@@ -1001,6 +1063,7 @@ def run_extra(pr, video, gate):
     safe(gates_captions, ["PLAT-04", "PLAT-05", "PLAT-06", "PLAT-07", "PLAT-08", "PLAT-09", "PLAT-10", "GFX-16"])
     safe(gates_motion, ["MOT-01", "MOT-02", "MOT-03", "MOT-04", "MOT-05", "MOT-07", "MOT-12", "MOT-14"])
     safe(gates_graphics, ["GFX-05", "GFX-08", "GFX-15", "GFX-17", "GFX-20", "GFX-24", "GFX-26"])
+    safe(lambda c, g: gate_roto_cover(c, g, card_fr, mattes), ["GFX-27"])
     safe(gates_frame_colour, ["FRAME-02", "FRAME-03", "FRAME-04", "FRAME-05", "FRAME-06", "FRAME-10", "COL-03", "COL-04", "COL-05", "COL-06", "COL-07", "COL-08", "COL-09", "COL-10"])
     safe(gate_col12, ["COL-12"])
     safe(gates_timeline, ["CUT-04", "RET-12"])

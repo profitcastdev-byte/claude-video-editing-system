@@ -228,7 +228,12 @@ def element(TL, t, chin, events, S):
             layers.append(base)
             if cfg.get("legible", True):
                 bg = G.sget("legibility.video_bg_broll", "#C8C8C8") if over_broll else None   # full-bleed footage runs brighter than a presenter's wall
-                bed = G.legible_bed(im, col[:3], sz, bg=bg, reach=2 + 2 * math.ceil(outline * G.U))   # an outline pushes the glyph edge out
+                # the bed keeps the main colour's polarity but is as dark as the darkest light fill needs: an accent word
+                # (emphasis / highlight) is darker than white and failed GFX-15 on a mid-tone shirt under the white's bed
+                fills = [em_col[:3] for tk, *_ in placed if tk["emph"]] + ([hi[:3]] if style in ("highlight", "one_word", "karaoke") and cfg.get("highlight_mode", "text") != "pill" else [])
+                Lb = G.lum(G.col(bg) or G._rgb(G.sget("legibility.video_bg", "#B4B4B4"))); need = G.need_contrast(sz) * G.sget("legibility.margin", 1.15)
+                force = max([0.0] + [1 - max(0., (G.lum(c) + .05) / need - .05) / max(1e-6, Lb) for c in fills if G.lum(c) <= G.lum(col[:3]) and G.lum(c) < Lb])
+                bed = G.legible_bed(im, col[:3], sz, bg=bg, force=force, reach=2 + 2 * math.ceil(outline * G.U))   # an outline pushes the glyph edge out
                 if bed is not None: layers.insert(0, bed)
         out = Image.new("RGBA", (G.W, G.H), (0, 0, 0, 0))
         for L in layers: out.alpha_composite(L)

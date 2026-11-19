@@ -167,7 +167,12 @@ Params:
 - `qr`: data to encode. Needs `pip install qrcode` (or `segno`); if neither is installed, the QR is skipped with a one-line notice;
 - `logo`;
 - `at` and the per-element times `logo_at`, `headline_at`, `button_at`, `handle_at`, `qr_at`;
-- `button_color`, `size`, `y`.
+- `button_color`, `size`, `y` (`y`: `cta` only).
+
+`end_card` lays out from the canvas: the headline at display size (about 12 % of the safe-zone width; `size` = px at a
+1080 short side overrides it), wrapped to two balanced lines when one does not fit; the button, handle, optional `logo`
+(above the headline) and `qr` scale with it; the block is centred in the safe zone and shrinks to fit it, on any canvas.
+Every element is centred on one axis, measured from the ink the layer really draws (GFX-08).
 
 ```yaml
 end_card: {template: end_card, duration: 2.5, params: {headline: "Get found on Google Maps", button: "BOOK A FREE AUDIT", handle: "yourbrand.com/audit", icon: link, press_at: 52.3}}
@@ -211,17 +216,23 @@ generic templates.
 | `browser_list` | website / content deliverables on a page card | `head [[word, at, accent?]]`, `enter`, `hero_at`, `hero_icon`, `rows [{text, at, icon?}]`, `row_icon`, `pill`, `pill_at` |
 
 ## Roto (behind the presenter; at most 4 moments, each ≤ 3 s)
+**Free-space placement.** `map_card`, `listing_card` and `top3_card` place themselves (style `roto.place: auto`, or a
+`place: auto | fixed` param): from the subject matte over the card's slot they take the largest scale (down to
+`roto.min_scale`) at which the presenter covers at most `roto.max_cover` of the card, inside the shot's safe zone, on the
+brightest free wall. On a tight selfie that is a smaller card beside the head instead of a dark rectangle behind it.
+When nothing fits they keep the designed position, and QC GFX-27 flags a card the subject covers (warn > 40 %, fail >
+65 %). Card entries move by whole pixels with steps that never grow (MOT-01 at any frame rate).
 The cards are laid out in fractions of their own box: the 1080×1920 box on 9:16, a box filling the safe-zone height
 (1.35:1 on wide canvases) elsewhere. `big_words` `ys` are 1080×1920 baselines (tall canvases); square and wide canvases
 spread the lines down the safe zone.
 | Template | Use for | Params |
 |---|---|---|
-| `map_card` | a map card behind the head: roads drawing in, pins popping (each pin is its own element) | `at`, `draw_at`, `pins_at`, `pins` (≤ 6), `pin_stagger` |
+| `map_card` | a map card behind the head: roads drawing in, pins popping (each pin is its own element) | `at`, `draw_at`, `pins_at`, `pins` (≤ 6), `pin_stagger`, `place` |
 | `big_words` | one huge phrase behind the head | `words [[WORD, at, accent?]]`, `out_at`, `ys?`, `size`, `accent_size`, `color`, `accent_color` |
 | `listing_card` | a listing / profile card rising behind the head | `at`, `stars` (0 for none), `stars_at` |
 | `top3_card` | a ranked-results card and a badge | `at`, `badge`, `badge_at`, `rows`, `rows_at`, `row_stagger` |
 | `kinetic_caption_emphasis` | one word, big (see above) | `word`, `at` |
-| `text_behind` | big type tracked to the presenter's smoothed face landmarks, between the plate and the subject matte, so the head occludes it; lifts clear above the head when the segment has no matte (`craft.behind.*`, MOTION.md "Craft"). Counts against `creative.craft_per_30s` | `text`! (`*stars*` = accent), `at`, `out_at`, `position` (above / behind / low), `size`, `track`, `color`, `accent`, `lines` |
+| `text_behind` | big type tracked to the presenter's smoothed face landmarks, between the plate and the subject matte, so the head occludes it; lifts clear above the head when the segment has no matte; `color: auto` picks the light or dark token from the wall behind it; one size for every instance in a video unless `size` is set (`craft.behind.*`, MOTION.md "Craft"). Counts against `creative.craft_per_30s` | `text`! (`*stars*` = accent), `at`, `out_at`, `position` (above / behind / low), `size`, `track`, `color`, `accent`, `lines` |
 
 ## Chest (replaces captions while visible; placed just under the chin, never over the face)
 | Template | Use for | Params |
