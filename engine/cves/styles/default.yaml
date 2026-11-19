@@ -277,12 +277,14 @@ craft:                        # motion craft (docs/MOTION.md "Craft"); every mov
     max_width: 0.92           # of the safe-zone width
     max_lines: 2
     position: above           # above (the head covers the lower `overlap` of the type) | behind (centred on the eyes) | low (behind the shoulders)
-    overlap: 0.34             # fraction of the cap height the head covers in `above`
+    overlap: 0.3              # fraction of the cap height the head covers in `above`
+    one_line_min: 0.42        # keep the text on one line if it fits at >= this fraction of `size` (no orphan words), else wrap
     track: 0.6                # how much of the head's motion the type follows: 0 locked at its entry, 1 glued
     smooth_frames: 9          # face-landmark smoothing radius (frames, triangular window)
     color: text               # palette slot or hex
     accent: accent            # colour of *starred* words
-    entry_s: 0.5              # the letters rise out from behind the head
+    entry: rise               # rise (the letters rise out from behind the head) | slam (whole on its first frame, oversized, settling)
+    entry_s: 0.5              # entry length
     exit_s: 0.25
     no_matte: above           # no subject matte: lift the type clear above the head (above) | keep it in front with a legibility bed (front)
     sfx: lowhit               # cue on entry (null = none)

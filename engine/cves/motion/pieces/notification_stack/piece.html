@@ -39,9 +39,9 @@
     seek(t, P, ctx) {
       const u = ctx.u, ex = C.exitP(t);
       bans.forEach((x, i) => {
-        const p = C.prog(t, x.at, D(0.55)), pe = C.easings.spring(0.78)(p);
+        const p = C.prog(t, x.at, D(0.55)), pe = C.IN(p);                         // decelerate in (MOT-01)
         // how far this banner has been pushed back by the newer ones that have landed
-        let k = 0; for (let j = i + 1; j < bans.length; j++) k += C.MOVE(C.prog(t, bans[j].at, D(0.5)));
+        let k = 0; for (let j = i + 1; j < bans.length; j++) k += C.OUT(C.prog(t, bans[j].at, D(0.4)));   // tucks away accelerating (an exit, MOT-01)
         const depth = Math.min(k, 3.2);
         const y = -(1 - pe) * (H + 4 * u) + depth * 3.6 * u - ex * 4 * u;
         const o = (p <= 0 ? 0 : Math.min(1, p * 3)) * Math.max(0, 1 - Math.max(0, depth - 2) ) * (1 - 0.18 * Math.min(depth, 2)) * (1 - ex);

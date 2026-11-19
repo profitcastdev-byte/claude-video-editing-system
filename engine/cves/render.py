@@ -362,21 +362,21 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         sid = s["id"]; f = TL.faces[sid][min(k, len(TL.faces[sid]) - 1)]
         sm = smooth_face(TL, sid, k)
         cx, cy, fh = sm
+        z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
+        if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
+        M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # lift: anchor at the frame bottom raises the face
         if mode in ("overlay", "chest"): img = None
         else:
             g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
             img = grade(np.clip(P * g, 0, 1) if np.any(g != 1) else P, A, (cx, cy), TL.S.get("grade"))
             r = TL.roto.get(sid)
             if r:
-                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], **CR.roto_ctx(TL, s, k)))
+                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], view=M, **CR.roto_ctx(TL, s, k)))
                 if rels:
                     a = cv2.GaussianBlur(cv2.erode(A.astype(np.float32) / 255, np.ones((3, 3), np.uint8)), (0, 0), 1.2)[..., None]
                     person = img.copy()
                     for el in rels: img = G.over(img, el.im)
                     img = img * (1 - a) + person * a; els += rels
-        z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
-        if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
-        M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # lift: anchor at the frame bottom raises the face
         if img is not None: img = warp(img, M, cv2.INTER_CUBIC)
         _, scy, sfh = smooth_face(TL, sid, k, r=12)                         # smoothed: raw boxes made chest graphics shake (MOT-03)
         chin = (scy + sfh / 2) * M[1, 1] + M[1, 2]

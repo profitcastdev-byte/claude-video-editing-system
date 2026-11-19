@@ -8,7 +8,7 @@
     <div class="who"><b id="nm"></b><small id="hd"></small></div>
     <div class="chip" id="pf"></div>
     <div class="btnwrap" id="bw">
-      <div class="ripple" id="rp" data-el="ripple"></div>
+      <div class="ripple" id="rp"></div>
       <div class="btn" id="btn"><span class="lbl" id="lb1"></span><span class="lbl done" id="lb2"><svg viewBox="0 0 100 100" class="tick"><path id="tk" d="M24 54 L42 71 L76 32" pathLength="1"/></svg><span id="lb2t"></span></span></div>
     </div>
   </div>
@@ -84,8 +84,8 @@
       if (lb2.isConnected) { C.set(lb2, { y: (1 - pd) * 1.2 * u, o: pd }); C.draw(tk, C.easings.outCubic(tl.raw('tick', t))); }
       const pr = tl.raw('ripple', t); C.set(rp, { s: 1 + 0.3 * C.easings.outCubic(pr), o: pr > 0 ? (1 - pr) * 0.9 : 0 });
       if (bell.isConnected) {
-        const pl = tl.raw('bell', t), sw = Math.sin(pl * Math.PI * 5) * Math.pow(1 - pl, 1.6) * 18;
-        C.set(bell, { r: pl > 0 && pl < 1 ? sw : 0, s: 0.8 + 0.2 * C.easings.outCubic(C.prog(t, tl.t0('bell') - D(0.2), D(0.3))), o: Math.min(1, C.prog(t, tl.t0('bell') - D(0.2), D(0.25)) * 2) });
+        const pl = C.prog(t, tl.t0('bell') + D(0.3), D(1.0)), sw = Math.sin(pl * Math.PI * 5) * Math.pow(1 - pl, 1.6) * 18;
+        C.set(bell, { r: pl > 0 && pl < 1 ? sw : 0, s: 0.8 + 0.2 * C.easings.outCubic(C.prog(t, tl.t0('bell'), D(0.3))), o: Math.min(1, C.prog(t, tl.t0('bell'), D(0.25)) * 2) });   // lands, then swings (MOT-01)
         C.set(badge, { s: C.easings.outBack(C.prog(t, tl.t0('bell') + D(0.15), D(0.35))) });
       }
       if (cur.isConnected) {

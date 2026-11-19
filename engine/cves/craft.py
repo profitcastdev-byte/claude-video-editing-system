@@ -251,7 +251,10 @@ def match_transform(a_rgb, b_rgb, mode="saliency", scale_range=(1.0, 1.6)):
     """how to move the incoming frame b so its salient shape sits on the outgoing frame a's: {scale, ax, ay, bx, by,
     cost} (fractions of the frame; scale about b's shape, clamped to scale_range so the fill crop never shows an edge)"""
     ax, ay, sa = blob(a_rgb, mode); bx, by, sb = blob(b_rgb, mode)
-    r = float(min(max(sa / sb, scale_range[0]), scale_range[1]))
+    # the smallest scale that lets the shape move onto (ax, ay) without the fill crop running out of picture:
+    # x' = r (x - b) + a must still cover the frame, so r >= a / b and r >= (1 - a) / (1 - b) on each axis
+    need = max(ax / max(bx, 1e-3), (1 - ax) / max(1 - bx, 1e-3), ay / max(by, 1e-3), (1 - ay) / max(1 - by, 1e-3), 1.0)
+    r = float(min(max(sa / sb, need, scale_range[0]), scale_range[1]))
     return {"scale": round(r, 4), "ax": round(ax, 4), "ay": round(ay, 4), "bx": round(bx, 4), "by": round(by, 4),
             "cost": round(math.hypot(ax - bx, ay - by) + abs(math.log(sa / sb)) * .5, 4)}
 

@@ -692,12 +692,14 @@ library. Every move counts against the `creative` budget; transitions are also r
 | `craft.behind.max_width` | `0.92` | widest line, fraction of the safe-zone width |
 | `craft.behind.max_lines` | `2` | lines the text may wrap to |
 | `craft.behind.position` | `above` | above (the head covers the lower `overlap` of the type) / behind (centred on the eyes) / low (behind the shoulders) |
-| `craft.behind.overlap` | `0.34` | fraction of the cap height the head covers in `above` |
+| `craft.behind.overlap` | `0.3` | fraction of the cap height the head covers in `above` |
+| `craft.behind.one_line_min` | `0.42` | keep the text on one line when it fits at >= this fraction of `size` (no orphan word on its own line), else wrap |
 | `craft.behind.track` | `0.6` | how much of the head's motion the type follows: 0 locked at its entry, 1 glued |
 | `craft.behind.smooth_frames` | `9` | face-landmark smoothing radius, frames (triangular window) |
 | `craft.behind.color` | `text` | type colour (palette slot or hex) |
 | `craft.behind.accent` | `accent` | colour of `*starred*` words |
-| `craft.behind.entry_s` | `0.5` | the letters rise out from behind the head over this long |
+| `craft.behind.entry` | `rise` | rise (the letters rise out from behind the head) / slam (whole on its first frame, oversized, settling: a hard visual event) |
+| `craft.behind.entry_s` | `0.5` | entry length, s |
 | `craft.behind.exit_s` | `0.25` | exit length (ends 0.25 s before the shot by default) |
 | `craft.behind.no_matte` | `above` | no subject matte: above (lift the type clear above the head) / front (keep it, with a legibility bed) |
 | `craft.behind.sfx` | `lowhit` | entry cue (null = none) |

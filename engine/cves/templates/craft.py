@@ -16,7 +16,7 @@ from ..gfx import clamp
 KIND = "roto"
 NATIVE = True               # plate / canvas px: positions come from the face track, sizes scale by G.U
 PARAMS = {"text_behind": {"text": "str!", "at": "time", "out_at": "time", "position": "str", "size": "number", "track": "number",
-                          "color": "color", "accent": "color", "lines": "int"}}
+                          "color": "color", "accent": "color", "lines": "int", "entry": "str"}}
 
 
 def _el():
@@ -52,7 +52,8 @@ def _layout(words, f, track, max_w, max_lines):
 def text_behind(t, p, ctx):
     """type behind the presenter. p: text (*stars* = accent), at, out_at (default 0.25 s before the slot ends),
     position above (the head covers the lower `craft.behind.overlap` of the last line) | behind (centred on the eyes) |
-    low (behind the shoulders), size (px at a 1080 short side), track (0..1), color, accent, lines (max lines)"""
+    low (behind the shoulders), size (px at a 1080 short side), track (0..1), color, accent, lines (max lines),
+    entry rise (the letters rise out from behind the head) | slam (whole on its first frame, oversized, settling)"""
     El, faded = _el(); S = ctx.get("S") or G.STYLE; F = G.fps_of(ctx)
     B = lambda k, d=None: S.get(f"craft.behind.{k}", d) if hasattr(S, "get") else d
     at = G.q(p.get("at", ctx["start"]), F); out_at = p.get("out_at", ctx.get("end", 1e9) - float(B("exit_s", .25)))
@@ -66,33 +67,51 @@ def text_behind(t, p, ctx):
     if not words: return []
     face = ctx.get("face"); fa = (ctx.get("face_at") or (lambda tt: None))(at) or face
     matte = bool(ctx.get("matte_ok", True))
-    sz = G.safe(); safe_w = sz[2] - sz[0]
+    sz = G.safe(); V = ctx.get("view")                                    # the frame's punch-in: keep the type inside the
+    if V is not None:                                                      # safe zone of the OUTPUT frame (plate px = (X - t) / s)
+        sx, tx, ty = float(V[0][0]), float(V[0][2]), float(V[1][2])
+        sz = ((sz[0] - tx) / sx, (sz[1] - ty) / sx, (sz[2] - tx) / sx, (sz[3] - ty) / sx)
+    safe_w = sz[2] - sz[0]
     track = float(B("tracking", -4)) * G.U; max_w = safe_w * float(B("max_width", .92))
     size = float(p.get("size", B("size", 300))) * G.U; weight = str(B("weight", "xb"))
     max_lines = int(p.get("lines", B("max_lines", 2)))
-    f = G.font(weight, int(size)); lines, sp = _layout(words, f, track, max_w, max_lines)
-    while max(w for _, w in lines) > max_w and f.size > 24 * G.U:            # shrink to fit, never clip
+    # one line if it fits at >= craft.behind.one_line_min of the size (a lone short word on its own line reads as an orphan),
+    # else balanced lines; then shrink to fit, never clip
+    f = G.font(weight, int(size)); lines, sp = _layout(words, f, track, max_w, 1)
+    while lines[0][1] > max_w and f.size > size * float(B("one_line_min", .42)): f = G.font(weight, int(f.size * .96)); lines, sp = _layout(words, f, track, max_w, 1)
+    if lines[0][1] > max_w and max_lines > 1:
+        f = G.font(weight, int(size)); lines, sp = _layout(words, f, track, max_w, max_lines)
+    while max(w for _, w in lines) > max_w and f.size > 24 * G.U:
         f = G.font(weight, int(f.size * .94)); lines, sp = _layout(words, f, track, max_w, max_lines)
     cap = f.size * .72; lead = f.size * .92
-    # ---- where: from the smoothed face (plate px), following the head by `track` of its motion
     pos = str(p.get("position", B("position", "above")))
     if not matte and str(B("no_matte", "above")) == "above": pos = "clear"
+    if pos == "clear" and (face or fa):                                    # no matte: the type must fit between the safe top and the head
+        fc = face or fa; room = fc["top"] - fc["h"] * .06 - sz[1]
+        need = cap + (len(lines) - 1) * lead
+        if room > 0 and need > room:
+            f = G.font(weight, max(8, int(f.size * room / need))); lines, sp = _layout(words, f, track, max_w, max_lines)
+            cap = f.size * .72; lead = f.size * .92
+    # ---- where: from the smoothed face (plate px), following the head by `track` of its motion
     k_track = float(p.get("track", B("track", .6)))
     def anchor(fc):
         if fc is None: return G.W / 2, sz[1] + (sz[3] - sz[1]) * .3
         if pos == "behind": return fc["cx"], fc["eye_y"] + cap * .5 - (len(lines) - 1) * lead / 2
         if pos == "low": return fc["cx"], fc["chin"] + fc["h"] * .75
         if pos == "clear": return fc["cx"], fc["top"] - fc["h"] * .06
-        return fc["cx"], fc["top"] + cap * float(B("overlap", .34))
+        return fc["cx"], fc["top"] + cap * float(B("overlap", .3))
     ax0, ay0 = anchor(fa); ax1, ay1 = anchor(face) if face else (ax0, ay0)
     cx = ax0 + k_track * (ax1 - ax0); base = ay0 + k_track * (ay1 - ay0)       # baseline of the LAST line
     half = max(w for _, w in lines) / 2
     cx = min(max(cx, sz[0] + half), sz[2] - half)
     base = max(base, sz[1] + cap + (len(lines) - 1) * lead)
     # ---- motion: letters rise up out of the head / shoulders, tracking breathes in; a slow push while held
-    pe = CR.ease("outExpo", pin); rise = (1 - pe) * cap * .42 - pout * cap * .18
-    breathe = (1 - pe) * 10 * G.U; hold = 1 + .025 * clamp((t - at) / 3)
-    alpha = min(1.0, pin * 2.6) * (1 - pout)
+    pe = CR.ease("outExpo", pin); hold = 1 + .025 * clamp((t - at) / 3)
+    if str(p.get("entry", B("entry", "rise"))) == "slam":                  # lands whole on its first frame, oversized, and settles
+        rise = -pout * cap * .18; breathe = 0.0; hold *= 1 + .16 * (1 - pe); alpha = 1 - pout
+    else:
+        rise = (1 - pe) * cap * .42 - pout * cap * .18; breathe = (1 - pe) * 10 * G.U
+        alpha = min(1.0, pin * 2.6) * (1 - pout)
     col = G.col(p.get("color"), G.col(B("color", "text"), G.WHITE)); acc = G.col(p.get("accent"), G.col(B("accent", "accent"), G.MINT))
     fs = G.font(weight, max(8, int(f.size * hold)))
     def draw(d):
@@ -105,9 +124,11 @@ def text_behind(t, p, ctx):
                 x += wpx * hold + sp * hold + breathe
     im = faded(draw, alpha)
     plain = " ".join(w for w, _ in words); out = []
-    if not matte and pos != "clear":                                       # in front of the face: give it a bed
-        bed = G.legible_bed(im, col, f.size)
-        if bed is not None: out.append(El(bed, "behind.text.bed", "roto"))
+    # legibility (GFX-15): a soft bed under the type, sized by the weaker of its colours against the assumed video tone;
+    # it sits on the plate too, so the subject occludes it with the type
+    weak = min((col, acc) if any(a for _, a in words) else (col,), key=lambda c: G.contrast(c, G._rgb(G.sget("legibility.video_bg") or (180, 180, 180))))
+    bed = G.legible_bed(im, weak, f.size)
+    if bed is not None: out.append(El(bed, "behind.text.bed", "roto"))
     out.append(El(im, "behind.text", "roto", text=plain, t_key=at, font=weight))
     return out
 

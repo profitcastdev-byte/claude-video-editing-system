@@ -7,8 +7,8 @@ It writes a complete CVES project in the state ingest leaves it in, so render, m
 machine without whisper, RVM or DeepFilterNet (CI uses it; teammates can use it to try the engine).
 
 --kind picks the timeline spine (docs/FORMATS.md); --size the canvas (style canvas.size, written to edit.yaml style:).
---craft swaps in the motion-craft edit (docs/MOTION.md "Craft"): aroll = text behind the speaker on the hook, a speed-ramped
-B-roll shot, a whip pan and a light leak, m_notification_stack and m_follow_card_end; voiceover = a 2.5D camera push on a
+--craft swaps in the motion-craft edit (docs/MOTION.md "Craft"): aroll = text behind the speaker (hook + CTA), a speed-ramped
+B-roll shot with a push, a whip pan and a light leak, m_notification_stack and m_follow_card_end; voiceover = a 2.5D camera push on a
 still with a depth matte and a match cut between two drawn orb clips.
   aroll      (default) the drawn presenter below
   voiceover  a synthetic VO as the spine (Assets/vo.wav, registered) + a broll: track of drawn clips cut on the words
@@ -267,14 +267,19 @@ def craft_overlay(out, kind, fps, st=None, en=None):
         drawn_clip(os.path.join(A, "broll_city.mp4"), land[0], land[1], fps, 5.0, 1); add("broll_city", os.path.join(A, "broll_city.mp4"))
         p0, p1, o0, c0 = st("03_proof"), en("03_proof"), st("04_offer"), st("05_cta")
         b_end = round(p0 + 1.6, 2)
-        E["chest"] = [{"segment": "04_offer_0", "template": "m_notification_stack",
-                       "params": {"at": round(o0 + .3, 2), "items": [{"app": "CVES", "title": "Edit ready", "body": "Cut, captioned and graded", "at": round(o0 + .35, 2)},
-                                                                    {"app": "CVES", "title": "Music on the beat", "body": "Every cut lands on a downbeat", "at": round(o0 + 1.15, 2)}]}}]
-        E["roto"] = [{"segment": "01_hook_0", "template": "text_behind", "params": {"text": "2 *SECONDS*", "at": 0.45}},
-                     {"segment": "05_cta_0", "template": "kinetic_caption_emphasis", "params": {"word": "TODAY", "at": round(c0 + .75, 2)}}]
-        cuts = E["cutaways"]; cuts[0]["in"] = "whip_pan"
+        E["chest"] = []                                                    # the hook keeps its captions (topic keyword on screen)
+        E.setdefault("aroll", {})["snap"] = {"start": 0.45, "end": 1.45, "zoom": 1.3}     # the punch-in lands with the type slam
+        E["roto"] = [{"segment": "01_hook_0", "template": "text_behind", "params": {"text": "2 *SECONDS*", "at": 0.45, "entry": "slam"}},
+                     {"segment": "05_cta_0", "template": "text_behind", "params": {"text": "*TODAY*", "at": round(c0 + .75, 2)}}]
+        cuts = E["cutaways"]; cuts[0]["in"] = "whip_pan"; c1p = cuts[0]["params"]
+        lead = round(c1p["at"] - (st("02_problem") + .05), 2)            # the list's title lands with the whip, not after it
+        c1p["at"] = round(c1p["at"] - lead, 2)
+        for it in c1p.get("items") or []: it["at"] = round(it["at"] - lead, 2)
         c2 = next(c for c in cuts if c["id"] == "c2"); c2.update(start=b_end, snap=False)
         c2["params"].update(count=[round(b_end + .2, 2), 1.2], label_at=round(b_end + .3, 2))
+        cuts.append({"id": "c3", "template": "m_notification_stack", "start": round(o0, 2), "end": round(c0, 2),        # the offer, shown
+                     "params": {"position": "center", "items": [{"app": "CVES", "title": "Edit ready", "body": "Cut, captioned and graded", "at": round(o0 + .2, 2)},
+                                                                {"app": "CVES", "title": "Music on the beat", "body": "Every cut lands on a downbeat", "at": round(o0 + 1.1, 2)}]}})
         E["broll"] = [{"asset": "broll_city", "start": round(p0, 2), "end": b_end, "in": 0.6, "snap": False,
                        "ramp": {"preset": "slam"}, "camera": {"move": "push", "amount": 0.06}}]
         E["end_card"] = {"template": "m_follow_card_end", "duration": 2.0, "in": "light_leak",
@@ -282,14 +287,14 @@ def craft_overlay(out, kind, fps, st=None, en=None):
     elif kind == "voiceover":
         sz = (_even(W * 1.25), _even(H * 1.25)) if W > H else (_even(W * 1.25), _even(H * 1.25))
         orb_clip(os.path.join(A, "orb_a.mp4"), *sz, fps, 3.0, .68, .38, .11, -.03, .01, 11)
-        orb_clip(os.path.join(A, "orb_b.mp4"), *sz, fps, 3.0, .3, .62, .07, .02, -.01, 12)
+        orb_clip(os.path.join(A, "orb_b.mp4"), *sz, fps, 3.0, .47, .52, .075, .02, -.01, 12)
         depth_still(os.path.join(A, "capsule.png"), os.path.join(A, "capsule_depth.png"), *sz)
         for nm in ("orb_a", "orb_b"): add(nm, os.path.join(A, nm + ".mp4"))
         add("capsule", os.path.join(A, "capsule.png")); add("capsule_depth", os.path.join(A, "capsule_depth.png"))
         tr = E["broll"]
         tr[1].update(asset="orb_a", framing="fill", **{"in": 0.2}); tr[1].pop("speed", None)
         tr[2].update(asset="orb_b", framing="fill", match="centroid", **{"in": 0.0}); tr[2].pop("speed", None); tr[2].pop("kenburns", None)
-        k = 4 if len(tr) > 4 else len(tr) - 1
+        k = next((j for j, x in enumerate(tr) if j > 2 and not any(c["start"] < x["end"] and x["start"] < c["end"] for c in E.get("cutaways") or [])), len(tr) - 1)   # a shot no title card covers
         tr[k].update(asset="capsule", camera={"move": "push", "amount": 0.1, "parallax": 0.7, "handheld": True}, depth="capsule_depth")
         for x in ("in", "speed", "framing"): tr[k].pop(x, None)
     pr.save_edit(E)
