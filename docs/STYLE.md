@@ -800,6 +800,8 @@ no gate covers, and the loop cap.
 |---|---|---|
 | `review.max_rounds` | `3` | review rounds per loop; at the cap `cves review build` says so and refuses a 4th round until Claude signs off (`ship` / `revise`) and records what is still wrong |
 | `review.cut_offsets` | `[-2, -1, 0, 1, 2]` | frames shown around every cut in `cuts/cut_NN.jpg` (0 = first frame of the incoming shot) |
+| `review.look_unflagged` | `3` | unflagged cuts spot-checked per round: their strips are stacked with every flagged cut's into `strips_N.jpg` |
+| `review.look_px` | `1560` | the tallest `strips_N.jpg` sheet, px (about one image read): strips stack until the next would pass it |
 | `review.hook_s` | `3.0` | length of the hook strip (`hook.jpg`), s; also the hook section of the loudness report |
 | `review.hook_fps` | `10` | frames per second sampled into the hook strip |
 | `review.payoff_frames` | `6` | frames sampled across the payoff window (`structure.payoff_window`) before the end card |

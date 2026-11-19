@@ -49,7 +49,7 @@ Later folders override earlier ones. A folder name `foo` becomes the template `m
 ### `meta.yaml`
 ```yaml
 title: Glass card
-description: One sentence: what moves and how (shown by `cves templates` and in TEMPLATES.md).
+description: One sentence: what moves and how (shown by `cves templates <name>` and `-v`, and in TEMPLATES.md).
 kinds: [cutaway, overlay]      # cutaway | overlay | roto | end. The first is the main kind; roto / end add m_<name>_roto / _end
 hero: false                    # a hero moment counts against motion.hero_min_gap_s
 duration: 3.0                  # default length for previews / slots without an end

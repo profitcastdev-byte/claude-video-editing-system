@@ -5,50 +5,17 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 ---
 
 # /cves:assets: images, B-roll, screen recordings, overlays, voice
+Request: `$ARGUMENTS`. [connectors.md](../skills/video-editor/connectors.md) for generating / downloading; `docs/MEDIA.md`.
 
-Request: `$ARGUMENTS`. Follow the `video-editor` skill, plus [connectors.md](../skills/video-editor/connectors.md) for anything that needs
-generating or downloading. Templates and parameters: `docs/MEDIA.md`.
-
-## You decide: what the edit needs
-For each spoken beat that a real picture explains better than a drawn card (the client's shop, the app, a before/after, a product), add an
-entry under `edit.yaml assets:` and a cutaway that uses it:
-- `path:` for files the client gave you (copy them into `PROJECT/Assets/` first);
-- `url:` for stock you found;
-- `generate: {provider, kind, prompt, aspect, duration}` for anything to be made.
-
-The template choice:
-- `image`: a still with Ken Burns;
-- `video_broll`: a clip;
-- `screen_rec`: a recording in a phone or browser frame;
-- `pip`: the presenter over B-roll;
-- `split`: before/after;
-- `overlay_render`: an RGBA motion-graphic export.
+**Decide:** where a real picture explains a beat better than a drawn card (shop, app, before/after, product), add an `edit.yaml assets:` entry + a cutaway: `path:` (client file, copied to `PROJECT/Assets/`), `url:` (stock), or `generate: {provider, kind, prompt, aspect, duration}`. Templates: `image` (Ken Burns still), `video_broll`, `screen_rec` (phone / browser frame), `pip` (presenter over B-roll), `split` (before/after), `overlay_render` (RGBA export).
 
 ## Run
-```bash
-cves assets todo "<PROJECT>"      # what is still missing, as ready-to-run steps
-```
-1. For every `generate:` item: show the user the provider, the model, the prompt and the cost, **in one message**. Generate only after a clear yes.
-2. Call the MCP tool, save the file to the path `todo` printed (`PROJECT/Assets/<id>.<ext>`), then:
-   ```bash
-   cves assets add "<PROJECT>" --id <id> --file "<PROJECT>/Assets/<file>" --source <magnific|elevenlabs|stock|client|screen|file|url> \
-        --prompt "<prompt sent>" --model "<model>" --licence "<licence / plan>" [--url "<stock page>"]
-   ```
-3. For client files and stock: run the same `add` with `--source client|stock|file` and the licence.
-4. Then:
-   ```bash
-   cves assets check "<PROJECT>"     # 0 problems before rendering (QC gate AST-01 enforces the same)
-   cves render --only <cutaway id>   # read the frame before you show it
-   ```
+1. `cves assets todo "<PROJECT>"`: what's missing, as ready-to-run steps.
+2. Each `generate:`: provider, model, prompt, cost **in one message**; **stop** for a clear yes.
+3. MCP tool → save to the path `todo` printed (`PROJECT/Assets/<id>.<ext>`) →
+   `cves assets add "<PROJECT>" --id <id> --file "<PROJECT>/Assets/<file>" --source <magnific|elevenlabs|stock|client|screen|file|url> --prompt "<prompt sent>" --model "<model>" --licence "<licence / plan>" [--url "<stock page>"]` (client / stock: `--source client|stock|file` + licence).
+4. `cves assets check "<PROJECT>"` to 0 problems (= AST-01); `cves render --only <cutaway id>`, read the frame before showing it.
 
-## Rules
-- Never spend credits without the user's yes; never put an API key in a file or a command.
-- Every asset needs a source and a licence. A generated one also needs its prompt. If you change a registered file, register the result as a new id.
-- No real people, client logos or claims in generated pictures. Claims are drawn by templates from `Brand/claims.md`.
-- Vertical framing: keep the subject in the centre 60 %. Upscale anything shown above 1.0x its size (MOT-14).
+**Rules:** no credits without a yes; no API key in a file or command. Every asset: source + licence (+ prompt if generated); a changed file is a new id. No real people, client logos or claims in generated pictures (claims come from `Brand/claims.md` via templates). Vertical: subject in the centre 60 %; upscale anything shown above 1.0x (MOT-14).
 
-## Show the user
-The asset list (`cves assets list`), what each one covers in the edit, the credits spent, and one rendered frame per new cutaway.
-
-## Stop?
-For the cost consent before any generation or paid download. Otherwise go back to the step that asked for the assets.
+**Show:** `cves assets list`, what each covers, credits spent, one frame per new cutaway; then back to the step that asked.

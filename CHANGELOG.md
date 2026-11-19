@@ -7,6 +7,37 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
 
 ### Added (team)
 - **Team taste layer**: `team_taste:` in `~/.cves/config.yaml` (or `$CVES_TEAM_TASTE`) points every editor at one shared folder; `cves learn promote <id> --team` shares an approved lesson with the whole team (client scopes allowed, who/when recorded); merged between the repo and personal layers.
+### Changed (Claude token cost: quiet, compact output and leaner always-loaded docs)
+- **Quiet CLI by default** (`cves.out`). Run as a program, `cves` filters its stderr at the file-descriptor level, so
+  workers and subprocesses are covered: the duplicate libavdevice `objc[...] Class AVF... is implemented in both` lines,
+  OpenCV `[ WARN:...] global ...` lines (also `OPENCV_LOG_LEVEL=ERROR`, set before cv2 loads and inherited by workers)
+  and numba RuntimeWarnings are dropped; a worker's traceback is folded into one `worker error: <exception>` line. All of
+  it goes to `PROJECT/Edit/logs/cves.log` (else `~/.cves/logs/cves.log`; the previous run is `cves.log.prev`). An
+  exception prints one actionable line plus the log path instead of a traceback. `-v` / `--verbose` (or
+  `CVES_VERBOSE=1`) restores everything. Called with an argv (tests, other code), `cli.main` behaves as before.
+- **`cves build` / `cves qc` print a short summary**: counts, one line per FAIL (+ up to 2 detail lines), WARNs as
+  `id: reason` one-liners, the full report path. `Edit/QC-REPORT.txt` and `qc.json` are unchanged; `-v` prints the full
+  report; the `N FAIL` wording the plugin hook reads is kept. Demo build (4 FAIL, 11 WARN): 113 lines / 10.3 k chars -> 21 lines / 1.8 k chars.
+- **`cves templates`** prints one line per kind (7 lines instead of ~105); `--kinds` one line; `NAME` one template's
+  kind, doc, the params its code reads (with defaults) and its `docs/TEMPLATES.md` section; `-v` the old full list.
+- **`cves review build`** console: QC findings that only restate a QC line are grouped by gate id; it names the images to
+  read. `REVIEW.md` lists only what Claude must look at and decide: a **Look** list (images in read order), the findings
+  to judge (QC-only findings by id, detail in QC-REPORT.txt), facts in one line, sound in two, the rubric, the loop in
+  one line. New sheets `strips_N.jpg` (every flagged cut strip + `review.look_unflagged` (3) others, stacked to
+  `review.look_px` (1560 px, about one image read)) and `ends.jpg` (payoff over end card): the pack is read in about
+  4-5 image reads instead of one per cut. The per-cut `cuts/cut_NN.jpg`, `payoff.jpg`, `endcard.jpg` are still written.
+- **Leaner skill and command docs.** `plugin/skills/video-editor/SKILL.md` keeps every rule and step but moves reference
+  detail to on-demand `reference/*.md` (formats, treatments, motion, sound, viral, review-loop, learning, modes) that it
+  names per step; `plugin/commands/*.md` point to those instead of restating them (56.1 k -> 38.7 k chars).
+  **`knowledge-base/RULEBOOK-CORE.md`** (new) holds the hard rules and which `RULEBOOK.md` section to read at each step;
+  it is loaded every session instead of the full RULEBOOK, which is read per step, in full for a new client's first edit
+  and before any rule / gate / template change. `CREATIVE.md` is read before DIRECTION.md and the critique.
+
+### Added
+- `cves status [PROJECT] [--json]`: one screen with the stage reached, the last QC counts, open FAILs, the review round,
+  deliveries and the next command (read-only).
+- `--json` on `cves qc` (counts + every gate, details for FAIL / WARN), `cves review build` and `cves templates`.
+- Style keys `review.look_unflagged`, `review.look_px` (docs/STYLE.md).
 
 ### Fixed (first real job, integration)
 - Prep no longer reuses a stale plate / matte after a re-cut that keeps segment ids (render ran out of frames); legacy plates are adopted when their length matches.
