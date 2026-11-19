@@ -39,7 +39,7 @@ In order. Don't skip a step, and don't start one whose input isn't approved. Tic
 | 3 Story | `cves story` → write `Edit/selects.yaml` (`text:` on every clip) → `cves select` → `cves qc --stage story` | Structure (`grammar.structure`: problem H/P/A/PR/O/C, offer H/M/PR/R/C, story H/S/T/PR/C), beats + X, takes, order, connectors, setup→payoff | **The cut list** as text | **Yes: approval 1** |
 | 3b Direction | write `Edit/DIRECTION.md` | Concept, arc, the ONE signature moment, motif, what we will NOT do | With the cut list or the edit plan | No (not a third approval) |
 | 4 Plan | `cves prep` → `cves plan` → fill `edit.yaml` → `cves plan` → `cves qc --stage plan` | Templates + params (`cves templates`, `cves templates <name>`), keyed to `words.json`, serving DIRECTION.md | A short summary | No |
-| 5 Edit plan | `cves moodboard` | Read `EDIT-PLAN.md`; look at `moodboard.jpg` once; fix `edit.yaml` | **`EDIT-PLAN.html`** | **Yes: approval 2** |
+| 5 Edit plan | `cves moodboard` → `cves review-plan` → editor's Send → `cves plan apply-notes` (docs/PLAN-REVIEW.md) | Read `EDIT-PLAN.md`; review `moodboard.jpg` once; fix `edit.yaml`; each round read only `Edit/plan_notes.pending.md`, never change a locked shot | **`EDIT-PLAN.html`** (timeline + every shot with its build frames; per-shot Approve, quick actions, notes) | **Yes: approval 2** (Approve all records it) |
 | 5b Treatments (open / creative brief only) | `reference/treatments.md` | 2-3 treatments; `sheet.jpg` once | `compare/sheet.jpg` + `compare.mp4` | **Yes: the user picks** (can ride with approval 2) |
 | 6 Render + mix | `cves build` (render + mix + encode + fast QC) | Nothing (local) | Nothing yet | No |
 | 7 QC | `cves qc` | Fix `edit.yaml` to 0 FAIL | Nothing until it passes | No |

@@ -1,7 +1,9 @@
 """Moodboard = the complete EDIT PLAN, rendered by the same renderer as the final (true replicas, not mockups).
 Outputs in PROJECT/Moodboard/:
   EDIT-PLAN.html   for the user: summary, multi-track timeline, and every shot in order with its build frames, spoken words,
-                   on-screen content, framing, transitions, captions and sound cues; pre-render gate results. Approve or mark up.
+                   on-screen content, framing, transitions, captions and sound cues; pre-render gate results. Per shot: Approve,
+                   quick actions and a note (docs/PLAN-REVIEW.md; `cves review-plan` serves it so Send saves Edit/plan_notes.json).
+  plan_state.json  per shot hash + frames of this round: the next round re-renders only changed shots and badges them
   EDIT-PLAN.md     the same plan as text (what Claude reads; no images needed)
   moodboard.jpg    contact sheet of every keyframe (Claude's one-image visual review)
   frames/          the keyframes (JPG, long side 960 px, the canvas aspect)
@@ -102,22 +104,36 @@ def describe(sh):
     for c in sh.get("chest", []): out.append(f"chest `{c['template']}`" + (f": {' '.join(c['params'].get('lines', []))}" if c.get("params", {}).get("lines") else ""))
     return "; ".join(out)
 
-def moodboard(pr):
+def moodboard(pr, full=False):
+    """full: re-render every keyframe (default: reuse the frames of shots unchanged since the last plan round)"""
     TL = Timeline(pr); F = TL.FPS; S = shots(TL)
+    from . import planreview as PRV                     # plan review (docs/PLAN-REVIEW.md): shot -> edit.yaml refs, locks, changes
+    out = pr.p("Moodboard"); fdir = os.path.join(out, "frames"); st_path = os.path.join(out, "plan_state.json")
+    P = PRV.plan_data(pr, TL, S, describe); gsig = PRV.global_sig(pr, TL)
+    try: prev = None if full else json.load(open(st_path, encoding="utf-8"))
+    except (OSError, ValueError): prev = None
+    have = {int(f[:5]) for f in os.listdir(fdir) if f.endswith(".jpg") and f[:5].isdigit()} if os.path.isdir(fdir) else set()
+    changed, reuse = PRV.changed_shots(prev, {d["key"]: d for d in P}, gsig, have)
+    for d in P: d["changed"] = d["key"] in changed
     from .mix import all_cues
     try: cues = sorted(all_cues(TL), key=lambda c: c[0])
     except SystemExit: cues = []
     try:
         from .qc import run_stage; nf, gates = run_stage(pr, "plan")
     except Exception as e: gates = f"plan-stage gates not run: {e}"
-    want = sorted(set(f for sh in S for f in sh["frames"]))
+    want = sorted(set(f for sh in S for f in sh["frames"])); todo = [f for f in want if f not in reuse]
     tmp = pr.e("frames_plan"); shutil.rmtree(tmp, ignore_errors=True)
-    render(pr, only=want, out_dir=tmp)
-    out = pr.p("Moodboard"); fdir = os.path.join(out, "frames"); shutil.rmtree(fdir, ignore_errors=True); os.makedirs(fdir)
+    if todo: render(pr, only=todo, out_dir=tmp)       # only the changed shots' frames (all of them on the first round / --full)
+    os.makedirs(fdir, exist_ok=True)
+    for f in os.listdir(fdir):
+        if not (f.endswith(".jpg") and f[:5].isdigit() and int(f[:5]) in reuse): os.remove(os.path.join(fdir, f))
     W0, H0 = TL.size; k = 960 / max(W0, H0); thumb = (max(2, round(W0 * k)), max(2, round(H0 * k)))      # the canvas aspect, never squashed
-    for f in want:
+    for f in todo:
         Image.open(os.path.join(tmp, f"{f:05d}.png")).convert("RGB").resize(thumb, Image.LANCZOS).save(os.path.join(fdir, f"{f:05d}.jpg"), quality=86)
     shutil.rmtree(tmp, ignore_errors=True)
+    rnd = (prev or {}).get("round", 0) + 1
+    json.dump({"sig": gsig, "round": rnd, "shots": {d["key"]: {"hash": d["hash"], "frames": d["frames"], "n": d["n"]} for d in P}},
+              open(st_path, "w", encoding="utf-8"), indent=1)
     E = pr.edit; title = E.get("project", {}).get("title", "Edit"); T = TL.N / F
     cut_share = sum(sh["end"] - sh["start"] for sh in S if sh["kind"] == "cutaway") / max(TL.T_END, 1e-6)
     n_cuts = len(S) - 1; aroll_lens = [sh["end"] - sh["start"] for sh in S if sh["kind"] == "aroll"]
@@ -184,6 +200,8 @@ def moodboard(pr):
         if M.get("drop_cut"): svg.append(f'<g><title>music drop at {M["drop_cut"]}s</title><polygon points="{X(M["drop_cut"])},{lane_y["Music"]} {X(M["drop_cut"]) - 6},{lane_y["Music"] + 18} {X(M["drop_cut"]) + 6},{lane_y["Music"] + 18}" fill="#e0663a"/></g>')
     for s_ in range(0, int(T) + 1, 5): svg.append(f'<text x="{X(s_):.1f}" y="{H_ - 4}" class="ax">{s_}s</text>')
     svg.append("</svg>")
+    PD = {"version": PRV.NOTES_VERSION, "title": title, "round": rnd, "sig": gsig, "shots": P}
+    rv_css, rv_bar, rv_cards, rv_tail = PRV.review_block(PD)
     cards = []
     for i, sh in enumerate(S, 1):
         frames = "".join(f'<figure><img loading="lazy" src="frames/{f:05d}.jpg" alt="frame {f}"><figcaption>{f / F:.2f}s</figcaption></figure>' for f in sh["frames"])
@@ -195,9 +213,9 @@ def moodboard(pr):
                 ("Spoken", html.escape(sh["words"]) or "–"), ("On screen", html.escape(describe(sh)).replace("`", "")),
                 ("Transitions", f"{sh['trans_in']} → {sh['trans_out']}"), ("Captions", html.escape(" / ".join(sh["captions"])) or "–"), ("Sound", sfx)]
         kind = {"aroll": "A-roll", "cutaway": "Cutaway", "end": "End card", "broll": "B-roll", "gap": "Gap"}[sh["kind"]]
-        cards.append(f'<section class="shot {sh["kind"]}"><header><b>#{i}</b> <span class="tag">{kind}</span> {sh["start"]:.2f}–{sh["end"]:.2f}s '
-                     f'<span class="dur">{sh["end"] - sh["start"]:.2f}s</span></header><div class="strip">{frames}</div>'
-                     f'<table>{"".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in rows)}</table></section>')
+        cards.append(f'<section class="shot {sh["kind"]}" id="shot-{i}"><header><b>#{i}</b> <span class="tag">{kind}</span> {sh["start"]:.2f}–{sh["end"]:.2f}s '
+                     f'<span class="dur">{sh["end"] - sh["start"]:.2f}s</span>{PRV.badges(P[i - 1])}</header><div class="strip">{frames}</div>'
+                     f'<table>{"".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in rows)}</table>{rv_cards[i]}</section>')
     stat_html = "".join(f"<div><span>{k}</span><b>{html.escape(v)}</b></div>" for k, v in stats)
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}: edit plan</title><style>
@@ -212,15 +230,18 @@ h1{{margin:0 0 4px}} .sub{{color:var(--mut);margin:0 0 18px}} h2{{margin:28px 0 
 .dur{{color:var(--mut)}} .strip{{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}} figure{{margin:0;flex:0 0 auto}} img{{height:240px;border-radius:6px;display:block}}
 figcaption{{color:var(--mut);font-size:11px;text-align:center}} table{{border-collapse:collapse;width:100%;margin-top:6px}} th{{text-align:left;color:var(--mut);font-weight:500;width:110px;vertical-align:top;padding:3px 8px 3px 0}}
 td{{padding:3px 0}} pre{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;overflow-x:auto;font-size:12px}}
-@media (max-width:640px){{img{{height:180px}} th{{width:80px}}}}</style></head><body>
+@media (max-width:640px){{img{{height:180px}} th{{width:80px}}}}{rv_css}</style></head><body>
 <h1>{html.escape(title)}: edit plan</h1><p class="sub">Every frame below is rendered by the final renderer, so the edit will look exactly like this.
-Approve the plan, or reply with shot numbers and what to change.</p>
-<div class="stats">{stat_html}</div>
+Approve each shot, use the quick actions, or leave a note under it; then Send to Claude.</p>
+<div class="stats">{stat_html}</div>{rv_bar}
 <h2>Timeline</h2>{"".join(svg)}
 <h2>Shot by shot</h2>{"".join(cards)}
 <h2>Pre-render checks</h2><pre>{html.escape(gates if isinstance(gates, str) else str(gates))}</pre>
+{rv_tail}
 </body></html>"""
     open(os.path.join(out, "EDIT-PLAN.html"), "w", encoding="utf-8").write(page)
     for old in ("moodboard.html",):
         if os.path.exists(os.path.join(out, old)): os.remove(os.path.join(out, old))
+    for d in P:
+        if d.get("lock_broken"): print(f"WARNING: shot #{d['n']} ({d['key']}) was approved, then changed without an unlock note")
     return len(S), len(want)

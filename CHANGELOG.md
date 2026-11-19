@@ -70,6 +70,21 @@ result per gate and the master file (sha256) are identical to the old build's.
 - **Worker pool**: segments are split into chunks (`render.chunk_min`) so the pool no longer waits on the longest shot;
   plates / mattes seek to a chunk's keyframe instead of decoding the shot from its start; frames under a cutaway skip the
   plate's RGB conversion; PNGs are quantised, encoded and written on a background thread while the next frame composes.
+### Added (plan review)
+- **Edit plan review page** (`cves.planreview`, docs/PLAN-REVIEW.md). `EDIT-PLAN.html` keeps everything it showed and adds,
+  per shot, an Approve box (locks the shot), quick actions (Bigger / Smaller, Earlier / Later 0.25 s, Swap template with
+  only the templates valid for the slot, Remove, Fix caption) and a note; page level an overall note, Send to Claude,
+  Approve all (approval 2 with the date in `Edit/NOTES.md`) and Copy notes. Every shot maps to the `edit.yaml` entries it
+  came from (cutaway id, B-roll id, roto / chest segment, A-roll zoom, end card, captions).
+- `cves review-plan [--port N] [--no-open] [--keep]`: rebuilds a stale plan and serves `Moodboard/` on 127.0.0.1 only
+  (stdlib server; other hosts and origins rejected); Send writes `Edit/plan_notes.json` atomically. Opened as a file the
+  page is read-only with Copy notes.
+- `cves plan apply-notes [--dry-run] [--force]`: quick actions become exact `edit.yaml` edits (backup kept; comments and
+  layout kept by a verified text patch, else a re-dump), approved shots are locked in `Edit/plan_lock.json` (a locked entry
+  is refused without an unlock note), and `Edit/plan_notes.pending.md` lists only the free-text notes and what needs
+  Claude: the one file Claude reads per plan round.
+- `cves moodboard` re-renders only the shots changed since the last round (`Moodboard/plan_state.json`; `--full` renders
+  all) and badges them "changed since last round".
 
 ### Fixed (first real job, integration)
 - Prep no longer reuses a stale plate / matte after a re-cut that keeps segment ids (render ran out of frames); legacy plates are adopted when their length matches.
