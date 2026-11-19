@@ -184,12 +184,13 @@ def test_review_on_the_rendered_demo_finds_a_seeded_black_frame(demo_rendered, t
     d = str(tmp_path / "demo"); shutil.copytree(demo_rendered, d); pr = project.Project(d)
     tl = pr.json("timeline.json"); fps = tl["fps"]
     fc = int(round(tl["segments"][1]["t0"] * fps))
-    src = sorted(f for f in os.listdir(pr.p("Export")) if f.endswith(".mp4"))[0]; v = pr.p("Export", src); tmp = v + ".tmp.mp4"
+    if os.path.exists(pr.e("qc.json")): os.remove(pr.e("qc.json"))     # other tests may have run QC (or delivered) on the shared demo
+    v = RV.resolve_video(pr); tmp = v + ".tmp.mp4"                        # the master review picks (newest Export/*.mp4)
     subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", "-i", v, "-vf", f"drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='eq(n,{fc + 1})'",
                     "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", "-c:a", "copy", tmp], check=True)
-    os.replace(tmp, v)
+    os.replace(tmp, v); os.utime(v)
     r = RV.build(pr)
     fl = [x for x in r["findings"] if x["kind"] == "flash_frame"]
     assert fl and abs(fl[0]["t"] - (fc + 1) / fps) < 1.5 / fps and fl[0]["severity"] == "high", r["findings"]
-    assert any(x["kind"] == "qc_missing" or x["kind"] == "qc_stale" for x in r["findings"])     # the loop needs QC on this render
+    assert any(x["kind"] == "qc_missing" for x in r["findings"])     # the loop needs QC on this render
     assert len(r["paths"]["cuts"]) >= 3
