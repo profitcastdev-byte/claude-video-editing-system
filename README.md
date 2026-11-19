@@ -5,7 +5,7 @@ An autonomous editing agent for short-form talking-head video (Reels, Shorts, Ti
 
 No look is hard-coded. Each client's style is **measured from their own reference edits** (`cves inspire`) into a style profile. That profile drives the grade, captions, transitions, framing, pacing, sound levels and the QC thresholds. The engine knows craft, not a house style.
 
-The craft comes from a 73-video curriculum covering motion, editing, graphic design, retention, sound, narrative, composition, colour and platform. It is distilled into a rulebook of 181 quality rules. **93 of them are measured automatically on every render** (`cves qc`), plus 17 early checks on the story and the plan. The rest are checked by eye on the edit plan and contact sheets. A render with any failing gate cannot be delivered.
+The craft comes from a 73-video curriculum covering motion, editing, graphic design, retention, sound, narrative, composition, colour and platform. It is distilled into a rulebook of 183 quality rules. **95 of them are measured automatically on every render** (`cves qc`), plus 17 early checks on the story and the plan. The rest are checked by eye on the edit plan and contact sheets. A render with any failing gate cannot be delivered.
 
 ## Two ways to work
 | | **Vibe mode** | **Control mode** |
@@ -69,7 +69,7 @@ Restart Claude Code and run `/cves:install`. It installs every tool, model and s
   templates are drawn at a 1080 short side and scaled, so graphics are slightly softer than footage.
 - **Resolve round trip:** the FCPXML is validated structurally, and a Kdenlive project loads in `melt`, but a live DaVinci Resolve import has not been tested yet.
 - **Complex scripts** (Indic, Arabic) need Pillow with libraqm for correct shaping; `cves doctor` reports whether it is available.
-- **Not every gate is automated:** 93 of the 181 rules are. The others need instruments that don't exist yet (role and intent tags, blur and banding detectors, music-stem gates); see `knowledge-base/QC-GATES.md`.
+- **Not every gate is automated:** 95 of the 183 rules are. The others need instruments that don't exist yet (role and intent tags, blur and banding detectors, music-stem gates); see `knowledge-base/QC-GATES.md`.
 - **Footage limits the grade can't remove:** on the first test ad, two colour gates still fail. COL-06 (cut-to-cut colour match) fails where skin drifts within a shot and where the wall patch changes between punch-ins. FRAME-03 (edge halo) fails where a bright door frame sits next to the shoulder and where hair is motion-blurred. Both report honestly instead of being loosened.
 - **Windows CI** runs the test suite; a full edit on a Windows machine has not been tried by hand yet.
 - **Linux is not a supported editing platform.** CI runs the tests there, but Ubuntu's own `melt` (MLT 7.36) ignores overlay transparency in landscape projects, so Kdenlive playback is verified with the MLT that ships in Kdenlive (7.43, macOS), not on Linux.

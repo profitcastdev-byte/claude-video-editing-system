@@ -19,6 +19,7 @@ This command analyses `edit.yaml music.file`, or the file you pass with `--file`
 | `energy` | An energy curve, 4 values per second, in dB relative to the median bar. |
 | `bars` | Per bar: start time, full-band dB, low-band dB and a 12-bin chroma. Drop and loop matching use these. |
 | `drops` | Drop candidates: bars whose next 2 bars are at least `music.drop_min_rise_db` louder than the median of the 4 before. Each has a score (rise + low-band rise + a bonus when it comes after a quiet stretch). They are ranked, at least 4 bars apart. |
+| `phrases` | Music sections on bar lines, labelled `intro` / `build` / `drop` / `body` / `break` / `outro` from the bar energy and a novelty curve (energy step + chroma change). Derived from the cached bars on every load. See [SOUND.md](SOUND.md) §1. |
 | `plan` | The last placement `cves beats` printed: mode, offset, drop, layout, moves. |
 
 The cache is reused while the file, its size and mtime, the analysis version and the analysis keys stay the same. `--refresh` forces a new analysis.
@@ -30,7 +31,7 @@ Set the mode in the style (`music.sync`, default `"off"`) or per video in `edit.
 | mode | what happens |
 |---|---|
 | `off` | Legacy placement: the manual `music.drop_track` (track s) lines up with `music.drop_cut` (cut s). |
-| `drop` | The drop is chosen automatically. `music.drop_pick: auto` takes the strongest candidate that needs no silent lead-in; an integer picks that index from `beats.json drops`. It is aligned to the story moment: `music.drop_cut` if it is above 0, else the start of the first clip in `edl.json` whose `beat:` tag is in `music.drop_beats` (default `[PR, O]`, the first proof or offer). |
+| `drop` | The drop is chosen automatically. `music.drop_pick: auto` takes the strongest candidate that needs no silent lead-in; with `music.phrase_align: true` (the default) it prefers, among those, the drop whose build starts on the story turn ([SOUND.md](SOUND.md) §1). An integer picks that index from `beats.json drops`. It is aligned to the story moment (the payoff): `music.drop_cut` if it is above 0, else the start of the first clip in `edl.json` whose `beat:` tag is in `music.drop_beats` (default `[PR, O]`, the first proof or offer), else the reveal (the `aroll.snap` punch-in). |
 | `cuts` | `drop`, plus a report that moves **cutaway in/out points** and **graphic entry times** onto the nearest beat within `music.snap_tolerance_s` (default 0.12 s). The rules are listed below the table. `--apply` writes the moves. |
 | `full` | `cuts`, plus at mix time every transition-type cue (name contains one of `music.sfx_snap`: whoosh, hit, boom, riser) is nudged so its **peak** lands on the beat. The nudge is at most `music.sfx_snap_max_f` frames (default 1), which keeps every SFX within 1 frame of its picture event (SND-07). |
 
@@ -66,7 +67,10 @@ The file is patched as text, so comments are kept. The patch is verified by re-p
 - **Beat nudge** (`full` only; see section 2). Per cue, `beat_snap: false` opts out. The run is listed in `mix.json beat_nudged`.
 - **Media audio.** Cues named `asset:<id>` (a `video_broll` with `audio: true`) resolve through `cves.assets.resolve`. `speed` time-stretches them and `raw: true` keeps their own level (no peak-normalise). They are never beat-nudged or varied.
 
-`mix.json` records the music placement (`sync`, `fit`, `offset_s`, `drop`, `loops`, `end`), the cue count, `peak_placed` and `beat_nudged`.
+`mix.json` records the music placement (`sync`, `fit`, `offset_s`, `drop`, `loops`, `end`, `sections`, `story`), the cue count, `peak_placed`, `beat_nudged`, the automatic `accents` and the `duck` settings.
+
+- **Automatic accents** ([SOUND.md](SOUND.md) §2): a riser whose peak lands on the payoff and one into the hook, plus a downbeat hit on the payoff, within the `creative.sound_accents_per_30s` budget. They carry `beat_snap: false`: their target is already the picture event and, with phrase alignment, the drop.
+- **Ducking** follows the voice envelope by default (`mix.duck_mode: envelope`; `gate` = the fixed dips described in SFX-METHOD.md); see [SOUND.md](SOUND.md) §3.
 
 ## 4b. Platform sound slot (`music.slot: platform`, organic posts)
 
@@ -89,7 +93,7 @@ instead of a `file` (full description in [VIRAL.md](VIRAL.md) §4):
 
 ## 5. Style keys
 
-`music.sync, fit, beats_per_bar, tempo_range, snap_tolerance_s, drop_beats, drop_pick, drop_min_rise_db, loop_xfade_s, loop_min_bars, end_min_tail_s, end_tail_bars, gfx_lead_s, min_aroll_s, sfx_snap, sfx_snap_max_f` and `sound.transition_sfx, repeat_pitch_st, repeat_gain_db`. They are all in `styles/default.yaml` with neutral values and comments.
+`music.sync, fit, beats_per_bar, tempo_range, snap_tolerance_s, drop_beats, drop_pick, drop_min_rise_db, loop_xfade_s, loop_min_bars, end_min_tail_s, end_tail_bars, gfx_lead_s, min_aroll_s, sfx_snap, sfx_snap_max_f`, the phrase keys `music.phrase_align, phrase_min_bars, build_min_rise_db, build_step_db, phrase_turn_weight, hook_beats, turn_beats, hook_cut, turn_cut` and `sound.transition_sfx, repeat_pitch_st, repeat_gain_db` (accents, ducking and the bank: [SOUND.md](SOUND.md)). They are all in `styles/default.yaml` with neutral values and comments.
 
 YAML reads a bare `off` as `false`, and `false` is accepted as off.
 

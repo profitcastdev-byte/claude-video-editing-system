@@ -27,7 +27,7 @@ The look is whatever the client's inspirations show, measured into the style pro
 - Music bed level under the voice is a per-client choice: style `sound.bed_lu` (default −10 LU; preset `profitcast-dark` uses −7 LU, after the first reviewer asked three times for louder: −23, −14 and −10 were too quiet for them). Frequency-split ducking (style `sound.duck_voice_band_db`, default −8 dB; `sound.duck_other_db`, default −3 dB) keeps it big without masking words; real sound effects on the frame; master at style `sound.master_lufs` / `sound.true_peak` (default −14 LUFS, −1 dBTP).
 
 ## 4. Quality gates (automated, must pass before delivery)
-The master list is `knowledge-base/QC-GATES.md` (181 rules: 78 blocking, 68 warning, 35 to calibrate). `cves qc` measures 93 of them automatically today; the rest are checked by eye (contact sheets, the moodboard) or are not measurable yet. It writes `Edit/QC-REPORT.txt` (failures only in detail) and `Edit/qc.json`. Thresholds for per-client choices are read from the style profile. Load `knowledge-base/RULEBOOK.md` and `LESSONS.md` before editing. The table below is the original core subset.
+The master list is `knowledge-base/QC-GATES.md` (183 rules: 78 blocking, 70 warning, 35 to calibrate). `cves qc` measures 95 of them automatically today; the rest are checked by eye (contact sheets, the moodboard) or are not measurable yet. It writes `Edit/QC-REPORT.txt` (failures only in detail) and `Edit/qc.json`. Thresholds for per-client choices are read from the style profile. Load `knowledge-base/RULEBOOK.md` and `LESSONS.md` before editing. The table below is the original core subset.
 | Gate | Check | Pass |
 |---|---|---|
 | Words | Re-transcribe the cut and compare with the script | No missing, clipped or duplicated words |

@@ -29,6 +29,8 @@
 
   cves motion list | preview <piece> [--params JSON] [--size WxH] [--out f.png|f.mp4]   HTML motion pieces (docs/MOTION.md)
 
+  cves sfx list|fetch|add|check ...                     the SFX bank: by category + intensity; fetch = CC0 from Openverse / Freesound (docs/SOUND.md)
+
   -- formats + spines (docs/FORMATS.md) --
   cves ingest                                           on a voiceover spine: tighten + transcribe the VO; music / broll: edl.json (rate, canvas)
   cves autocut [--every beats|downbeats|bars] [--bars 2] [--min-shot S] [--folder Raw] [--apply]   a broll: track cut on the music grid"""
@@ -92,9 +94,12 @@ def main(argv=None):
     ac.add_argument("--apply", action="store_true", help="write the track into edit.yaml broll: (backup kept); else print it")
     ac.add_argument("--json", action="store_true")
     # ---- end formats + spines ----
+    # ---- WS H (senior sound, docs/SOUND.md): the SFX bank ----
+    sfx_ = sp.add_parser("sfx", help="list | fetch | add | check: the SFX bank (manifest, CC0 only; docs/SOUND.md)", add_help=False); sfx_.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- end WS H ----
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
-        if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion"): a.rest = list(getattr(a, "rest", [])) + extra
+        if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion", "sfx"): a.rest = list(getattr(a, "rest", [])) + extra
         else: ap.error("unrecognized arguments: " + " ".join(extra))
 
     if a.cmd == "new":
@@ -113,6 +118,8 @@ def main(argv=None):
         from . import motion; sys.exit(motion.main(list(a.rest) + (["--project", a.project] if a.project and a.rest and a.rest[0] == "preview" else [])))
     if a.cmd == "music":     # Openverse search/download (licence-checked, credits logged); ElevenLabs / Magnific hand-off
         from . import music; sys.exit(music.main(a.rest))
+    if a.cmd == "sfx":       # WS H: SFX bank list / fetch (Openverse, Freesound; CC0 only) / add / check
+        from . import sfx; sys.exit(sfx.main(a.rest, a.project))
     if a.cmd == "learn":     # WS E: journal notes / ratings / results; mine, promote, study (no project needed for mine/list/promote)
         from . import learn; sys.exit(learn.main(a.rest, a.project))
     if a.cmd == "export" and a.target == "selftest":     # synthetic layers, no project needed

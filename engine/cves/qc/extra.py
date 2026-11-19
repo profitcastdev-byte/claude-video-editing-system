@@ -864,7 +864,7 @@ def gates_sound(cx, gate):
             env = np.sqrt(np.convolve(y ** 2, np.ones(480) / 480, "same")); pk = env.max() + 1e-12
             on_t, pk_t = t + int(np.argmax(env >= .1 * pk)) / SR, t + int(np.argmax(env)) / SR
             dc = (pk_t - cut_t) * FPS; jc = int(np.argmin(np.abs(dc)))
-            if any(n in name for n in SFX_PEAK_NAMES) and abs(dc[jc]) <= 12:      # transition whoosh: SND-08 (peak on the cut)
+            if any(n in name for n in SFX_PEAK_NAMES) and abs(dc[jc]) <= 12 and not kw.get("accent"):      # transition whoosh: SND-08 (peak on the cut); automatic risers: SND-32
                 s8.append((name, t, on_t, pk_t, cut_t[jc], dc[jc])); continue
             at, how = (pk_t, "peak") if "riser" in name else (on_t, "onset")      # SND-07: risers at their peak, the rest at onset
             d = (at - evt) * FPS; j = int(np.argmin(np.abs(d)))
@@ -999,3 +999,5 @@ def run_extra(pr, video, gate):
     safe(gate_col12, ["COL-12"])
     safe(gates_timeline, ["CUT-04", "RET-12"])
     safe(gates_sound, ["SND-07", "SND-08", "SND-09", "SND-11", "SND-13", "SND-22", "SND-23"])
+    from .sound_gates import gates_senior_sound            # v0.4 WS H: riser resolve + phrase alignment (WARN-only)
+    safe(gates_senior_sound, ["SND-32", "SND-33"])

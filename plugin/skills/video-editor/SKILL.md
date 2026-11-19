@@ -101,6 +101,20 @@ The motion layer (`docs/MOTION.md`) gives senior-grade animation: kinetic titles
 - **How to pick:** the piece whose structure matches the line (one number, one list, one quote...), its copy taken from `words.json`, its `at` on the keyword. Over A-roll use `chest:` (it exits by itself before the shot ends); full-screen use `cutaways:`; behind the presenter use the `_roto` variant.
 - **Restraint:** at most one hero motion moment (meta `hero: true`: kinetic title, stat, logo sting, split reveal, CTA) per ~8-10 s unless the style says more (`motion.hero_min_gap_s`; render warns). Supporting pieces stay quiet. Never stack two pieces on one frame. The style's `motion.energy` sets the pace; don't fight it per piece.
 
+### Sound (`docs/SOUND.md`)
+Cut sound as carefully as picture. The engine does the placing; you make the choices and listen.
+- **Story beats drive the music.** Tag clips `beat:` H / P / A / PR / O / C in `selects.yaml` (or set `music.hook_cut` / `turn_cut` / `drop_cut`). With `music.sync: drop` (or cuts / full), the drop lands on the payoff, and the drop whose build starts on the turn is preferred. `cves beats` prints the music sections (intro / build / drop / body / break / outro) against the hook, the turn and the payoff.
+- **Accents are automatic and budgeted.** `cves mix` adds:
+  - a riser that resolves on the payoff;
+  - a riser into or out of the hook;
+  - a downbeat hit on the payoff;
+  - impacts on reveals that have no low hit of their own.
+
+  It adds no more than `creative.sound_accents_per_30s`, and only on picture events. Read `Edit/mix.json accents` to see what was placed or skipped and why. Turn them off per video with `sfx: {auto: false}`.
+- **Choose sounds by role, not by file.** In `sfx.extra`, write `@impact:hard`, `@whoosh:soft`, `@riser`, `@pop`, `@ui`, `@transition` or `@ambience`. `cves sfx list` shows the bank. When a hero moment needs a real recording, run `cves sfx fetch "<query>" --category <c> --to project` (CC0 only, credited automatically), then listen with `earshot describe` before using it.
+- **Ducking follows the voice** (`mix.duck_mode: envelope`): the bed breathes between phrases. Use `gate` only if a client asks for the old fixed dips.
+- **QC:** SND-32 checks that each riser resolves on its target; SND-33 checks that the drop section sits on the payoff (both WARN for now). Before you describe the mix to anyone, listen with `earshot timeline Edit/mix.wav` around the payoff.
+
 ## 3. Keep it cheap
 Images cost far more than text. Work from text:
 - **Read text, not images.** Use `words.json`, the transcript, `edl.json`, `edit.yaml`, `elements.jsonl` (query it with `grep` or `jq`, never read it whole) and `QC-REPORT.txt`. QC gates measure pixels so you don't have to.

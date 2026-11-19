@@ -6,6 +6,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "engine"))
 # a machine's personal learned taste (~/.cves/taste/learned.yaml) must never change test renders (docs/LEARNING.md)
 os.environ["CVES_TASTE"] = tempfile.mkdtemp(prefix="cves_taste_")
+# ... nor may a personal SFX bank (~/.cves/sfx, docs/SOUND.md) change which sounds the mix picks
+os.environ["CVES_SFX"] = tempfile.mkdtemp(prefix="cves_sfx_")
 
 def _build(dest):
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "make_demo.py"), dest, "--small"], check=True)

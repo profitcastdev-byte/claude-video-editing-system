@@ -28,7 +28,7 @@ Versions are the ones on the reference Mac on 2026-11-18.
 | Poppins (Medium, SemiBold, Bold, ExtraBold) | caption + graphics type | https://github.com/google/fonts/tree/main/ofl/poppins | core | in `assets/fonts` | OFL 1.1, licence in `assets/fonts/LICENSES/` |
 | Cormorant Garamond | serif accent / wordmarks | https://github.com/google/fonts/tree/main/ofl/cormorantgaramond | core | in `assets/fonts` | OFL 1.1 |
 | Material Symbols / Icons | icons in cutaways | https://github.com/google/material-design-icons | core | in `assets/icons` (+ CREDITS.md) | Apache-2.0 |
-| SFX pack (13 sounds) | whoosh, pop, ding, riser, boom ... | Freesound via Openverse | core | in `assets/sfx` (+ CREDITS.md) | CC0 only |
+| SFX bank (28 sounds) | 13 recordings (whoosh, pop, ding, riser, boom ...) + 15 synthesized by CVES (risers, impacts, whooshes, pops, tick, room tone), catalogued in `assets/sfx/manifest.yaml` | Freesound via Openverse; `tools/make_sfx.py` | core | in `assets/sfx` (+ CREDITS.md) | CC0 only; `cves sfx` list / fetch / add / check (docs/SOUND.md) |
 
 ## 2. Claude Code plugins and skills
 | Name | What it's for | Link | Status | Install | Notes |
@@ -52,6 +52,7 @@ Versions are the ones on the reference Mac on 2026-11-18.
 | Name | What it's for | Link | Status | Install | Notes |
 |---|---|---|---|---|---|
 | Openverse API `/v1/audio/` | search CC music (Jamendo, Wikimedia ...) and SFX (Freesound) with licence filtering | https://api.openverse.org/v1/ | core | nothing: `engine/cves/music.py` | no key needed (`OPENVERSE_TOKEN` optional). `cves music search ... --kind music|sfx --min --max --license cc0,by`, `cves music download <id> Music/ [--wav]` |
+| Freesound API `/apiv2/search/text/` (optional) | `cves sfx fetch` also searches Freesound when `FREESOUND_API_KEY` is set (token auth; HQ MP3 previews need no OAuth); CC0 results only | https://freesound.org/docs/api/ | optional | nothing: `engine/cves/sfx.py` | key from https://freesound.org/apiv2/apply; never commit it |
 
 **Licence and credit rules (enforced in `music.py`):**
 - Allowed: **CC0**, **Public Domain Mark**, **CC BY**. Refused: BY-SA (share-alike would bind the ad), anything NC (ads are commercial), ND, sampling+.
