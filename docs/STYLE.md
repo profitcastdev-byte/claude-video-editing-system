@@ -839,6 +839,18 @@ no gate covers, and the loop cap.
 | `treatments.compare_max_s` | `12` | seconds of each treatment in the comparison MP4 |
 | `treatments.compare_layout` | `stacked` | `stacked` (side by side, or one above the other on landscape; audio of the first) or `sequential` (one after another, each with its own sound) |
 
+#### `roto`
+
+Cards drawn behind the presenter (`map_card`, `listing_card`, `top3_card`) and their QC (GFX-27).
+
+| key | default | meaning |
+|---|---|---|
+| `roto.place` | `auto` | `auto`: the card finds the free space beside / above the head from the subject matte over its slot (the largest scale that fits, the brightest wall among the spots that fit); `fixed`: the designed position. A card's `place` param overrides it |
+| `roto.max_cover` | `0.2` | `auto`: the most of the card the subject may cover (it tucks behind the head a little) |
+| `roto.min_scale` | `0.25` | `auto`: the smallest card scale; when nothing fits at it the card keeps its designed position and GFX-27 judges it |
+| `roto.occlusion_warn` | `0.40` | GFX-27 WARNs when the subject covers more than this share of a card over its hold |
+| `roto.occlusion_fail` | `0.65` | GFX-27 FAILs above this share (the card reads as a dark rectangle) |
+
 #### `craft`
 
 Motion craft (docs/MOTION.md "Craft"): text behind the speaker, speed ramps, camera moves, match cuts and the transition
@@ -846,7 +858,7 @@ library. Every move counts against the `creative` budget; transitions are also r
 
 | key | default | meaning |
 |---|---|---|
-| `craft.behind.size` | `300` | `text_behind` type size, px at a 1080 short side (shrinks to fit `max_width`) |
+| `craft.behind.size` | `300` | `text_behind` type size, px at a 1080 short side (shrinks to fit `max_width` at the shot's tightest zoom). Every instance without its own `size` param uses ONE size per video: the smallest any of them fits at (GFX-20) |
 | `craft.behind.weight` | `xb` | font weight slot (m / sb / b / xb) |
 | `craft.behind.tracking` | `-4` | tracking, px at a 1080 short side |
 | `craft.behind.case` | `upper` | upper / as_is |
@@ -855,10 +867,13 @@ library. Every move counts against the `creative` budget; transitions are also r
 | `craft.behind.position` | `above` | above (the head covers the lower `overlap` of the type) / behind (centred on the eyes) / low (behind the shoulders) |
 | `craft.behind.overlap` | `0.42` | fraction of the cap height the head covers in `above` |
 | `craft.behind.one_line_min` | `0.42` | keep the text on one line when it fits at >= this fraction of `size` (no orphan word on its own line), else wrap |
-| `craft.behind.track` | `0.6` | how much of the head's motion the type follows: 0 locked at its entry, 1 glued |
-| `craft.behind.smooth_frames` | `9` | face-landmark smoothing radius, frames (triangular window) |
-| `craft.behind.color` | `text` | type colour (palette slot or hex) |
-| `craft.behind.accent` | `accent` | colour of `*starred*` words |
+| `craft.behind.track` | `0.4` | how much of the head's motion the type follows: 0 locked at its entry, 1 glued (keep it subtle) |
+| `craft.behind.smooth_s` | `0.2` | face-track smoothing, seconds (zero-phase Gaussian sigma over the segment's track; the clamped path is smoothed the same way). In seconds, so 60 fps footage is as calm as 30 fps (MOT-03) |
+| `craft.behind.color` | `auto` | `auto`: measure the wall behind the type over its hold (graded plate, person masked out) and use the `light` or `dark` token, whichever reaches the GFX-15 contrast (light wins a tie); else a palette slot or hex |
+| `craft.behind.light` | `text` | `color: auto`'s light token |
+| `craft.behind.dark` | `card` | `color: auto`'s dark token |
+| `craft.behind.auto_bed` | `true` | `color: auto` adds a soft legibility bed when neither token reaches the contrast on that wall |
+| `craft.behind.accent` | `accent` | colour of `*starred*` words. With `color: auto` an accent that fails the contrast becomes its darker (`accent_dark`, then mixed toward black) or lighter variant |
 | `craft.behind.entry` | `rise` | rise (the letters rise out from behind the head) / slam (whole on its first frame, oversized, settling: a hard visual event) |
 | `craft.behind.entry_s` | `0.5` | entry length, s |
 | `craft.behind.exit_s` | `0.25` | exit length (ends 0.25 s before the shot by default) |

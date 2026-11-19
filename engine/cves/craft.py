@@ -414,33 +414,80 @@ def limit_transitions(TL):
 
 
 # ================================================================== text behind the speaker: the face track
-def _face_row(TL, sid, j):
-    F = TL.faces.get(sid) or []
-    return F[min(max(j, 0), len(F) - 1)] if F else None
+def _gauss(x, sigma):
+    """zero-phase Gaussian smoothing of a 1-D series (edges held: reflect would invent motion past the segment ends)"""
+    if sigma <= 0 or len(x) < 2: return np.asarray(x, np.float64)
+    r = int(math.ceil(3 * sigma)); k = np.exp(-.5 * (np.arange(-r, r + 1) / sigma) ** 2); k /= k.sum()
+    return np.convolve(np.pad(np.asarray(x, np.float64), r, mode="edge"), k, mode="valid")
 
-def face_track(TL, sid, k, r=None):
-    """the presenter's face at plate frame k of segment sid, smoothed over +-r frames (style craft.behind.smooth_frames):
-    {cx (eye midpoint x), eye_y, top (head top: hair line estimate), chin, w, h} in plate px, or None without faces"""
-    F = TL.faces.get(sid) or []
-    if not F: return None
-    r = int(r if r is not None else _S(TL.S, "craft.behind.smooth_frames", 9))
-    lo, hi = max(0, k - r), min(len(F), k + r + 1); rows = [F[j] for j in range(lo, hi) if F[j] is not None and len(F[j]) >= 4]
-    if not rows: return None
-    wts = np.array([1 - abs(j - k) / (r + 1) for j in range(lo, hi) if F[j] is not None and len(F[j]) >= 4], np.float64)   # triangular window
-    def avg(fn): return float(np.average([fn(f) for f in rows], weights=wts))
+def smooth_s(S, fps):
+    """the face-track smoothing of text_behind as a Gaussian sigma in frames: style craft.behind.smooth_s is in seconds,
+    so the follow is equally calm at 24, 30 and 60 fps"""
+    return max(0.0, float(_S(S, "craft.behind.smooth_s", .2))) * float(fps or 30)
+
+def _face_rows(F):
+    """per-frame (cx, eye_y, top, chin, w, h) of the raw face rows; missing rows are filled from their neighbours"""
     def eyes(f):
         if len(f) >= 14 and any(f[4:8]): return (f[4] + f[6]) / 2, (f[5] + f[7]) / 2
         return f[0] + f[2] / 2, f[1] + f[3] * .4
-    w, h = avg(lambda f: f[2]), avg(lambda f: f[3])
-    return {"cx": avg(lambda f: eyes(f)[0]), "eye_y": avg(lambda f: eyes(f)[1]), "top": avg(lambda f: f[1]) - .32 * h,
-            "chin": avg(lambda f: f[1] + f[3]), "w": w, "h": h}
+    R = np.full((len(F), 6), np.nan)
+    for j, f in enumerate(F):
+        if f is None or len(f) < 4: continue
+        ex, ey = eyes(f); R[j] = (ex, ey, f[1] - .32 * f[3], f[1] + f[3], f[2], f[3])
+    ok = ~np.isnan(R[:, 0])
+    if not ok.any(): return None
+    idx = np.arange(len(F))
+    for c in range(6): R[:, c] = np.interp(idx, idx[ok], R[ok, c])
+    return R
+
+def face_track(TL, sid, k, sigma=None):
+    """the presenter's face at plate frame k of segment sid: {cx (eye midpoint x), eye_y, top (head top: hair line
+    estimate), chin, w, h} in plate px, or None without faces. Smoothed with a zero-phase Gaussian whose sigma is in
+    SECONDS (style craft.behind.smooth_s), over the whole segment track (computed once per segment and process): raw face
+    boxes jump 10-20 px between detections, and a window counted in frames was twice as nervous at 60 fps as at 30 (MOT-03)."""
+    F = TL.faces.get(sid) or []
+    if not F: return None
+    sg = smooth_s(TL.S, TL.FPS) if sigma is None else float(sigma)
+    cache = TL.__dict__.setdefault("_face_tracks", {})
+    key = (sid, round(sg, 4), len(F))
+    if key not in cache:
+        R = _face_rows(F)
+        cache[key] = None if R is None else np.stack([_gauss(R[:, c], sg) for c in range(6)], 1)
+    T = cache[key]
+    if T is None: return None
+    r = T[min(max(int(k), 0), len(T) - 1)]
+    return {"cx": float(r[0]), "eye_y": float(r[1]), "top": float(r[2]), "chin": float(r[3]), "w": float(r[4]), "h": float(r[5])}
+
+def seg_scale(TL, sid):
+    """the tightest zoom a segment is shown at (its zoom with the full creep, or a snap punch-in inside it): text_behind
+    fits its type to that view once, so it never re-fits mid-shot"""
+    s = next((x for x in TL.segs if x["id"] == sid), None)
+    z = float((getattr(TL, "zoom", {}) or {}).get(sid, 1.0)) * (1 + float(getattr(TL, "creep", 0.0) or 0.0))
+    sn = getattr(TL, "snap", None)
+    if sn and s is not None and sn[0] < s["t1"] and s["t0"] < sn[1]: z = max(z, float(sn[2]))
+    return z
+
+def behind_size(TL):
+    """one type size for every `text_behind` in the video (GFX-20): the smallest size any instance fits at, in canvas px.
+    Instances with an explicit `size` keep their own fit and are left out. None when no instance needs harmonising."""
+    if "_behind_size" in TL.__dict__: return TL.__dict__["_behind_size"]
+    from .templates import craft as TC
+    got = []
+    for r in (getattr(TL, "E", {}) or {}).get("roto", []) or []:
+        if (r or {}).get("template") != "text_behind" or "size" in (r.get("params") or {}): continue
+        got.append(TC.fitted_size(r.get("params") or {}, TL.S, seg_scale(TL, r.get("segment"))))
+    TL.__dict__["_behind_size"] = min(got) if len(got) > 1 else None
+    return TL.__dict__["_behind_size"]
 
 def roto_ctx(TL, s, k):
     """extra ctx a roto template gets on an A-roll frame: k (plate frame), face (smoothed, now), face_at(t) (smoothed,
-    at cut time t in this segment) and matte_ok (the segment has a subject matte)"""
+    at cut time t in this segment), frame_of(t) (plate frame of cut time t), matte_ok (the segment has a subject matte),
+    seg_scale (the segment's tightest zoom) and behind_size (the video's harmonised text_behind size, or None)"""
     sid = s["id"]
-    def face_at(tt): return face_track(TL, sid, int(round((tt - s["t0"]) * TL.FPS)))
-    return {"k": k, "face": face_track(TL, sid, k), "face_at": face_at, "matte_ok": bool(getattr(TL, "matte_ok", {}).get(sid, True))}
+    def frame_of(tt): return int(round((tt - s["t0"]) * TL.FPS))
+    def face_at(tt): return face_track(TL, sid, frame_of(tt))
+    return {"k": k, "face": face_track(TL, sid, k), "face_at": face_at, "frame_of": frame_of,
+            "matte_ok": bool(getattr(TL, "matte_ok", {}).get(sid, True)), "seg_scale": seg_scale(TL, sid), "behind_size": behind_size(TL)}
 
 
 # ================================================================== restraint

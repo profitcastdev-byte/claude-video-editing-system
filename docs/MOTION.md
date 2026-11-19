@@ -160,11 +160,21 @@ over it and `cves critique` reports it. Transitions are also rate-limited at ren
 
 The type is drawn on the background plate and the subject is composited back on top through its matte, so the head
 occludes the letters (the roto slot's order: plate -> type -> subject). It is placed from the presenter's face landmarks
-(eye midpoint, head top, chin), smoothed over `craft.behind.smooth_frames` frames with a triangular window, and follows the
-head by `craft.behind.track` of its motion (0 = locked where it entered, 1 = glued). `position: above` (default) sets the
+(eye midpoint, head top, chin), smoothed with a zero-phase Gaussian whose sigma is in seconds (`craft.behind.smooth_s`, so
+60 fps is as calm as 30), and follows the head by `craft.behind.track` of its motion (0 = locked where it entered, 1 =
+glued; default 0.4, subtle). The path is kept in the safe zone and the clamped path is smoothed again, so the type never
+stops dead on the safe edge (MOT-03). `position: above` (default) sets the
 last line's baseline so the head covers its lower `craft.behind.overlap`; `behind` centres it on the eyes; `low` puts it
 behind the shoulders. The letters rise out from behind the head (`entry_s`), breathe in their tracking and hold with a
 slow 2.5 % push. One element per block (`behind.text`, role `roto`): QC measures its contrast with the person masked out.
+
+**Colour.** `craft.behind.color: auto` (default) measures the graded plate behind the type's box over its hold (the person
+masked out) and picks the light or dark token (`craft.behind.light` / `dark`) that reaches the GFX-15 target; an accent
+that fails becomes its darker (on a light wall) or lighter variant, and when neither token reads a soft bed is added
+(`auto_bed`). A `color` param or a fixed style colour skips the measurement.
+
+**One size.** Every `text_behind` without its own `size` uses one size per video: the smallest size any instance fits at
+(each fitted once, at its shot's tightest zoom), so two moments never read as two styles (GFX-20).
 
 **No matte.** A segment without `Edit/matte/<seg>.mkv` renders with an empty matte (the roto layer lands in front), and
 `text_behind` lifts the type clear above the head (`craft.behind.no_matte: above`) or keeps it with a legibility bed
