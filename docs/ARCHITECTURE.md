@@ -33,6 +33,8 @@ claude-video-editing-system/
     layered.py            control mode: renders the edit as separate layers + layers.json
     templates/            cutaway / roto / chest / end-card templates (one file each, registry in __init__)
     render.py             edit.yaml -> frames (vibe mode) and -> layered clips (control mode)
+    rcache.py             the frame cache: per-frame input keys, so a build re-renders only the frames that changed (§6b)
+    build.py              `cves build` (render + mix + encode + qc) and `--draft` (Edit/draft/ Variant, half size, never deliverable)
     moodboard.py          the edit plan: timeline + shot-by-shot build frames (same renderer) -> EDIT-PLAN.html/.md + moodboard.jpg
     mix.py                voice + music (drop-synced, frequency-split ducking) + SFX -> master + stems
     music.py              Openverse search/download with licence + credits; ElevenLabs / Magnific notes
@@ -77,7 +79,7 @@ claude-video-editing-system/
 | 4 Plan | `cves prep` → `cves plan` → Claude fills `edit.yaml` → `cves qc --stage plan` | local + Claude (text) | `words.json`, plate/, matte/, `faces.json` (box + landmarks), `edit.yaml` |
 | 5 Edit plan | `cves moodboard` | local + Claude reads EDIT-PLAN.md, reviews 1 image | `Moodboard/EDIT-PLAN.html`: multi-track timeline + every shot with rendered build frames, words, sound; **user approves** |
 | 5b Treatments (open brief) | `cves treatments make / render / compare / pick` | local + Claude picks 2-3 treatments, reviews 1 sheet | `Edit/treatments/compare/sheet.jpg` + `compare.mp4`; **user picks one** (docs/TREATMENTS.md) |
-| 6 Render + mix | `cves build` (or `cves render && cves mix && cves encode`; `cves beats` for beat sync) | local | final MP4 + stems + `elements.jsonl` |
+| 6 Render + mix | `cves build` (or `cves render && cves mix && cves encode`; `cves beats` for beat sync); `cves build --draft` for a fast half-size look (§6b) | local | final MP4 + stems + `elements.jsonl` (incremental: only changed frames re-render, §6b) |
 | 7 QC | `cves qc` | local; Claude fixes edit.yaml until it passes | `QC-REPORT.txt` + `qc.json`; thresholds for per-client choices come from the style profile |
 | 7b Critique | `cves critique` | local + Claude scores the rubric, fixes anything < 7, logs it (`cves learn rate --by claude`) | `Edit/critique/` contact sheet, energy timeline, `CRITIQUE.md` (knowledge-base/CREATIVE.md) |
 | 7c Review loop | `cves review build` → `cves review apply` → re-render → again; `cves review signoff` | local measures; Claude looks at the pack, answers the rubric, fixes; max `review.max_rounds` (3) rounds | `Edit/review/rNNN/` cut strips, hook / payoff / end card strips, `audio.json`, `findings.json`, `REVIEW.md` ([REVIEW.md](REVIEW.md)) |
@@ -134,6 +136,20 @@ colour and font through `gfx` from the style profile, never as literal values (`
 `render.py` writes `Edit/elements.jsonl`: one line per element per frame:
 `{"f": 123, "id": "c1.row2.tag", "role": "caption|cutaway|roto|chest|end|icon", "bbox": [x0,y0,x1,y1], "alpha": 0.8, "scale": 1.02, "font": "Poppins-Bold", "size": 34, "fill": "#4C8DFF", "text": "near me", "asset": "assets/icons/search.svg", "keyword_t": 3.99}`
 QC gates for motion (MOT-*), graphics (GFX-*), captions (PLAT-*), safe zones and spoken-before-shown read it.
+
+## 6b. Incremental render and draft builds
+A final render keeps a **frame cache** (`engine/cves/rcache.py`): every frame is keyed by a hash of what decides its
+pixels and element records (the engine code, the visual style, the canvas, the frame's segment and its plate / matte /
+faces / framing / colour match, the cutaway covering it, its transition state, its caption events, the roto and end-card
+entries, the media files). `cves build` / `cves render` re-render only the frames whose key changed and rebuild
+`Edit/elements.jsonl` from the records of the untouched frames, so the frames, the element log and the encoded master are
+identical to a full render's (tests/test_render_cache.py). One cutaway tweak re-renders that cutaway's frames; a sound or
+delivery tweak re-renders nothing. `--no-cache` / style `render.cache: false` render everything.
+
+`cves build --draft` is the fast look while iterating: a `project.Variant` in `Edit/draft/` (own frames, cache, element
+log, mix and QC stamp), rendered at `render.draft_scale` (0.5) through the proxy path, encoded with the proxy settings,
+tagged `comment=cves-draft` and QC'd with the fast gate set. It never touches the final build, and `cves deliver`
+refuses a draft even with `--force-unchecked`.
 
 ## 7. Control mode export contract (`Export/control/`)
 ```

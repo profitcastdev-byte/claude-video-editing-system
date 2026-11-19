@@ -68,18 +68,26 @@ def _sig(pr):
         st = os.stat(p); out.append([f, st.st_size, st.st_mtime_ns])
     return out
 
+def _file_sha(path):
+    import hashlib, os
+    if not os.path.exists(path): return None
+    with open(path, "rb") as fh: return hashlib.sha256(fh.read()).hexdigest()
+
 def _low_frames(pr, frames, size):
-    """quarter-res full-range BT.709 luma of rendered frames (Edit/frames/NNNNN.png): what the SND-07 gate decodes from the master (PyAV gray)"""
+    """quarter-res full-range BT.709 luma of rendered frames (Edit/frames/NNNNN.png): what the SND-07 gate decodes from the master (PyAV gray).
+    Read and reduced on a few threads (cv2 and numpy release the GIL): the same values, a fraction of the wait."""
     import os, cv2
-    out = {}
-    for f in frames:
+    from concurrent.futures import ThreadPoolExecutor
+    def one(f):
         p = pr.e("frames", f"{f:05d}.png")
-        if not os.path.exists(p): continue
+        if not os.path.exists(p): return f, None
         im = cv2.imread(p, cv2.IMREAD_COLOR)
-        if im is None: continue
+        if im is None: return f, None
         y = im[..., 2] * .2126 + im[..., 1] * .7152 + im[..., 0] * .0722
-        out[f] = cv2.resize(y.astype(np.float32), size, interpolation=cv2.INTER_AREA).round().astype(np.uint8)
-    return out
+        return f, cv2.resize(y.astype(np.float32), size, interpolation=cv2.INTER_AREA).round().astype(np.uint8)
+    frames = list(frames)
+    with ThreadPoolExecutor(max(1, min(6, len(frames), (os.cpu_count() or 2) - 1))) as ex:
+        return {f: y for f, y in ex.map(one, frames) if y is not None}
 
 def sync_cues(TL, cues, log=None):
     """snap every cue's audible anchor onto the picture event it belongs to, exactly, at any frame rate (SND-07).
@@ -109,7 +117,19 @@ def sync_cues(TL, cues, log=None):
         try: cache = json.load(open(cf, encoding="utf-8"))
         except ValueError: cache = {}
     pmin = int(S.get("sound.cue_sync_pixel_min", 40))
-    if cache.get("sig") != sig or cache.get("min_px") != pmin: cache = {"sig": sig, "min_px": pmin, "scanned": [], "pixel": []}
+    # a pixel event at frame f is a function of the rendered frames f-2..f and of the timeline (which frames are A-roll /
+    # in a transition): after an incremental render, the scan of every frame whose three frame-cache keys (cves.rcache) and
+    # timeline are unchanged is still valid, so only the windows round re-rendered frames are scanned again
+    from . import rcache as RC
+    fk = RC.load(pr.e("frames"), pr.e("elements.jsonl")); tl_sha = _file_sha(pr.e("timeline.json"))
+    if cache.get("sig") != sig or cache.get("min_px") != pmin:
+        old = cache; cache = {"sig": sig, "min_px": pmin, "scanned": [], "pixel": [], "tl": tl_sha, "keys": {}}
+        ok_keys = old.get("keys") or {}
+        if fk and ok_keys and old.get("min_px") == pmin and old.get("tl") == tl_sha:
+            same = lambda f: all(g < 0 or (fk.get(g) is not None and ok_keys.get(str(g)) == fk.get(g)) for g in (f - 2, f - 1, f))
+            keep = {f for f in old.get("scanned", []) if same(f)}
+            cache["scanned"] = sorted(keep); cache["pixel"] = [f for f in old.get("pixel", []) if f in keep]
+    cache["tl"] = tl_sha
     todo = []
     for t, name, gain, kw in cues:
         if name.startswith("asset:") or kw.get("peak_at") is not None or kw.get("sync") is False: continue
@@ -121,8 +141,10 @@ def sync_cues(TL, cues, log=None):
         low = _low_frames(pr, range(max(0, rep[0] - 2), rep[-1] + 1), X.LOW)
         if not low: continue
         px |= set(X.pixel_events(cx, low, frames=set(rep), min_px=pmin)); scanned |= {f for f in rep if f in low}; dirty = True
-    if dirty:
-        cache.update(scanned=sorted(scanned), pixel=sorted(px))
+    if dirty or cache.get("keys") is None or (fk and not cache.get("keys")):
+        dirty = True
+        cache.update(scanned=sorted(scanned), pixel=sorted(px),
+                     keys={str(g): fk[g] for f in scanned for g in (f - 2, f - 1, f) if g in fk})
         try:
             with open(cf, "w", encoding="utf-8") as fh: json.dump(cache, fh)
         except OSError: pass

@@ -424,6 +424,42 @@ def split_alpha(a, parts, pad):
     yield "", out
 
 
+def split_boxes(a, parts, pad):
+    """split_alpha for an RGBA frame, cheaply: the same partition, but each layer as (part id, RGBA crop, (x0, y0)), the
+    crop being the box that holds all of the layer's pixels (outside it the layer is transparent). Every pixel lands in
+    the same layer with the same value as split_alpha gives it, so compositing the crops gives the frame back exactly;
+    the work is per part box, not per full frame."""
+    import numpy as np
+    H, W = a.shape[:2]; alpha = a[..., 3]; claimed = np.zeros((H, W), bool); masks = []
+    for p in sorted(parts or [], key=lambda p: (p[4] - p[2]) * (p[5] - p[3])):     # smallest first, as split_alpha
+        pid, x0, y0, x1, y1, o = p[0], p[2], p[3], p[4], p[5], p[6]
+        if o < .02: continue
+        x0, y0, x1, y1 = max(0, x0 - pad), max(0, y0 - pad), min(W, x1 + pad), min(H, y1 + pad)
+        if x1 <= x0 or y1 <= y0: continue
+        sub = ~claimed[y0:y1, x0:x1]
+        if sub.any():
+            claimed[y0:y1, x0:x1] |= sub
+            masks.append([pid, (x0, y0, x1, y1), (x0, y0, x1, y1), sub])          # [id, box, mask box, mask in mask box]
+    stray = (alpha > 0) & ~claimed
+    if masks and stray.any():
+        r = max(1, int(pad))
+        for m in masks:
+            x0, y0, x1, y1 = m[1]; ex0, ey0, ex1, ey1 = max(0, x0 - r), max(0, y0 - r), min(W, x1 + r), min(H, y1 + r)
+            take = stray[ey0:ey1, ex0:ex1]
+            if take.any():
+                big = np.zeros((ey1 - ey0, ex1 - ex0), bool); big[y0 - ey0:y1 - ey0, x0 - ex0:x1 - ex0] = m[3]
+                take = take.copy(); big |= take; m[2], m[3] = (ex0, ey0, ex1, ey1), big
+                claimed[ey0:ey1, ex0:ex1] |= take; stray[ey0:ey1, ex0:ex1] &= ~take
+    for pid, _, (x0, y0, x1, y1), mk in masks:
+        out = a[y0:y1, x0:x1].copy(); out[..., 3] = np.where(mk, out[..., 3], 0)
+        yield pid, out, (x0, y0)
+    ys, xs = np.nonzero(stray.any(1))[0], np.nonzero(stray.any(0))[0]          # the rest: alpha > 0 and claimed by no part
+    if not len(ys): yield "", np.zeros((1, 1, 4), a.dtype), (0, 0); return
+    y0, y1, x0, x1 = ys[0], ys[-1] + 1, xs[0], xs[-1] + 1
+    out = a[y0:y1, x0:x1].copy(); out[..., 3] = np.where(claimed[y0:y1, x0:x1], 0, out[..., 3])
+    yield "", out, (int(x0), int(y0))
+
+
 def optical_nudge(page, job, pad):
     """{part: dx} so blocks that share an axis by layout also share it in ink (QC GFX-08 measures drawn ink, and glyph
     side bearings / trailing tracking leave 2-12 px near-misses). Measured on a settled frame: parts whose boxes share a

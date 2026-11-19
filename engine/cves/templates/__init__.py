@@ -14,7 +14,10 @@ class El:
 def faded(fn, alpha):
     im = G.layer(fn)
     if alpha < 1:
-        a = np.asarray(im).copy(); a[..., 3] = (a[..., 3] * max(0, alpha)).astype(np.uint8); im = Image.fromarray(a)
+        bb = im.getbbox()                     # alpha * 0 stays 0: only the drawn box changes
+        if bb is None: return im
+        a = np.asarray(im.crop(bb)).copy(); a[..., 3] = (a[..., 3] * max(0, alpha)).astype(np.uint8)
+        im = im.copy(); im.paste(Image.fromarray(a), bb[:2])
     return im
 
 # ---- registry: auto-discovered. Every module in this package (and every *.py in $CVES_TEMPLATES / ~/.cves/templates /

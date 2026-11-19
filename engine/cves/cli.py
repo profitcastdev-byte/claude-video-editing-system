@@ -17,7 +17,8 @@
   cves encode                                           single final encode -> Export/<title>.mp4
   cves qc [--fast] [--video X]                          all measurable gates -> Edit/QC-REPORT.txt (exit 1 on FAIL)
   cves qc --stage story|plan                            early gates: after `cves select` (pauses, stutters, sign-off) / after planning
-  cves build                                            render + mix + encode + qc (short summary; -v for the full report)
+  cves build [--draft] [--no-cache]                     render (incremental) + mix + encode + qc (short summary; -v for the full report);
+                                                        --draft: half size, fast, not deliverable
   cves status [--json]                                  where this project is: stage, last QC, open FAILs, next command
   cves templates [NAME] [--kinds] [--json] [-v]         templates by kind; NAME: one template's doc + params
   cves deliver [--variants 4:5,1:1,cut15] [--only master] [--force-unchecked]   QC-stamped Export/vNNN/ (docs/DELIVERY.md)
@@ -97,6 +98,7 @@ def _main(argv, verbose=False):
     i = sp.add_parser("ingest"); i.add_argument("--steps", default="transcribe_raw")
     sl = sp.add_parser("select"); sl.add_argument("--align-only", action="store_true", help="print the take alignment of selects.yaml and stop (no voice, no edl.json)"); sp.add_parser("prep"); sp.add_parser("story"); sp.add_parser("plan"); sp.add_parser("moodboard")
     r = sp.add_parser("render"); r.add_argument("--only", help="comma list: cutaway / segment / roto.N / chest.N / end_card ids, 12.5-14.0 (s), 300-420 (frames)"); r.add_argument("--mode", default="final"); r.add_argument("--out")
+    r.add_argument("--no-cache", action="store_true", help="re-render every frame (ignore the incremental frame cache)")
     ctl = sp.add_parser("control", help="update [PROJECT] --only <ids>: re-render just those control-mode layers + refresh layers.json")
     ctl.add_argument("action", choices=["update"]); ctl.add_argument("dir", nargs="?"); ctl.add_argument("--only", required=True)
     ie = sp.add_parser("import-edits", help="[PROJECT] FILE: map a human's Resolve/Kdenlive edits back onto edit.yaml (docs/CONTROL-MODE.md)")
@@ -104,7 +106,8 @@ def _main(argv, verbose=False):
     ie.add_argument("--captions", help="edited subtitles (.srt / .ass) when FILE has none"); ie.add_argument("--dry-run", action="store_true")
     sp.add_parser("mix"); e = sp.add_parser("encode"); e.add_argument("--out")
     q = sp.add_parser("qc", parents=[_v]); q.add_argument("--json", action="store_true", help="counts + every gate (details for FAIL / WARN) as JSON"); q.add_argument("--fast", action="store_true"); q.add_argument("--video"); q.add_argument("--stage", choices=["story", "plan"], help="early gates before rendering")
-    sp.add_parser("build", parents=[_v])
+    b = sp.add_parser("build", parents=[_v]); b.add_argument("--draft", action="store_true", help="half size, fast encode, fast QC into Edit/draft/ (never deliverable)")
+    b.add_argument("--no-cache", action="store_true", help="re-render every frame (ignore the incremental frame cache)")
     stt = sp.add_parser("status", parents=[_v], help="[PROJECT]: stage reached, last QC counts, open FAILs, the next command"); stt.add_argument("dir", nargs="?"); stt.add_argument("--json", action="store_true")
     dv = sp.add_parser("deliver"); dv.add_argument("--variants", help="comma list: ids from edit.yaml variants:, 4:5 / 1:1 / 16:9, cut15, or reframes|hooks|cutdowns|music|end_cards|all"); dv.add_argument("--only", choices=["master"]); dv.add_argument("--force-unchecked", action="store_true"); dv.add_argument("--video"); dv.add_argument("--keep-temp", action="store_true")
     x = sp.add_parser("export", help="resolve|kdenlive|all|selftest [--push] [--no-build] (see docs/CONTROL-MODE.md)"); x.add_argument("target", choices=["resolve", "kdenlive", "all", "selftest"]); x.add_argument("rest", nargs=argparse.REMAINDER)
@@ -318,7 +321,7 @@ def _main(argv, verbose=False):
     elif a.cmd == "render":
         from .render import render; from . import schema; schema.require_valid(pr)     # stop on edit.yaml errors
         only = a.only or None     # ids / time ranges / frame ranges, resolved by Timeline.frames_for
-        n_, N = render(pr, only=only, out_dir=a.out, mode=a.mode); print(f"rendered {n_} of {N} frames")
+        n_, N = render(pr, only=only, out_dir=a.out, mode=a.mode, cache=False if a.no_cache else None); print(f"rendered {n_} of {N} frames")
     elif a.cmd == "mix":
         from .mix import mix; print(f"mix {mix(pr):.2f} s -> {pr.e('mix.wav')}")
     elif a.cmd == "encode":
@@ -337,10 +340,13 @@ def _main(argv, verbose=False):
         print(("UNCHECKED (forced) " if m.get("forced_unchecked") else "") + f"delivered {m['version']} -> {d}")
         from . import learn; learn.on_deliver(pr, m)
     elif a.cmd == "build":
-        from .render import render; from .mix import mix; from .encode import encode; from . import qc, schema
-        schema.require_valid(pr); render(pr); mix(pr); v = encode(pr); nf, rep = qc.run(pr, v, fast=True)
-        print(f"master: {v}"); _print_qc(a, rep, pr.e("QC-REPORT.txt"), video=v)
-        from . import learn; learn.on_build(pr, v); learn.on_qc(pr); sys.exit(1 if nf else 0)
+        from .build import build
+        v, nf, rep, T = build(pr, draft=a.draft, cache=False if a.no_cache else None)
+        print(("draft (not deliverable): " if a.draft else "master: ") + str(v) + "  (" + ", ".join(f"{k} {t:.0f}s" for k, t in T.items()) + ")")
+        _print_qc(a, rep, pr.e("draft", "QC-REPORT.txt") if a.draft else pr.e("QC-REPORT.txt"), video=v)
+        if not a.draft:
+            from . import learn; learn.on_build(pr, v); learn.on_qc(pr)
+        sys.exit(1 if nf else 0)
     elif a.cmd == "export":     # control mode: layered media + layers.json, then the Resolve / Kdenlive project
         if a.target != "selftest" and "--no-build" not in a.rest:
             from .layered import build; print("layers ->", build(pr))

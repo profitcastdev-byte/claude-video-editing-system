@@ -157,7 +157,7 @@ def mix(pr):
         vo, _ = librosa.load(pr.e("voice_final.wav"), sr=SR, mono=True); vo = np.pad(vo, (0, max(0, N - len(vo))))[:N]
     else: vo = np.zeros(N, np.float32)
     M = TL.E.get("music") or {}; mus = np.zeros((N, 2), np.float32); SND = TL.S.get("sound") or {}; duck_info = None
-    bed_lu = M.get("bed_lu", SND.get("bed_lu", -10)); tmp = tempfile.mkdtemp(prefix="cves_mix_")
+    bed_lu = M.get("bed_lu", SND.get("bed_lu", -10)); tmp = tempfile.mkdtemp(prefix="cves_mix_"); lv0 = None
     TV, TM, TB = (os.path.join(tmp, f"{k}.wav") for k in "vmb")
     from . import guide as GD
     slot = GD.is_slot(pr)          # music.slot: platform -> the master carries no music (the poster adds the sound in-app)
@@ -166,7 +166,7 @@ def mix(pr):
     if P:
         y, legacy_fade = _music(pr, TL, P, N, T)
         sf.write(TV, vo, SR); sf.write(TM, y, SR)
-        if has_vo: y *= db(lufs(TV) - lufs(TM) + bed_lu + 3)   # +3: ducking takes ~3 LU back off
+        if has_vo: lv0 = lufs(TV); y *= db(lv0 - lufs(TM) + bed_lu + 3)   # +3: ducking takes ~3 LU back off
         else: y *= db(SND.get("master_lufs", -14) - 6 - lufs(TM))    # no voice: the music leads, 6 LU under the master target (headroom; the master stage sets the level)
         duck, duck_info = SO.duck_control(vo, SR, TL.S) if has_vo else (np.zeros(N), {"mode": "none (no voice)"})
         y = SO.apply_duck(y, duck, TL.S, SR)
@@ -190,11 +190,11 @@ def mix(pr):
         if i < N: sfx[i:j] += y[:j - i] * db(g)
     vmr_info = None
     if P and has_vo:      # measure the real bed (music + SFX) vs voice and correct the music gain: no guessed compensation
-        sf.write(TV, vo, SR)
+        sf.write(TV, vo, SR); lv = lv0 if lv0 is not None else lufs(TV)    # the voice does not change while the bed is levelled: measure it once
         def bed_level():
             nonlocal mus
             for _ in range(3):
-                sf.write(TB, mus.mean(1) + sfx, SR); err = music_target - (lufs(TB) - lufs(TV))
+                sf.write(TB, mus.mean(1) + sfx, SR); err = music_target - (lufs(TB) - lv)
                 if abs(err) < .3: break
                 mus *= db(err)
         bed_level()

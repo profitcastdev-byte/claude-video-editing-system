@@ -138,6 +138,29 @@ def _auto_colour(key, plate_lum, samples, B, size_px, has_acc, acc0):
     return _AUTO[key]
 
 
+def _scaled(im, hold, cx, base):
+    """im scaled by `hold` about (cx, base), premultiplied (no dark fringes), bilinear. Only the type's box is premultiplied
+    and only the box it lands in is un-premultiplied: elsewhere the layer is clear (premultiplied zero) before and after
+    the warp, exactly as when the whole frame goes through it."""
+    import math, cv2, numpy as np
+    from PIL import Image
+    M = np.float32([[hold, 0, cx * (1 - hold)], [0, hold, base * (1 - hold)]])
+    bb = im.getbbox()
+    if bb is None: return Image.new("RGBA", im.size, (0, 0, 0, 0))
+    W, H = im.size; x0, y0, x1, y1 = bb
+    a4 = np.zeros((H, W, 4), np.float32)
+    c = np.asarray(im.crop(bb)).astype(np.float32); c[..., :3] *= c[..., 3:4] / 255; a4[y0:y1, x0:x1] = c
+    w4 = cv2.warpAffine(a4, M, im.size, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+    m00, m02, m11, m12 = float(M[0, 0]), float(M[0, 2]), float(M[1, 1]), float(M[1, 2])
+    u0, u1 = max(0, math.floor(m00 * (x0 - 1) + m02) - 3), min(W, math.ceil(m00 * (x1 + 1) + m02) + 3)   # where the box lands
+    v0, v1 = max(0, math.floor(m11 * (y0 - 1) + m12) - 3), min(H, math.ceil(m11 * (y1 + 1) + m12) + 3)   # (bilinear reach + margin)
+    out = np.zeros((H, W, 4), np.uint8)
+    if u1 > u0 and v1 > v0:
+        r = w4[v0:v1, u0:u1]; r[..., :3] /= np.maximum(r[..., 3:4], 1e-3) / 255
+        out[v0:v1, u0:u1] = np.clip(r + .5, 0, 255).astype(np.uint8)
+    return Image.fromarray(out)
+
+
 def text_behind(t, p, ctx):
     """type behind the presenter. p: text (*stars* = accent), at, out_at (default 0.25 s before the slot ends),
     position above (the head covers the lower `craft.behind.overlap` of the last line) | behind (centred on the eyes) |
@@ -243,13 +266,7 @@ def text_behind(t, p, ctx):
                 x += wpx + sp + breathe
     im = faded(draw, alpha)
     if abs(hold - 1) > 1e-4:                    # the push / slam scale as a sub-pixel transform about the baseline centre
-        import cv2, numpy as np
-        from PIL import Image
-        M = np.float32([[hold, 0, cx * (1 - hold)], [0, hold, base * (1 - hold)]])
-        a4 = np.asarray(im).astype(np.float32); a4[..., :3] *= a4[..., 3:4] / 255          # premultiplied: no dark fringes
-        w4 = cv2.warpAffine(a4, M, im.size, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
-        w4[..., :3] /= np.maximum(w4[..., 3:4], 1e-3) / 255
-        im = Image.fromarray(np.clip(w4 + .5, 0, 255).astype(np.uint8))
+        im = _scaled(im, hold, cx, base)
     plain = " ".join(w for w, _ in words); out = []
     # legibility (GFX-15): a soft bed under the type, sized by the weaker of its colours against the background (measured
     # by color: auto, else the assumed video tone); it sits on the plate too, so the subject occludes it with the type
