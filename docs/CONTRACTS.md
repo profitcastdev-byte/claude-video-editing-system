@@ -105,9 +105,12 @@ A template is a `T = {name: (render, cues)}` dict inside any module:
 Templates are auto-discovered.
 
 - **Layout on any canvas.** Lay out from `G.W` / `G.H` / `G.safe()` and treat px values as px at a 1080 short side. The
-  registry wraps every template (`templates.get`): relative templates (default) draw in a same-aspect canvas with a 1080
-  short side and are scaled by `G.U`; `NATIVE = True|{names}` modules draw on the canvas and scale px themselves;
-  `DESIGN = True` modules (hard-coded 1080×1920) are fitted per instance into the safe zone. Identity at 1080×1920.
+  registry wraps every template (`templates.get`): relative templates (default) lay out in a same-aspect canvas with a
+  1080 short side and are rasterised at the real canvas (`G.set_raster`: `G.layer` scales coordinates, type and strokes by
+  `G.R` = `G.U`; layers are `G.PW × G.PH`; pixel work on a layer uses its own size and `G.px()`); `RASTER = False|{names}`
+  modules are drawn at the layout size and scaled by `G.U` instead; `NATIVE = True|{names}` modules draw on the canvas and
+  scale px themselves; `DESIGN = True` modules (hard-coded 1080×1920, third-party only) are fitted per instance into the
+  safe zone. Identity at 1080×1920.
 - `render(t, params, ctx) -> list[El]`. `ctx` has `start`, `end`, `resolve` (asset id or path resolver: `edit.yaml assets:` / `Edit/assets.json` first, then project- and repo-relative paths), `fps` (quantise animation starts: `round(t * fps) / fps`) and `S` (the style profile). On A-roll it also has `chin`, the smoothed chin y on the canvas. Templates listed in `render.NEEDS_AROLL` (kind `media`, or a module-level `NEEDS_AROLL = {names}` / `True`) also get `aroll = (graded RGB float HxWx3, matte float HxW)`: the A-roll frame under the cutaway, framed as the A-roll shot; no other template pays for it.
 - `cves render --only` / `Timeline.frames_for(spec)` accept cutaway, segment, `roto.N`, `chest.N`, `end_card` ids, `12.5-14.0` (seconds), `300-420` (frames, inclusive) and comma lists.
 - `cues(params, ctx) -> list[(t, sfx_name, gain_db, kw)]`. `sfx_name` is a bank id / file name, or `@category[:intensity]` (resolved from the SFX bank manifest, [SOUND.md](SOUND.md) §4).

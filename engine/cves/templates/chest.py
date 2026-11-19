@@ -32,12 +32,13 @@ def wordmark(t, p, ctx):
         def mark(d):
             for k, ln in enumerate(lines): G.draw_text(d, (G.W / 2, y0 + k * gap), ln, f, c, anchor="ms")
         im = G.layer(mark); a = np.asarray(im).copy()
-        xs = np.where(a[..., 3].max(0) > 0)[0]; xl, xr = (xs.min(), xs.max()) if len(xs) else (0, G.W)
-        x = np.arange(G.W)[None, :]; edge = xl + ease_out(pp) * (xr - xl + 120)          # the wipe starts at the first letter: visible on its word's frame
-        a[..., 3] = (a[..., 3] * np.clip((edge - x) / 120, 0, 1) * (1 - out)).astype(np.uint8)
-        g = np.linspace(1.30, .95, G.H)[:, None, None]; a[..., :3] = np.clip(a[..., :3] * g, 0, 255).astype(np.uint8)
-        bed = Image.fromarray(a[..., 3]).filter(ImageFilter.GaussianBlur(34)).point(lambda v: min(255, int(v * 1.6)))
-        dk = Image.new("RGBA", (G.W, G.H), (0, 0, 0, 0)); dk.putalpha(bed.point(lambda v: int(v * G.sget("legibility.wordmark_bed", .72))))   # >= 3:1 over a light shirt (GFX-15)
+        ph, pw = a.shape[:2]; wd = G.px(120)                                              # layer px (the layer may be raster-scaled)
+        xs = np.where(a[..., 3].max(0) > 0)[0]; xl, xr = (xs.min(), xs.max()) if len(xs) else (0, pw)
+        x = np.arange(pw)[None, :]; edge = xl + ease_out(pp) * (xr - xl + wd)          # the wipe starts at the first letter: visible on its word's frame
+        a[..., 3] = (a[..., 3] * np.clip((edge - x) / wd, 0, 1) * (1 - out)).astype(np.uint8)
+        g = np.linspace(1.30, .95, ph)[:, None, None]; a[..., :3] = np.clip(a[..., :3] * g, 0, 255).astype(np.uint8)
+        bed = Image.fromarray(a[..., 3]).filter(ImageFilter.GaussianBlur(G.px(34))).point(lambda v: min(255, int(v * 1.6)))
+        dk = Image.new("RGBA", (pw, ph), (0, 0, 0, 0)); dk.putalpha(bed.point(lambda v: int(v * G.sget("legibility.wordmark_bed", .72))))   # >= 3:1 over a light shirt (GFX-15)
         res += [El(dk, "chest.wordmark.bed", "chest"), *_sh(Image.fromarray(a), El, "chest.wordmark", 6, .75, 3, text=" ".join(lines), t_key=Q(at), font="CormorantGaramond")]
     sub = G.tidy(p.get("sub", "")); sa = p.get("sub_at", 1e9); ps = ease_out(G.enter(t, sa, .4, F))
     if ps > 0 and sub:

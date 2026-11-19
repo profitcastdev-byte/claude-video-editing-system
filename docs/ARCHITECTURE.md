@@ -123,7 +123,8 @@ Every time is cut time in seconds; the engine snaps edits to frame/segment bound
 - motion (`m_*`, `templates/motion.py`): HTML/CSS pieces from `engine/cves/motion/pieces/`, `~/.cves/motion/` and `PROJECT/Brand/motion/`, rendered once by headless Chromium (`cves.motion`, pre-rendered by `render.render()` before the worker pool) and read back as cached RGBA frames; cutaway, overlay (chest), `_roto` and `_end` uses. See `docs/MOTION.md`.
 
 New template = new file + registry entry + a moodboard sample in `docs/TEMPLATES.md`. Templates lay out relative to the canvas
-(`G.W`, `G.H`, `G.safe()`, px scaled by `G.U`; legacy fixed 1080×1920 modules are fitted into the safe zone) and read every
+(`G.W`, `G.H`, `G.safe()`, px scaled by `G.U` and rasterised at the real canvas; the UI cutaways and roto cards pick a
+tall / square / wide arrangement) and read every
 colour and font through `gfx` from the style profile, never as literal values (`docs/CONTRACTS.md` §4, FORMATS.md §3).
 
 ## 6. Element log (unlocks the remaining QC gates)

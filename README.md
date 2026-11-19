@@ -63,11 +63,16 @@ Restart Claude Code and run `/cves:install`. It installs every tool, model and s
 - Never ship unlicensed music in a paid ad.
 
 ## Known limits (honest)
-- **Native formats, legacy layouts.** Any canvas renders natively (`canvas.size`, docs/FORMATS.md), but the v0.2 UI cutaways
-  (`search_rows`, `card_list`, `stat`, `browser_list`) and the roto cards keep their 1080×1920 layout and are fitted into the
-  safe zone on other canvases (smaller on landscape). On canvases whose short side is far from 1080 (e.g. 4K) relative
-  templates are drawn at a 1080 short side and scaled, so graphics are slightly softer than footage.
-- **Resolve round trip:** the FCPXML is validated structurally, and a Kdenlive project loads in `melt`, but a live DaVinci Resolve import has not been tested yet.
+- **Native formats.** Any canvas renders natively (`canvas.size`, docs/FORMATS.md). The v0.2 UI cutaways (`search_rows`,
+  `card_list`, `stat`, `browser_list`) and the roto cards now lay out per canvas shape (the original layout on 9:16, a
+  scaled block on square canvases, a landscape arrangement with two-column lists on wide ones), and relative templates are
+  rasterised at the canvas's real resolution (photo cards and panes included), so 4K graphics are crisp. A third-party
+  template that touches layer pixels without `G.px` must set `RASTER = False` and is then scaled up (docs/TEMPLATES.md).
+- **HDR.** PQ and HLG A-roll and B-roll / media clips are tonemapped to SDR BT.709 through the same chain. HDR stills (PQ
+  AVIF / HEIC) are not; without ffmpeg's `zscale` the fallback only re-matrixes colours (docs/INGEST.md).
+- **Resolve round trip:** the Kdenlive round trip (export, edit the project, melt render, `import-edits`, rebuild) is an
+  automated test. DaVinci Resolve is not installed on the build machine, so a live Resolve import and a Resolve-written
+  FCPXML have not been tested; [docs/RESOLVE-CHECKLIST.md](docs/RESOLVE-CHECKLIST.md) is the script for the first person with Resolve.
 - **Complex scripts** (Indic, Arabic) need Pillow with libraqm for correct shaping; `cves doctor` reports whether it is available.
 - **Not every gate is automated:** 95 of the 183 rules are. The others need instruments that don't exist yet (role and intent tags, blur and banding detectors, music-stem gates); see `knowledge-base/QC-GATES.md`.
 - **Footage limits the grade can't remove:** on the first test ad, two colour gates still fail. COL-06 (cut-to-cut colour match) fails where skin drifts within a shot and where the wall patch changes between punch-ins. FRAME-03 (edge halo) fails where a bright door frame sits next to the shoulder and where hair is motion-blurred. Both report honestly instead of being loosened.

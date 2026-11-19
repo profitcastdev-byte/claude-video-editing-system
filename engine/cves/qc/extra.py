@@ -426,7 +426,7 @@ def gates_captions(cx, gate):
     off = lambda f: min(np.abs(np.array(f[:3], float) - want).max(), np.abs(np.array(f[:3], float) - want_hi).max()) > 40
     nonwhite = [f"{m['id']} fill {[round(v) for v in m['fill']]} vs style {cx.CS.get('color', '#FFFFFF')}" for m in ms if off(m["fill"])]
     noshadow = [f"{m['id']} shadow {m['shadow']:+.1f}" for m in ms if cx.CS.get("shadow", True) and m["shadow"] is not None and m["shadow"] < 2]
-    plate = [f"{m['id']} layer extends {m['margin']} px past the ink" for m in ms if cx.CS.get("style") != "box" and m["margin"] > 26]
+    plate = [f"{m['id']} layer extends {m['margin']} px past the ink" for m in ms if cx.CS.get("style") != "box" and m["margin"] > 26 * max(1., U_)]   # px at a 1080 short side (the caption shadow scales by U)
     bad += nonwhite + noshadow + plate
     caph = [m["cap_h"] for m in ms if m["cap_ok"]]
     if cx._results.get("cap_unmeasured"): bad_note = f" ({len(cx._results['cap_unmeasured'])} events only on transition frames: not measured)"
@@ -958,7 +958,8 @@ def run_extra(pr, video, gate):
     for i in cx.inst:       # text contrast: static, opaque, transition-free frames, every 6th, <= 8 per element
         if not i.is_text: continue
         fr = [int(i.f[j]) for j in range(len(i.f)) if i.al[j] >= .95 and not cx.in_trans(int(i.f[j]))
-              and (i.role == "caption" or (0 < j < len(i.f) - 1 and np.abs(i.bb[j] - i.bb[j - 1]).max() <= 1))]
+              and (i.role == "caption" or (0 < j < len(i.f) - 1 and np.abs(i.bb[j] - i.bb[j - 1]).max() <= 1
+                                           and np.abs(i.bb[j + 1] - i.bb[j]).max() <= 1))]     # static on both sides (as GFX-08): not mid-entry
         text_fr[i.key] = (fr[::6] or fr[:1])[:8]
     roto_fr = sorted(set(f for i in cx.inst if i.role == "roto" and i.is_text for f in text_fr.get(i.key, [])))
     mattes = {}             # plate-space mattes for sampled A-roll frames and for roto text frames (person mask)

@@ -200,6 +200,10 @@ roto: [{segment: 05_every_day_0, template: kinetic_caption_emphasis, params: {wo
 ---
 
 ## Cutaways built for UI moments (full screen; they hide jump cuts; 40–55 % of runtime)
+Laid out per canvas shape (FORMATS.md §3): the original layout on 9:16, a scaled block on square canvases, a landscape
+arrangement on wide ones (`card_list` in two columns from 4 items, `browser_list` rows in two columns from 4 rows).
+`top` and other px params are 1080×1920 design px and apply on tall canvases. `stat` (= `counter`) is documented with the
+generic templates.
 | Template | Use for | Key params |
 |---|---|---|
 | `search_rows` | searches typed out row by row | `label`, `pills [left, right]`, `pill_times {left:[t,dur], plus, right}`, `rows [{q, type:[a,b], tag, check, stars?}]`, `tag_text`, `enter`, `rows_in` |
@@ -207,6 +211,9 @@ roto: [{segment: 05_every_day_0, template: kinetic_caption_emphasis, params: {wo
 | `browser_list` | website / content deliverables on a page card | `head [[word, at, accent?]]`, `enter`, `hero_at`, `hero_icon`, `rows [{text, at, icon?}]`, `row_icon`, `pill`, `pill_at` |
 
 ## Roto (behind the presenter; at most 4 moments, each ≤ 3 s)
+The cards are laid out in fractions of their own box: the 1080×1920 box on 9:16, a box filling the safe-zone height
+(1.35:1 on wide canvases) elsewhere. `big_words` `ys` are 1080×1920 baselines (tall canvases); square and wide canvases
+spread the lines down the safe zone.
 | Template | Use for | Params |
 |---|---|---|
 | `map_card` | a map card behind the head: roads drawing in, pins popping (each pin is its own element) | `at`, `draw_at`, `pins_at`, `pins` (≤ 6), `pin_stagger` |
@@ -329,11 +336,19 @@ To add an icon:
 The canvas is configurable (style `canvas.size`, [FORMATS.md](FORMATS.md)). Template authors:
 - read the frame as `G.W`, `G.H` and the safe zone as `G.safe()` **at call time** (never `from ..gfx import W, H`);
 - place things relative to them (centre `G.W / 2`, blocks centred in the safe zone, fractions of `G.H`), and write px sizes
-  (fonts, radii, gaps) as px at a 1080 short side: the registry scales them by `G.U` on other canvases;
+  (fonts, radii, gaps) as px at a 1080 short side. The registry lays the template out on a canvas with a 1080 short side and
+  **rasterises it at the real canvas**: inside `G.layer` every coordinate, font size, stroke and icon is multiplied by the
+  raster scale `G.R` (= `G.U`), so 4K graphics are drawn at 4K. Layers come back `G.PW × G.PH` (the real canvas);
+- if a template touches layer pixels itself (a blur radius, `np.arange` over a layer, `Image.new` for a glow), it sizes
+  them from the layer (`im.size`, `a.shape`) and converts layout px with `G.px(v)`; a module that can't sets
+  `RASTER = False` (or `{names that are raster-safe}`) and is drawn at the layout size, then scaled. `media.py` keeps
+  boxes in layout px and every picture buffer (`view`, masks, `canvas_layer`) in layer px; `ctx["aroll"]` arrives at the
+  real canvas size in a raster-scaled call;
 - a module that draws its own picture at the canvas resolution (e.g. `broll_shot`) sets `NATIVE = True` (or `{names}`) and
   scales its own px by `G.U`;
-- a legacy module with hard-coded 1080×1920 coordinates sets `DESIGN = True`: it keeps drawing in 1080×1920 and is fitted,
-  per instance, into the canvas safe zone (uniform scale, never up, centred). `cutaways.py` and `roto.py` work this way.
+- a third-party module with hard-coded 1080×1920 coordinates can set `DESIGN = True`: it keeps drawing in 1080×1920 and is
+  fitted, per instance, into the canvas safe zone (uniform scale, never up, centred). No built-in module does any more: the
+  UI cutaways and roto cards pick a tall / square / wide arrangement (`templates/_layout.py`, FORMATS.md §3).
 Everything is the identity at 1080×1920.
 
 ### `broll_shot` (internal: the `broll:` track)

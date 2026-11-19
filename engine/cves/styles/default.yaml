@@ -274,6 +274,7 @@ ingest:                       # how any footage is conformed to the master canva
   hdr:
     tonemap: hable            # HDR (PQ / HLG) -> SDR BT.709 operator: hable | mobius | reinhard | clip
     npl: 100                  # nominal peak luminance (nits) used to linearise
+    broll: true               # HDR B-roll / media clips (broll:, video_broll, screen_rec, pip / split panes) go through the same tonemap, once, into Edit/conform/*.sdr.mkv; false = decode as is
   whisper:
     chunk_over_s: 600         # audio longer than this is transcribed in chunks split on silences
     chunk_s: 300              # longest chunk, seconds
