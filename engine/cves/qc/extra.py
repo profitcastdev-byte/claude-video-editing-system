@@ -47,6 +47,14 @@ def runs_of(mask):
 def longest_run(mask):
     r = runs_of(mask); return max((b - a for a, b in r), default=0)
 
+def longest_runs(A):
+    """longest_run of every row of a 2-D bool array, vectorised (same integers as [longest_run(r) for r in A])"""
+    A = np.asarray(A, bool)
+    if A.shape[1] == 0: return np.zeros(A.shape[0], int)
+    idx = np.arange(A.shape[1]); last_false = np.where(A, -1, idx)
+    np.maximum.accumulate(last_false, axis=1, out=last_false)
+    return (idx - last_false).max(1)
+
 def bs1770(y, sr):
     """integrated loudness (LUFS) of a mono signal, ITU-R BS.1770-4 (K-weighting, 400 ms blocks, -70 / -10 gates)"""
     from scipy.signal import lfilter
@@ -163,29 +171,88 @@ class Ctx:
 
 
 # ======================================================================== frame decoding (one pass)
-def decode(cx, need, keep_low=True):
-    """single decode of the delivered file. need: {frame: [callback(f, yuv444 (3,H,W) uint8)]}. Returns low-res luma per frame."""
-    import av
-    low = {}
-    with av.open(cx.video) as c:
-        for f, fr in enumerate(c.decode(video=0)):
-            if keep_low: low[f] = fr.reformat(width=LOW[0], height=LOW[1], format="gray").to_ndarray()
-            cbs = need.get(f)
-            if cbs:
-                yuv = fr.to_ndarray(format="yuv444p")
-                for cb in cbs:
-                    try: cb(f, yuv)
-                    except Exception as e: cx._results["errors"].append(f"f{f}: {type(e).__name__}: {e}")
+def jobs():
+    """threads for the measurement pool (CVES_QC_JOBS; 1 = everything in the decode loop, as before)"""
+    try: return max(1, int(os.environ.get("CVES_QC_JOBS", "") or min(6, max(1, (os.cpu_count() or 2) - 1))))
+    except ValueError: return 1
+
+def _threaded(stream):
+    """frame + slice threads for a decode: the decoded pixels of H.264 / FFV1 do not depend on the thread count"""
+    try: stream.thread_type = "AUTO"
+    except Exception: pass
+
+def decode(cx, need, keep_low=True, low_frames=None):
+    """single decode of the delivered file. need: {frame: [callback(f, yuv444 (3,H,W) uint8)]}. Returns low-res luma per frame
+    (every frame, or only `low_frames` when given: pixel_events reads no other). A callback with `.pool = True` runs on a
+    worker thread (heavy numpy / OpenCV work that releases the GIL); its results are its own, and errors are reported in
+    frame / callback order exactly as the serial loop reported them."""
+    import av, threading
+    from concurrent.futures import ThreadPoolExecutor
+    low, errs, futs = {}, [], []
+    n = jobs(); ex = ThreadPoolExecutor(n) if n > 1 else None; gate_ = threading.BoundedSemaphore(2 * n) if ex else None
+    def run(f, j, cb, yuv):
+        try: cb(f, yuv)
+        except Exception as e: errs.append((f, j, f"f{f}: {type(e).__name__}: {e}"))
+        finally:
+            if gate_ is not None and getattr(cb, "pool", False): gate_.release()
+    try:
+        with av.open(cx.video) as c:
+            _threaded(c.streams.video[0])
+            for f, fr in enumerate(c.decode(video=0)):
+                if keep_low and (low_frames is None or f in low_frames): low[f] = fr.reformat(width=LOW[0], height=LOW[1], format="gray").to_ndarray()
+                cbs = need.get(f)
+                if cbs:
+                    yuv = fr.to_ndarray(format="yuv444p")
+                    for j, cb in enumerate(cbs):
+                        if ex is not None and getattr(cb, "pool", False):
+                            gate_.acquire(); futs.append(ex.submit(run, f, j, cb, yuv))
+                        else: run(f, j, cb, yuv)
+    finally:
+        if ex is not None: ex.shutdown(wait=True)
+    for f_ in futs: f_.result()
+    cx._results["errors"] += [m for _, _, m in sorted(errs, key=lambda x: (x[0], x[1]))]
     return low
 
 def decode_plate_frames(cx, path, ks, fmt="gray"):
+    """frames ks (0-based) of a plate / matte file. FFV1 plates are GOPs of intra-coded frames whose entropy state
+    carries over: each GOP is decoded from its keyframe up to its last wanted frame and the rest of the GOP is skipped
+    (the frames decoded are bit-identical to a full decode; ~40% less work for every-6th-frame sampling). Any surprise
+    (no keyframe flags, a decode error, a frame count mismatch) falls back to decoding the file front to back."""
     import av
     out, ks = {}, set(ks)
     if not ks or not os.path.exists(path): return out
+    try: return _decode_gops(path, ks, fmt)
+    except Exception: pass
     with av.open(path) as c:
         for k, fr in enumerate(c.decode(video=0)):
             if k in ks: out[k] = fr.to_ndarray(format=fmt)
             if k >= max(ks): break
+    return out
+
+def _decode_gops(path, ks, fmt):
+    import av
+    out, top = {}, max(ks)
+    with av.open(path) as c:
+        st = c.streams.video[0]; cc = st.codec_context; sent = []; buf = []; k = -1
+        if c.format.name not in ("matroska,webm",) or cc.name != "ffv1": raise ValueError("not an ffv1 plate")
+        def take(frames):
+            for fr in frames:
+                j = sent.pop(0)
+                if j in ks: out[j] = fr.to_ndarray(format=fmt)
+        def flush():
+            last = max((j for j, _ in buf if j in ks), default=-1)
+            for j, p in buf:
+                if j > last: break
+                sent.append(j); take(cc.decode(p))
+        for p in c.demux(st):
+            if p.size == 0: continue
+            k += 1
+            if k > top + 1: break
+            if p.is_keyframe and buf: flush(); buf = []
+            buf.append((k, p))
+        if buf: flush()
+        take(cc.decode(None))
+    if set(out) != {j for j in ks if j <= k} or sent: raise ValueError("GOP decode mismatch")
     return out
 
 
@@ -307,7 +374,7 @@ def aroll_frame(cx, f, yuv, matte, plate, src=None):
     # FRAME-02: body exits through frame edges (bottom), no straight in-frame matte cut
     r["bottom"] = float(inside[-1].mean()); r["top"] = int(inside[0].sum())
     hb = inside[2:-2] != inside[1:-3]; vb = inside[:, 2:-2] != inside[:, 1:-3]
-    r["hcut"] = int(max(longest_run(row) for row in hb[::2])); r["vcut"] = int(max(longest_run(col) for col in vb.T[::2]))
+    r["hcut"] = int(longest_runs(hb[::2]).max()); r["vcut"] = int(longest_runs(vb.T[::2]).max())
     # FRAME-05 headroom: first row with matte > 0.5
     rows = np.where(inside.any(1))[0]; r["headroom"] = int(rows[0]) if len(rows) else None
     if lm is not None:
@@ -893,7 +960,7 @@ def gates_timeline(cx, gate):
 
 
 # ======================================================================== visual events (SND-07; mix's cue sync uses the same list)
-def visual_events(cx, low=None):
+def visual_events(cx, low=None, px=None):
     """[(t, label)] of the picture events a sound may sit on: element entries (first logged frame of every non-caption
     instance), cuts / transitions, the snap, logged bbox changes after a hold and, when `low` (frame -> quarter-res luma)
     is given, pixel-change onsets on graphic frames. One definition for the SND-07 gate and for mix's cue sync."""
@@ -905,7 +972,8 @@ def visual_events(cx, low=None):
         if i.role == "caption": continue
         for j in range(3, len(i.f)):
             if np.abs(np.diff(i.bb[j - 3:j], axis=0)).max() <= 1 and np.abs(i.bb[j] - i.bb[j - 1]).max() > 2: ev.append((i.f[j] / FPS, f"{i.key} changes"))
-    if low: ev += [(f / FPS, f"pixel change on f{f}") for f in pixel_events(cx, low)]
+    if px is None and low: px = pixel_events(cx, low)        # px: pixel_events already measured (run_extra)
+    if px: ev += [(f / FPS, f"pixel change on f{f}") for f in px]
     return ev
 
 def pixel_events(cx, low, frames=None, min_px=12):
@@ -944,7 +1012,7 @@ def gates_sound(cx, gate):
                 if kw.get("trim"): y = y[int(kw["trim"][0] * SR):int(kw["trim"][1] * SR)]
                 cache[key] = y
             return cache[key]
-        ev = visual_events(cx, cx._results.get("low", {}))
+        ev = visual_events(cx, px=cx._results.get("pixel_ev") or [])
         evt = np.array([e[0] for e in ev]); cut_t = np.array([tb for tb, _ in cx.trans] + [cx.T_END])     # transitions (whip / glitch / end card)
         ok_, off, unm, s8 = 0, [], [], []
         for t, name, gain, kw in cues:
@@ -1026,8 +1094,58 @@ def gates_sound(cx, gate):
     except Exception as e: gate("SND-13", False, f"not measured: {e}", status="WARN")
 
 
+# ======================================================================== measurement cache (Edit/qc_cache/)
+MEASURED = ("aroll", "capmeas", "contrast", "errors", "cap_unmeasured", "pixel_ev")
+
+def measure_key(cx, pr, video):
+    """everything the frame measurements read: the master (sha256), the element log, timeline, faces, words, edit.yaml,
+    the resolved style, the plate / matte files (size + mtime), the canvas and this module's own source. Any change = a miss."""
+    import hashlib
+    from . import cache as QCC
+    h = hashlib.sha256()
+    h.update(QCC.master_sha(video).encode()); h.update(f"v{QCC.CACHE_VERSION} {W}x{H} {LOW}".encode())
+    for f in ("elements.jsonl", "timeline.json", "faces.json", "words.json", "edit.yaml"):
+        p = pr.e(f)
+        if os.path.exists(p): h.update(f.encode()); h.update(QCC.sha256(p).encode())
+    h.update(json.dumps(cx.S, sort_keys=True, default=str).encode())
+    for d in ("matte", "plate"):
+        for s in cx.segs:
+            p = pr.e(d, f"{s['id']}.mkv")
+            if os.path.exists(p): st = os.stat(p); h.update(f"{d}/{s['id']} {st.st_size} {st.st_mtime_ns}".encode())
+    with open(__file__, "rb") as f: h.update(f.read())
+    return h.hexdigest()[:24]
+
+def _plain(o):
+    if isinstance(o, np.integer): return int(o)
+    if isinstance(o, np.floating): return float(o)
+    if isinstance(o, np.ndarray): return o.tolist()
+    raise TypeError(type(o).__name__)
+
+def save_measurements(cx, pr, video, key, card_fr, mattes):
+    from . import cache as QCC
+    QCC.save_json(pr, video, f"extra-{key}", json.loads(json.dumps({k: cx._results.get(k, []) for k in MEASURED}, default=_plain)))
+    fs = sorted({f for v in card_fr.values() for f in v if f in mattes})          # GFX-27 reads these mattes after the decode
+    QCC.save_arrays(pr, video, f"extra-{key}-mattes", {f"f{f}": mattes[f] for f in fs})
+
+def restore_measurements(cx, pr, video, key, card_fr, mattes):
+    """the frame measurements of an earlier QC of this exact master and inputs (JSON floats round-trip exactly)"""
+    from . import cache as QCC
+    d = QCC.load_json(pr, video, f"extra-{key}"); m = QCC.load_arrays(pr, video, f"extra-{key}-mattes")
+    if d is None or m is None: return False
+    for k in MEASURED: cx._results[k] = d.get(k, [])
+    cx._results["aroll"] = [dict(r, halo=tuple(r["halo"]) if r.get("halo") else r.get("halo")) for r in cx._results["aroll"]]
+    cx._results["contrast"] = [(a, f, [tuple(x) for x in res]) for a, f, res in cx._results["contrast"]]
+    for k, v in m.items():
+        if k.startswith("f"): mattes[int(k[1:])] = v
+    return True
+
+
 # ======================================================================== entry point
-def run_extra(pr, video, gate):
+def _tick(label):
+    from . import tick; tick(label)
+
+def run_extra(pr, video, gate, tier="full"):
+    """tier draft: only the gates that need no frame decode (tiers.DRAFT); every gate it does run is measured as in full"""
     global W, H, U_, LOW
     from .. import gfx as G, style as STY
     from . import small_size
@@ -1041,6 +1159,23 @@ def run_extra(pr, video, gate):
             for g in ids: gate(g, False, f"not measured: {type(e).__name__}: {e}", "\n".join(tb), status="WARN")
     if not cx.els or not cx.segs:
         gate("ELEMENT-LOG-X", False, "elements.jsonl / timeline.json missing: extra gates skipped (render with `cves render`)", status="WARN"); return
+    if tier == "draft":
+        from .tiers import DRAFT
+        g_all = gate; gate = lambda gid, *a, **k: g_all(gid, *a, **k) if gid in DRAFT else None
+        def safe(fn, ids):
+            try: fn(cx, gate)
+            except Exception as e:
+                import traceback; tb = traceback.format_exc().strip().splitlines()[-3:]
+                for g in ids: gate(g, False, f"not measured: {type(e).__name__}: {e}", "\n".join(tb), status="WARN")
+        safe(gates_motion, ["MOT-01", "MOT-02", "MOT-03", "MOT-04", "MOT-05", "MOT-07", "MOT-12", "MOT-14"])
+        safe(gates_graphics, ["GFX-05", "GFX-08", "GFX-15", "GFX-17", "GFX-20", "GFX-24", "GFX-26"])
+        safe(gate_col12, ["COL-12"])
+        safe(gates_timeline, ["CUT-04", "RET-12"])
+        safe(gates_sound, ["SND-07", "SND-08", "SND-09", "SND-11", "SND-13", "SND-22", "SND-23"])
+        from .sound_gates import gates_senior_sound
+        safe(gates_senior_sound, ["SND-32", "SND-33"])
+        return
+    _tick("extra ctx")
     # ---- plan the single decode
     need = collections.defaultdict(list)
     per = plan_aroll(cx); plates = {}
@@ -1055,39 +1190,87 @@ def run_extra(pr, video, gate):
     card_fr = {i.key: hold_frames(i) for i in roto_cards(cx)}            # GFX-27: the subject matte over each roto card's hold
     roto_fr = sorted(set(roto_fr) | {f for v in card_fr.values() for f in v})
     mattes = {}             # plate-space mattes for sampled A-roll frames and for roto text frames (person mask)
-    halo_src = {}           # plate-space source luma of the sampled A-roll frames (FRAME-03: what the edge looked like in the camera)
-    for s in cx.segs:
-        fs = set(per[s["id"]]["pick"] if s["id"] in per else []) | {f for f in roto_fr if s["f0"] <= f < s["f0"] + s["n"]}
-        if not fs: continue
-        for k, a in decode_plate_frames(cx, pr.e("matte", f"{s['id']}.mkv"), [f - s["f0"] for f in fs]).items(): mattes[s["f0"] + k] = a
-        if s["id"] in per:
-            p = per[s["id"]]
-            src = decode_plate_frames(cx, pr.e("plate", f"{s['id']}.mkv"), [f - s["f0"] for f in p["pick"]])   # FRAME-03 compares with the source
-            for k, a in src.items(): halo_src[s["f0"] + k] = a
-            if p["first"] - s["f0"] in src: plates[p["first"]] = src[p["first"] - s["f0"]]                        # FRAME-10: one frame per shot
-            for f in p["pick"]: need[f].append(lambda f, yuv: aroll_frame(cx, f, yuv, mattes.get(f), plates.pop(f, None), halo_src.pop(f, None)))
-    for c in cx.caps:       # caption style / lines: last transition-free frame showing every word (else the last transition-free frame)
-        ws = cx.cap_words(c); ok = [int(f) for f in c.f if not cx.in_trans(int(f))]
-        if not ok: cx._results["cap_unmeasured"].append(c.id); continue
-        full = [f for f in ok if ws and ws[-1][0] <= f / cx.FPS + .03]; f = (full or ok)[-1]
-        bb = next(r["bbox"] for r in c.recs if r["f"] == f)
-        shown = " ".join(w[2] for w in ws if w[0] <= f / cx.FPS + .03) if ws else (c.text or "")
-        def cap_cb(f, yuv, c=c, bb=bb, isfull=bool(full), shown=shown):
-            m = caption_measure(yuv, bb)
-            if m: cx._results["capmeas"].append(dict(key=c.key, id=c.id, f=f, full=isfull, shown=shown, **m))
-        need[f].append(cap_cb)
-    for i in cx.inst:
-        for f in text_fr.get(i.key, []):
-            bb = next(r["bbox"] for r in i.recs if r["f"] == f)
-            def tc_cb(f, yuv, i=i, bb=bb):
-                person = None
-                if i.role == "roto" and f in mattes and cx.aroll_M(f):    # roto text sits behind the presenter: mask the person out
-                    person = cv2.warpAffine(mattes[f], cx.aroll_M(f)[0], (W, H), borderMode=cv2.BORDER_REPLICATE) > 20
-                cx._results["contrast"].append((i.key, f, text_contrast(yuv, bb, person=person)))
-            need[f].append(tc_cb)
-    cx._results["low"] = decode(cx, need)
+    ck = measure_key(cx, pr, video)
+    restored = restore_measurements(cx, pr, video, ck, card_fr, mattes)
+    if restored: _tick("frame measurements from Edit/qc_cache")
+    if not restored:
+        mattes = {}             # plate-space mattes for sampled A-roll frames and for roto text frames (person mask)
+        halo_src = {}           # plate-space source luma of the sampled A-roll frames (FRAME-03: what the edge looked like in the camera)
+        todo = []               # (segment, matte frames, plate frames): every file decoded once, the files side by side on threads
+        for s in cx.segs:
+            fs = set(per[s["id"]]["pick"] if s["id"] in per else []) | {f for f in roto_fr if s["f0"] <= f < s["f0"] + s["n"]}
+            if not fs: continue
+            todo.append((s, ("matte", [f - s["f0"] for f in fs])))
+            if s["id"] in per: todo.append((s, ("plate", [f - s["f0"] for f in per[s["id"]]["pick"]])))    # FRAME-03 compares with the source
+        _tick("extra plan")
+        # the plate / matte files decode on threads WHILE the master decodes; a measurement that needs a shot's matte or
+        # plate waits for that shot only (seg_ready), so every callback sees exactly the dicts the serial loop filled first
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+        pex = ThreadPoolExecutor(max(1, min(jobs(), len(todo) or 1)))
+        futs = [(t, pex.submit(decode_plate_frames, cx, pr.e(t[1][0], f"{t[0]['id']}.mkv"), t[1][1])) for t in todo]
+        by_seg = collections.defaultdict(list)
+        for t, fu in futs: by_seg[t[0]["id"]].append((t, fu))
+        seg_at = {}
+        for s in cx.segs:
+            if s["id"] in by_seg:
+                for f in range(s["f0"], s["f0"] + s["n"]): seg_at[f] = s["id"]
+        lock, installed = threading.Lock(), set()
+        def seg_ready(sid):
+            if sid is None or sid in installed: return
+            with lock:
+                if sid in installed: return
+                for (s, (kind, _)), fu in by_seg[sid]:
+                    res = fu.result()
+                    if kind == "matte":
+                        for k, a in res.items(): mattes[s["f0"] + k] = a
+                        continue
+                    p = per[s["id"]]
+                    for k, a in res.items(): halo_src[s["f0"] + k] = a
+                    if p["first"] - s["f0"] in res: plates[p["first"]] = res[p["first"] - s["f0"]]                # FRAME-10: one frame per shot
+                installed.add(sid)
+        for s in cx.segs:
+            if s["id"] in per and s["id"] in by_seg:
+                for f in per[s["id"]]["pick"]:
+                    def cb(f, yuv):
+                        seg_ready(seg_at.get(f)); aroll_frame(cx, f, yuv, mattes.get(f), plates.pop(f, None), halo_src.pop(f, None))
+                    cb.pool = True; need[f].append(cb)
+        for c in cx.caps:       # caption style / lines: last transition-free frame showing every word (else the last transition-free frame)
+            ws = cx.cap_words(c); ok = [int(f) for f in c.f if not cx.in_trans(int(f))]
+            if not ok: cx._results["cap_unmeasured"].append(c.id); continue
+            full = [f for f in ok if ws and ws[-1][0] <= f / cx.FPS + .03]; f = (full or ok)[-1]
+            bb = next(r["bbox"] for r in c.recs if r["f"] == f)
+            shown = " ".join(w[2] for w in ws if w[0] <= f / cx.FPS + .03) if ws else (c.text or "")
+            def cap_cb(f, yuv, c=c, bb=bb, isfull=bool(full), shown=shown):
+                m = caption_measure(yuv, bb)
+                if m: cx._results["capmeas"].append(dict(key=c.key, id=c.id, f=f, full=isfull, shown=shown, **m))
+            need[f].append(cap_cb)
+        for i in cx.inst:
+            for f in text_fr.get(i.key, []):
+                bb = next(r["bbox"] for r in i.recs if r["f"] == f)
+                def tc_cb(f, yuv, i=i, bb=bb):
+                    person = None
+                    if i.role == "roto": seg_ready(seg_at.get(f))
+                    if i.role == "roto" and f in mattes and cx.aroll_M(f):    # roto text sits behind the presenter: mask the person out
+                        person = cv2.warpAffine(mattes[f], cx.aroll_M(f)[0], (W, H), borderMode=cv2.BORDER_REPLICATE) > 20
+                    cx._results["contrast"].append((i.key, f, text_contrast(yuv, bb, person=person)))
+                need[f].append(tc_cb)
+        # pixel_events (SND-07) reads the low-res luma of graphic frames and the frame before them only
+        low_fr = set()
+        for f in range(1, cx.N):
+            if not cx.is_aroll(f) and not cx.is_aroll(f - 1) and not cx.in_trans(f, .05): low_fr |= {f, f - 1}
+        _tick("decode start")
+        try: cx._results["low"] = decode(cx, need, low_frames=low_fr)
+        finally:
+            for sid in list(by_seg): seg_ready(sid)
+            pex.shutdown(wait=True)
+        _tick("plates + master decoded")
+        cx._results["aroll"].sort(key=lambda r: r["f"])
+        low = cx._results.pop("low"); cx._results["pixel_ev"] = pixel_events(cx, low) if low else []      # SND-07 (gates_sound)
+        save_measurements(cx, pr, video, ck, card_fr, mattes)
     for k in ("errors",):
         if cx._results.get(k): gate("QC-EXTRA", False, f"{len(cx._results[k])} frame measurements failed", "\n".join(cx._results[k][:6]), status="WARN")
+    _tick("decode done")
     safe(gates_captions, ["PLAT-04", "PLAT-05", "PLAT-06", "PLAT-07", "PLAT-08", "PLAT-09", "PLAT-10", "GFX-16"])
     safe(gates_motion, ["MOT-01", "MOT-02", "MOT-03", "MOT-04", "MOT-05", "MOT-07", "MOT-12", "MOT-14"])
     safe(gates_graphics, ["GFX-05", "GFX-08", "GFX-15", "GFX-17", "GFX-20", "GFX-24", "GFX-26"])
@@ -1095,6 +1278,8 @@ def run_extra(pr, video, gate):
     safe(gates_frame_colour, ["FRAME-02", "FRAME-03", "FRAME-04", "FRAME-05", "FRAME-06", "FRAME-10", "COL-03", "COL-04", "COL-05", "COL-06", "COL-07", "COL-08", "COL-09", "COL-10"])
     safe(gate_col12, ["COL-12"])
     safe(gates_timeline, ["CUT-04", "RET-12"])
+    _tick("pre-sound")
     safe(gates_sound, ["SND-07", "SND-08", "SND-09", "SND-11", "SND-13", "SND-22", "SND-23"])
+    _tick("sound done")
     from .sound_gates import gates_senior_sound            # v0.4 WS H: riser resolve + phrase alignment (WARN-only)
     safe(gates_senior_sound, ["SND-32", "SND-33"])

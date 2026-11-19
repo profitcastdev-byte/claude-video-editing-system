@@ -15,7 +15,7 @@
   cves beats [--sync drop|cuts|full] [--apply]          music beats / downbeats / drops -> Edit/beats.json + beat-sync report
   cves mix                                              voice + music + SFX -> Edit/mix.wav + stems
   cves encode                                           single final encode -> Export/<title>.mp4
-  cves qc [--fast] [--video X]                          all measurable gates -> Edit/QC-REPORT.txt (exit 1 on FAIL)
+  cves qc [--fast|--draft] [--video X]                  all measurable gates -> Edit/QC-REPORT.txt (exit 1 on FAIL); --draft: cheap gates, never deliverable
   cves qc --stage story|plan                            early gates: after `cves select` (pauses, stutters, sign-off) / after planning
   cves build                                            render + mix + encode + qc
   cves deliver [--variants 4:5,1:1,cut15] [--only master] [--force-unchecked]   QC-stamped Export/vNNN/ (docs/DELIVERY.md)
@@ -56,7 +56,7 @@ def main(argv=None):
     ie.add_argument("paths", nargs="+", metavar="[PROJECT] FILE"); ie.add_argument("--from", dest="src", choices=["resolve", "kdenlive", "fcpxml", "otio"])
     ie.add_argument("--captions", help="edited subtitles (.srt / .ass) when FILE has none"); ie.add_argument("--dry-run", action="store_true")
     sp.add_parser("mix"); e = sp.add_parser("encode"); e.add_argument("--out")
-    q = sp.add_parser("qc"); q.add_argument("--fast", action="store_true"); q.add_argument("--video"); q.add_argument("--stage", choices=["story", "plan"], help="early gates before rendering")
+    q = sp.add_parser("qc"); q.add_argument("--fast", action="store_true"); q.add_argument("--draft", action="store_true", help="cheap gates only, for iteration: never a delivery stamp (docs/QC.md)"); q.add_argument("--video"); q.add_argument("--stage", choices=["story", "plan"], help="early gates before rendering")
     sp.add_parser("build")
     dv = sp.add_parser("deliver"); dv.add_argument("--variants", help="comma list: ids from edit.yaml variants:, 4:5 / 1:1 / 16:9, cut15, or reframes|hooks|cutdowns|music|end_cards|all"); dv.add_argument("--only", choices=["master"]); dv.add_argument("--force-unchecked", action="store_true"); dv.add_argument("--video"); dv.add_argument("--keep-temp", action="store_true")
     x = sp.add_parser("export", help="resolve|kdenlive|all|selftest [--push] [--no-build] (see docs/CONTROL-MODE.md)"); x.add_argument("target", choices=["resolve", "kdenlive", "all", "selftest"]); x.add_argument("rest", nargs=argparse.REMAINDER)
@@ -268,7 +268,9 @@ def main(argv=None):
         if a.stage in ("story", "plan"):
             if a.stage == "plan": from . import schema; schema.require_valid(pr)    # the same validation `cves build` runs: a plan that passes here builds
             nf, rep = qc.run_stage(pr, a.stage); print(rep); sys.exit(1 if nf else 0)
-        v = a.video or _latest_export(pr); nf, rep = qc.run(pr, v, fast=a.fast); print(rep)
+        v = a.video or _latest_export(pr)
+        if a.draft: nf, rep = qc.run(pr, v, tier="draft"); print(rep); sys.exit(1 if nf else 0)     # no learning from a draft
+        nf, rep = qc.run(pr, v, fast=a.fast); print(rep)
         from . import learn; learn.on_qc(pr); sys.exit(1 if nf else 0)
     elif a.cmd == "deliver":
         from .deliver import deliver
