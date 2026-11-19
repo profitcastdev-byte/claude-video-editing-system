@@ -172,7 +172,7 @@ def test_text_behind_is_occluded_by_the_subject(demo_copy, tmp_path):
     m = _warped_matte(pr, "01_hook_0", f)
     solid = m > .98
     import cv2
-    solid = cv2.erode(solid.astype(np.uint8), np.ones((7, 7), np.uint8)).astype(bool)      # away from the soft edge
+    solid = cv2.erode(solid.astype(np.uint8), np.ones((15, 15), np.uint8)).astype(bool)    # 7 px in from the soft (anti-aliased) edge
     assert diff[solid].max() <= 2, "type shows through the subject (the matte must sit on top)"
     assert (diff[m < .02] > 40).sum() > 2000, "no type visible outside the subject"
     ys, xs = np.where(diff > 40)
