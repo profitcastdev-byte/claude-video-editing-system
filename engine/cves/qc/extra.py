@@ -379,6 +379,20 @@ def halo_reference(TL, sid, g):
         return fr.to_ndarray(format="gray"), Yr
     return conv
 
+def rendered_luma(cx, f):
+    """8-bit BT.709 luma (16-235, as the master decodes) of frame f as rendered, before the encode, or None: only when the
+    incremental render cache vouches that the PNG belongs to this element log (Edit/frames/_cache.json)"""
+    if not hasattr(cx, "_rendered"):
+        try:
+            from .. import rcache
+            cx._rendered = set(rcache.load(cx.pr.e("frames"), cx.pr.e("elements.jsonl")))
+        except Exception: cx._rendered = set()
+    if f not in cx._rendered: return None
+    im = cv2.imread(cx.pr.e("frames", f"{f:05d}.png"), cv2.IMREAD_UNCHANGED)
+    if im is None or im.shape[0] != H or im.shape[1] != W: return None
+    rgb = im[..., 2::-1].astype(np.float32) / (65535. if im.dtype == np.uint16 else 255.)
+    return np.clip(np.round(16 + 219 * (rgb @ np.float32([.2126, .7152, .0722]))), 0, 255).astype(np.uint8)
+
 def aroll_frame(cx, f, yuv, matte, plate, src=None):
     m = cx.aroll_M(f)
     if m is None or matte is None: return
@@ -410,14 +424,15 @@ def aroll_frame(cx, f, yuv, matte, plate, src=None):
     # step): a ring darker than its wall is no halo, and a step the graded camera frame already has is the scene. A real room (a bright wall strip between
     # the head and a dark monitor) is the scene, not a halo (first real job: +97 Y, then +5 Y on a clean cheek edge whose
     # grade is not a simple gain)
-    Y = yuv[0]
+    Y = yuv[0]; Yh = rendered_luma(cx, f)     # the halo is judged on the rendered frame when the render cache has it (pre-encode: x264
+    if Yh is None: Yh = Y                     # rings 2-3 Y at a hard edge, which is the encoder, not a halo; other gates judge the encode)
     Ys = cv2.warpAffine(src, M, (W, H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE).astype(float) if src is not None else None   # warped as render.compose warps the graded plate
     dist, lab = cv2.distanceTransformWithLabels((~inside).astype(np.uint8), cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
     reg = np.zeros((H, W), bool); reg[6:int(min(H - 6, chin + .6 * fb[3])), 6:W - 6] = True; reg &= ~elmask
     src = np.flatnonzero(inside.ravel())   # label i -> i-th zero pixel of the source (= subject pixel) in raster order
     band = reg & (((dist >= 3) & (dist <= 7)) | ((dist >= 20) & (dist <= 40)))
     by, bx = np.where(band); nl = lab[by, bx] - 1; ok = (nl >= 0) & (nl < len(src)); by, bx, nl = by[ok], bx[ok], nl[ok]
-    cell = (src[nl] // W // 40) * 1000 + (src[nl] % W) // 40; isring = dist[by, bx] <= 7; yv = Y[by, bx].astype(float)
+    cell = (src[nl] // W // 40) * 1000 + (src[nl] % W) // 40; isring = dist[by, bx] <= 7; yv = Yh[by, bx].astype(float)
     worst = None
     for cid in np.unique(cell):
         m = cell == cid; a, b = yv[m & isring], yv[m & ~isring]

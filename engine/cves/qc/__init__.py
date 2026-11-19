@@ -395,8 +395,9 @@ def _run(pr, video, tier, fast, draft, DRAFT, bg, _worker):
         if st_ not in ("PASS", "N/A") and det_: lines += ["             " + l for l in det_.splitlines() if l.strip()]
     if draft:        # never Edit/qc.json or QC-REPORT.txt: a draft cannot stand in for the delivery QC (cves deliver, qc_guard)
         lines.append("\nDRAFT QC: not a delivery check. `cves deliver` needs `cves qc`.")
-        open(pr.e("QC-DRAFT.txt"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
-        write_stamp(pr, video, R, fast=True, out=pr.e("qc_draft.json"), tier="draft")
+        dp = (lambda n: os.path.join(pr.work, n)) if getattr(pr, "work", None) else pr.e   # a draft build (Edit/draft/) keeps its own report
+        open(dp("QC-DRAFT.txt"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
+        write_stamp(pr, video, R, fast=True, out=dp("qc_draft.json"), tier="draft")
         return nf, "\n".join(lines)
     open(pr.e("QC-REPORT.txt"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     write_stamp(pr, video, R, fast=fast, tier=tier)     # Edit/qc.json: the machine-readable stamp `cves deliver` and the hook check

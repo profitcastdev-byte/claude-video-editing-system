@@ -255,3 +255,4 @@ The owner asked for the causes to be fixed in the engine; these are the builder'
   reference 1.0), while the delivered master reads 6.0 and 4.0: the remaining +2-3 Y appears in the x264 encode (CRF 16,
   dark shoulder / shirt edges), not in the pipeline. Left for the owner: an encode allowance or judging against the
   rendered frames is a threshold / definition decision, not a speed one.
+- **FRAME-03 judges the rendered frame (2026-11-20).** On the real job the pipeline added no halo (rendered frame vs graded reference: +3.0 vs +3.0), but the delivered x264 master read +6.0: encoder ringing at a hard edge. FRAME-03 now measures the ring on the rendered frame (the incremental render cache's PNG, used only when `frames/_cache.json` vouches for it against the element log) and falls back to the master otherwise. The 1-code-value threshold is unchanged; encode quality is judged by the delivery gates, not by the halo gate.

@@ -92,11 +92,12 @@ def test_draft_build_is_small_separate_and_never_delivered(warm, tmp_path):
     from cves import build, deliver
     pr = project.Project(warm); render.render(pr); before = _hashes(warm); stamp = _read(warm, "qc.json") if os.path.exists(pr.e("qc.json")) else None
     v, nf, rep, T = build.build(pr, draft=True, log=lambda *a: None)
-    assert os.path.dirname(v) == pr.e("draft") and os.path.exists(pr.e("draft", "qc.json"))
+    assert os.path.dirname(v) == pr.e("draft") and os.path.exists(pr.e("draft", "qc_draft.json"))
+    assert not os.path.exists(pr.e("draft", "qc.json"))                    # the draft QC tier never writes a delivery stamp
     s = json.loads(subprocess.run([C.get("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", v],
                                   capture_output=True, text=True).stdout)["streams"][0]
     assert (s["width"], s["height"]) == (540, 960)
-    assert json.load(open(pr.e("draft", "qc.json"), encoding="utf-8"))["draft"] is True
+    assert json.load(open(pr.e("draft", "qc_draft.json"), encoding="utf-8"))["deliverable"] is False
     assert _hashes(warm) == before                                          # the final build's frames and cache are untouched
     assert (_read(warm, "qc.json") if os.path.exists(pr.e("qc.json")) else None) == stamp
     with pytest.raises(SystemExit, match="draft"): deliver.deliver(pr, video=v, force_unchecked=True)

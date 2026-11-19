@@ -49,7 +49,4 @@ def build(pr, draft=False, cache=None, log=print):
         v = EN.encode(pr)
     T["encode"] = time.time() - t
     t = time.time(); nf, rep = qc.run(tgt, v, tier="draft") if draft else qc.run(tgt, v, fast=True); T["qc"] = time.time() - t   # drafts: the draft tier
-    if draft:                                     # the stamp says what it judged: a draft never passes for a master
-        st = tgt.json("qc.json")
-        if isinstance(st, dict): st["draft"] = True; tgt.save_json("qc.json", st)
     return v, nf, rep, T
