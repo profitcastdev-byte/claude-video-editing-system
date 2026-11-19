@@ -20,5 +20,5 @@ include = ["cves*"]
 cves = ["styles/*.yaml", "styles/*.md", "motion/*.js", "motion/*.css", "motion/pieces/*/*"]   # styles/ includes platforms.yaml and viral.yaml
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest==9.2.0", "pytest-xdist==3.8.0", "filelock"]     # `python -m pytest -n auto tests` (CONTRIBUTING.md "Tests")
 motion = ["playwright==1.58.0"]     # HTML motion pieces (docs/MOTION.md); then `python -m playwright install chromium`

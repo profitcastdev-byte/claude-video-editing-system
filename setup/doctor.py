@@ -199,6 +199,18 @@ def check_packages():
             pass
 
 
+def check_dev():
+    """the test runner (contributors and CI only, so WARN, never FAIL): pytest + pytest-xdist for `pytest -n auto`"""
+    want = pins()
+    for mod, name in (("pytest", "pytest"), ("xdist", "pytest-xdist"), ("filelock", "filelock")):
+        try:
+            importlib.import_module(mod); ver = importlib.metadata.version(name); pin = want.get(name)
+            add("dev", name, "WARN" if pin and ver != pin else "PASS", ver + (f" (pinned {pin})" if pin and ver != pin else ""),
+                "pip install -r setup/requirements.txt" if pin and ver != pin else "")
+        except Exception:
+            add("dev", name, "WARN", "not installed: needed only to run the test suite (python -m pytest -n auto tests)", "pip install -r setup/requirements.txt")
+
+
 def check_motion():
     """motion layer: Playwright (pinned) + the Chromium build it drives (docs/MOTION.md)"""
     fix = "python -m playwright install chromium"
@@ -351,6 +363,7 @@ def main(argv=None):
         seen = {"ffmpeg", "ffprobe", "whisper", "deepfilter", "earshot", "whisper_model", "rvm_repo", "rvm_weights", "yunet"}
         check_config_keys(cfg, seen)
     check_packages()
+    check_dev()
     check_motion()
     check_gpu(cfg)
     check_assets()

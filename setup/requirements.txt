@@ -21,6 +21,13 @@ pyyaml==6.0.3
 requests==2.34.2
 playwright==1.58.0             # motion layer: headless Chromium renders the HTML motion pieces (+ `python -m playwright install chromium`)
 
+# Test runner (contributors / CI; `python -m pytest -n auto tests`, CONTRIBUTING.md "Tests"). filelock shares the session demo
+# builds between xdist workers (it is also a torch dependency).
+pytest==9.2.0
+pytest-xdist==3.8.0
+execnet==2.1.2
+filelock==4.2.11
+
 # Timeline export (control mode): OTIO core + the adapters split out of it since 0.16
 opentimelineio==0.18.1
 otio-kdenlive-adapter==0.0.3

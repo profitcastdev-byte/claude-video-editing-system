@@ -172,7 +172,7 @@ if ($needVenv) { Remove-Item -Recurse -Force $Venv -ErrorAction SilentlyContinue
 # torch FIRST from the PyTorch index, so requirements.txt's torch==2.15.0 pin is already satisfied by +cu132 / +cpu
 $idx = if ($HasNvidia) { $TorchCudaIndex } else { $TorchCpuIndex }
 Invoke-Checked $Uv @("pip", "install", "--python", $Py, "--index-url", $idx, "torch==$TorchVer", "torchvision==$TorchVisionVer")
-Invoke-Checked $Uv @("pip", "install", "--python", $Py, "-r", (Join-Path $Repo "setup\requirements.txt"))
+Invoke-Checked $Uv @("pip", "install", "--python", $Py, "-r", (Join-Path $Repo "setup\requirements.txt"))   # incl. pytest + pytest-xdist (pytest -n auto)
 Invoke-Checked $Uv @("pip", "install", "--python", $Py, "-e", (Join-Path $Repo "engine"))
 # [UNTESTED] guard: if the requirements step swapped CUDA torch for the PyPI CPU wheel, put the CUDA one back
 if ($HasNvidia) {

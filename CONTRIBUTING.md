@@ -30,6 +30,14 @@ Not sure it is worth it? Open a GitHub issue first, with a before/after example.
 Asking Claude Code to do it: "make a branch, add <tool> to TOOLS-REGISTRY.md as evaluated with install steps,
 update CHANGELOG.md, and open a PR". Claude must not merge its own PR.
 
+## Tests
+`python -m pytest -n auto tests` runs the suite on every core (pytest-xdist, pinned in `setup/requirements.txt` and
+`engine[test]`). The session demo builds (`make_demo`, its full render, the spine demos) are made once per run for all
+workers under a file lock (`tests/conftest.py`); each worker gets its own copy of the rendered demo to write into.
+Tests that render, mix, encode or QC a demo carry the `e2e` marker (set from the fixtures they use): `-m "not e2e"` is
+the quick loop, and CI runs `unit` and `e2e` as separate jobs on macOS, Windows and Linux. `-p no:xdist` (or no `-n`)
+runs serially, exactly as before. `CVES_DEMO_DIR=<built demo>` reuses a demo you already built.
+
 ## Never commit
 - **Client footage or media**: raw takes, renders, frames, stems, voice files, transcripts of client takes, client
   brand files. They live in `~/CVES Projects/<Client>/...` (or `$CVES_CLIENTS`), outside the repo.
