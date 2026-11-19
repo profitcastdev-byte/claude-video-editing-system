@@ -113,8 +113,9 @@ def parse_name(name):
     return cat.strip().lower(), (inten.strip().lower() or None)
 
 def pick(cands, category, intensity=None, exclude=(), max_s=None, min_s=None, salt=0):
-    """the best manifest entry for a category (+ intensity): closest intensity, then not in `exclude`, then the
-    duration bounds; ties broken by id with a deterministic rotation (`salt`) so repeated picks vary. None if none."""
+    """the best manifest entry for a category (+ intensity): closest intensity, then a real recording over a synthesized
+    sound (SFX-METHOD rule 3), not in `exclude`, within the duration bounds; ties broken by id with a deterministic
+    rotation (`salt`) so repeated picks vary. None if none."""
     pool = [s for s in cands if s.get("category") == category]
     if not pool: return None
     want = INTENSITY.get(intensity or "medium", 2)
@@ -123,8 +124,9 @@ def pick(cands, category, intensity=None, exclude=(), max_s=None, min_s=None, sa
         return (max_s is None or d <= max_s + 1e-6) and (min_s is None or d >= min_s - 1e-6)
     ok = [s for s in pool if fits(s)] or pool
     ex = set(exclude); ok2 = [s for s in ok if s["id"] not in ex] or ok
-    best = min(abs(INTENSITY.get(s.get("intensity"), 2) - want) for s in ok2)
-    top = sorted((s for s in ok2 if abs(INTENSITY.get(s.get("intensity"), 2) - want) == best), key=lambda s: s["id"])
+    rank = lambda s: (abs(INTENSITY.get(s.get("intensity"), 2) - want), "synthesized" in str(s.get("licence", "")))
+    best = min(rank(s) for s in ok2)
+    top = sorted((s for s in ok2 if rank(s) == best), key=lambda s: s["id"])
     return top[salt % len(top)]
 
 def resolve_cues(cues, cands):

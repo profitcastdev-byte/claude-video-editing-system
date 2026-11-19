@@ -178,6 +178,7 @@ graphics gets gates that match:
 | `framing.extreme_max` | FRAME-09 extreme punch-ins |
 | `sound.master_lufs`, `sound.true_peak` | SND-01, SND-02 |
 | `sound.bed_lu` (or `edit.yaml music.bed_lu`) | SND-04 music + SFX bed vs voice |
+| `sound.phrase_tolerance_s` | SND-33 drop section vs the payoff (WARN-only) |
 | `canvas.size` (or `platform.size`), `platform.safe_zone` / `canvas.safe_zones`, `platform.margin`, `platform.duration` | DEL-01, PLAT-01/02, DEL-04 |
 | `platform.target` (styles/platforms.yaml) | PLAT-02 safe zone and caption line, RET-30 duration band, SND-01/02 loudness |
 | `structure.hook_change_s`, `retention.hook_subject_s` | RET-24 hook change, RET-25 hook text / subject (viral) |
@@ -399,6 +400,33 @@ pacing rules the QC gates enforce; null = not enforced for this client
 | `sound.transition_sfx.fade` |  | sound per transition kind (null = none); a whoosh is placed by its peak on the cut (SND-08) |
 | `sound.repeat_pitch_st` | `1` | SND-09: an identical back-to-back cue is pitched +/- this many semitones (alternating, deterministic) |
 | `sound.repeat_gain_db` | `1.5` | ... and its gain moved by -/+ this much |
+| `sound.phrase_tolerance_s` | `0.05` | SND-33: the drop section must start this close to the payoff, s |
+| `sound.accents` |  | automatic risers / impacts on the story moments ([SOUND.md](SOUND.md)); budget `creative.sound_accents_per_30s` |
+| `sound.accents.enabled` | `true` | false (or edit.yaml `sfx.auto: false`) = no automatic accents |
+| `sound.accents.reveals` | `true` | also an impact on reveal cues that carry no low hit of their own |
+| `sound.accents.riser_gain_db` | `-14` | riser level, dB (`sound.sfx_offset_db` applies on top) |
+| `sound.accents.impact_gain_db` | `-11` | impact level, dB (a tagged hero: no offset) |
+| `sound.accents.riser_min_s` | `0.8` | shortest riser; a target with less room before it gets none |
+| `sound.accents.riser_max_s` | `2.2` | longest riser picked from the bank |
+| `sound.accents.riser_tail_max_s` | `0.1` | only risers that resolve: their peak is at most this far from their end |
+| `sound.accents.impact_max_s` | `2.0` | an impact longer than this (a recorded boom) is trimmed to it, s |
+| `sound.accents.min_gap_s` | `0.3` | a riser starts at least this long after the accent before it |
+| `sound.accents.payoff_riser` | `medium` | intensity (soft / medium / hard) of the riser into the payoff |
+| `sound.accents.payoff_impact` | `hard` | intensity of the downbeat hit on the payoff |
+| `sound.accents.hook_riser` | `soft` | intensity of the riser into / out of the hook |
+| `sound.accents.reveal_impact` | `medium` | intensity of the impact on other reveals |
+
+#### `mix`
+
+how the music sits under the voice ([SOUND.md](SOUND.md))
+
+| key | default | meaning |
+|---|---|---|
+| `mix.duck_mode` | `envelope` | envelope (the music gain follows the voice RMS envelope) / gate (the v0.3 fixed dips) |
+| `mix.duck_attack_ms` | `40` | envelope: how fast the music dips when a syllable starts |
+| `mix.duck_release_ms` | `auto` | envelope: how fast it comes back; auto = 1.25 x the measured syllable period, within `mix.duck_release_range_ms` |
+| `mix.duck_release_range_ms` | `[250, 400]` | clamp for the auto release, ms |
+| `mix.duck_range_db` | `30` | envelope: voice this far under its loud level does not duck; full depth (`sound.duck_voice_band_db` / `duck_other_db`) from 6 dB under it |
 
 #### `music`
 
@@ -422,6 +450,15 @@ beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these pe
 | `music.min_aroll_s` | `0.5` | a moved cutaway edge never leaves an A-roll piece shorter than this |
 | `music.sfx_snap` | `["whoosh", "hit", "boom", "riser"]` | full mode: cues whose name contains one of these are nudged to the beat |
 | `music.sfx_snap_max_f` | `1` | full mode: max nudge in frames (SND-07 keeps every SFX within 1 frame of its picture event) |
+| `music.phrase_align` | `true` | drop / cuts / full: prefer the drop whose build starts on the story turn (sections: intro / build / drop / body / break / outro) |
+| `music.phrase_min_bars` | `2` | a music section is at least this many bars |
+| `music.build_min_rise_db` | `2.0` | a build rises at least this much into its drop |
+| `music.build_step_db` | `1.0` | ... and each of its bars at least this much over the bar before |
+| `music.phrase_turn_weight` | `1.0` | drop pick: score points lost per bar between the build start and the turn |
+| `music.hook_beats` | `["H"]` | story beats of the hook (riser into / out of it) |
+| `music.turn_beats` | `["P", "A"]` | story beats of the turn (the build should start here); default: the end of the hook |
+| `music.hook_cut` | `0` | cut s of the hook when > 0 (else from `music.hook_beats`) |
+| `music.turn_cut` | `0` | cut s of the turn when > 0 (else from `music.turn_beats`) |
 
 #### `rhythm`
 
@@ -659,3 +696,4 @@ advisory (not a QC gate). Per-30 s budgets give a video shorter than 30 s one fu
 | `creative.transition_kinds_max` | `2` | distinct transition kinds in one video, cut not counted |
 | `creative.motion_pieces_per_30s` | `6` | animated graphics (cutaways, roto, chest, motion pieces, end card) per 30 s |
 | `creative.accent_colors_max` | `1` | accent colours beyond the text colour and the stage |
+| `creative.sound_accents_per_30s` | `3` | automatic risers + impacts (`sound.accents`) per 30 s of runtime (a shorter video still gets one 30 s allowance) |

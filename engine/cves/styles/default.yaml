@@ -119,7 +119,7 @@ sound:
     riser_min_s: 0.8          # shortest riser; a target with less room before it gets none
     riser_max_s: 2.2          # longest riser picked from the bank
     riser_tail_max_s: 0.1     # only risers that resolve: their peak is at most this far from their end
-    impact_max_s: 2.0         # longest impact picked from the bank
+    impact_max_s: 2.0         # an impact longer than this (a recorded boom) is trimmed to it
     min_gap_s: 0.3            # a riser starts at least this long after the accent before it
     payoff_riser: medium      # intensity (soft | medium | hard) of the riser into the payoff
     payoff_impact: hard       # ... of the downbeat hit on the payoff

@@ -93,9 +93,12 @@ def accents(TL, cues, log=None):
             if s is None or float(s["duration_s"]) > room + 1e-6: rec["status"] = "skipped: no resolving riser in the bank fits the room"; continue
             out.append((tgt - float(s["peak_at_s"]), s["id"], r_gain, {"peak_at": tgt, "accent": "riser", "target": tgt, "beat_snap": False, "why": why}))
         else:
-            s = SFX.pick(cands, "impact", inten, exclude=[taken.get("impact")] if taken.get("impact") else (), max_s=float(A.get("impact_max_s", 2.0)))
+            imx = float(A.get("impact_max_s", 2.0))
+            s = SFX.pick(cands, "impact", inten, exclude=[taken.get("impact")] if taken.get("impact") else ())
             if s is None: rec["status"] = "skipped: no impact in the bank"; continue
-            out.append((tgt, s["id"], i_gain, {"accent": "impact", "target": tgt, "reveal": True, "beat_snap": False, "why": why}))
+            kw = {"accent": "impact", "target": tgt, "reveal": True, "beat_snap": False, "why": why}
+            if float(s["duration_s"]) > imx: kw["trim"] = (0, imx)          # a long recorded boom: its first impact_max_s
+            out.append((tgt, s["id"], i_gain, kw))
         taken[kind] = s["id"]; used.append(tgt); rec.update(status="placed", id=s["id"], intensity=s.get("intensity"))
     return out
 

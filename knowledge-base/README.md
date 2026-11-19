@@ -19,7 +19,7 @@ This is the training base for CVES, the Claude-driven editor of talking-head sel
 | `QA-REVIEW.md` | Senior-editor judgement sheet: first frame → hook → body → CTA → whole-ad passes |
 | `CREATIVE.md` | The senior-editor creative method: creative direction (`Edit/DIRECTION.md`), restraint budget, contrast and rhythm, taste checks, the critique pass |
 | `TASTE.md`, `taste/learned.yaml` | Taste the team approved with `cves learn promote --share` (anonymised); the learned style layer merged after the defaults (docs/LEARNING.md) |
-| `QC-GATES.md` | 181 gate rules, 93 of them measured automatically by `cves qc` (namespaces STORY, RET, CUT, MOT, GFX, FRAME, SND, COL, PLAT, DEL) with an old-id → new-id index |
+| `QC-GATES.md` | 183 gate rules, 95 of them measured automatically by `cves qc` (namespaces STORY, RET, CUT, MOT, GFX, FRAME, SND, COL, PLAT, DEL) with an old-id → new-id index |
 | `DECISIONS.md` | 25 open calls with defaults, plus the calls already resolved by the user's feedback |
 | `modules/` | 9 module files, each with A (per-video dissection) and B (best practices, ad translation, checklist, QA, QC, anti-patterns, conflicts), plus `viral-playbook.md` (organic posts, `goal: viral`: hooks, structures, retention devices, platform norms, trending sounds) |
 | `transcripts/` | One folder per module with the source transcripts (YouTube captions, or local Whisper where captions failed) |
