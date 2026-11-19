@@ -34,9 +34,9 @@ Boundaries are:
 
 | moment | default | set it by hand |
 |---|---|---|
-| hook | the first `music.hook_beats` clip (`[H]`) | `music.hook_cut` |
-| turn | the first `music.turn_beats` clip (`[P, A]`); without one, the end of the hook | `music.turn_cut` |
-| payoff | the drop moment: `music.drop_cut`, else the first `music.drop_beats` clip (`[PR, O]`), else the reveal (the `aroll.snap` punch-in) | `music.drop_cut` |
+| hook | the first `music.hook_beats` clip (default from `grammar.structure`: `[H]`) | `music.hook_cut` |
+| turn | the first `music.turn_beats` clip (default from `grammar.structure`: problem `[P, A]`, offer `[M]`, story `[T]`); without one, the end of the hook | `music.turn_cut` |
+| payoff | the drop moment: `music.drop_cut`, else the first `music.drop_beats` clip (default from `grammar.structure`: problem `[PR, O]`, offer and story `[PR]`), else the reveal (the `aroll.snap` punch-in) | `music.drop_cut` |
 
 **Phrase alignment** (`music.phrase_align: true`) applies in the `drop` / `cuts` / `full` sync modes when `drop_pick` is `auto`. Among the drops that need no silent lead-in, `plan()` prefers the one whose build starts on the turn. The score is the candidate's own score minus `music.phrase_turn_weight` per bar of distance.
 

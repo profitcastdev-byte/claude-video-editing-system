@@ -289,10 +289,30 @@ def run_stage(pr, stage):
     gate = na_gate(gate0, SP.spine_of(pr.edit), True)
     S = STY.load(pr); G_ = S.get("grammar") or {}; Q = pr.edit.get("qc", {}) or {}; step_min = S.get("framing.min_step", 1.15)
     if stage == "story" and not SP.has_voice(SP.spine_of(pr.edit)):
-        for g_ in ("CUT-02", "CUT-03", "STORY-01"): gate(g_, True, f"not applicable: the {SP.spine_of(pr.edit)} spine has no story voice", status="N/A")
+        for g_ in ("CUT-02", "CUT-03", "STORY-01", "STORY-17"): gate(g_, True, f"not applicable: the {SP.spine_of(pr.edit)} spine has no story voice", status="N/A")
     elif stage == "story":
         g = AG.gaps(pr.e("voice_final.wav")); gate("CUT-02", not g, f"{len(g)} gaps > 0.25 s", "\n".join(f"gap at {a:.2f}s {b:.2f}s" for a, b in g))
         st = AG.stutters(pr); gate("CUT-03", not st, f"{len(pr.json('edl.json')['segments'])} kept segments checked verbatim", "\n".join(st))
+        # STORY-17: every chosen word is heard. Each clip's own span of voice_final.wav vs its text: (word recall)
+        from .. import align as AL, ingest as ING_
+        thr = float(Q.get("words_recall_min") or S.get("qc.words_recall_min", .85))
+        try:
+            rows = AL.clip_recall(pr, ING_.whisper_language(pr, S))
+            got = [r for r in rows if r["score"] is not None]; skip = [r["clip"] for r in rows if r["score"] is None]
+            strict = (Q.get("words_edges") if Q.get("words_edges") is not None else S.get("qc.words_edges", True)) is not False
+            edge_ = lambda r: strict and any(r.get("edge") or [])          # a lost first / last word = a clipped take
+            low = [r for r in got if r["score"] < thr or edge_(r)]
+            sk = f"; {len(skip)} clip(s) without text: skipped ({', '.join(map(str, skip))})" if skip else ""
+            if not got:
+                gate("STORY-17", False, f"no clip has text: (add each clip's words to selects.yaml){sk}", status="WARN")
+            else:
+                gate("STORY-17", not low, f"{len(got)} clip(s) heard, lowest word recall {min(r['score'] for r in got):.0%} (>= {thr:.0%}"
+                     f"{', first and last words kept' if strict else ''}){sk}",
+                     "\n".join(f"{r['clip']} ({r['score']:.0%}, cut {r['span'][0]:.2f}-{r['span'][1]:.2f}s): missing {' '.join(r['missing'])}"
+                                f"{' [' + ' and '.join(n for n, e in zip(('first word', 'last word'), r['edge']) if e) + ' lost: clipped take]' if edge_(r) else ''}"
+                                f" | heard: {r['heard'][:100]}" for r in low))
+        except Exception as e:
+            gate("STORY-17", False, f"not measured: {type(e).__name__}: {e}", status="WARN")
         tail = Q.get("brand_tail", [])
         if tail:
             tmp = tempfile.mkdtemp(); tw_ = os.path.join(tmp, "tail.wav")
@@ -308,20 +328,27 @@ def run_stage(pr, stage):
         for s in edl["segments"]:
             L = round((s["out"] - s["in"]) * F) / F; spans.append((beat_of.get(s["clip"]), t, t + L)); t += L
         T = t; tagged = [b for b, _, _ in spans if b]
+        from .. import structure as STR
+        order = STR.beats_of(S); sname = STR.name_of(S) if not G_.get("beats") else (STR.preset_for(order) or "custom")
         if not tagged:
-            gate("STORY-01", False, "no beat tags: add `beat:` (H/P/A/PR/O/C) to each clip in selects.yaml", status="WARN")
+            gate("STORY-01", False, f"no beat tags: add `beat:` ({'/'.join(order)}, structure {sname}) to each clip in selects.yaml", status="WARN")
         else:
-            order = list(G_.get("beats") or ["H", "P", "A", "PR", "O", "C"]); run = []
+            run = []
             for b in tagged:
                 if not run or run[-1] != b: run.append(b)
             present = [b for b in order if b in run]; rank = [order.index(b) for b in run if b in order]
-            ok_order = all(x <= y for x, y in zip(rank[:-1], rank[1:])) or (rank and rank[0] == order.index("PR") and all(x <= y for x, y in zip(rank[1:-1], rank[2:])))
-            gate("STORY-01", set(order) <= set(run) and ok_order, f"beats in order: {' > '.join(run)}", "" if set(order) <= set(run) else f"missing: {', '.join(b for b in order if b not in run)}")
+            ok_order = all(x <= y for x, y in zip(rank[:-1], rank[1:])) or bool("PR" in order and rank and rank[0] == order.index("PR") and all(x <= y for x, y in zip(rank[1:-1], rank[2:])))
+            unknown = sorted({b for b in run if b not in order and b != "X"})
+            gate("STORY-01", set(order) <= set(run) and ok_order, f"beats in order ({sname}: {' > '.join(order)}): {' > '.join(run)}",
+                 "\n".join(x for x in ["" if set(order) <= set(run) else f"missing: {', '.join(b for b in order if b not in run)}",
+                                        f"not in this structure: {', '.join(unknown)} (grammar.structure / grammar.beats)" if unknown else ""] if x))
             first = lambda b: next((a for x, a, _ in spans if x == b), None)
-            pS, prS, oS, cS = first("P"), first("PR"), first("O"), first("C")
-            if pS is not None: gate("STORY-13", pS <= .25 * T, f"problem starts at {pS:.1f} s = {pS / T:.0%} of runtime (<= 25%)")
+            pS, prS, oS, cS, rS = first("P"), first("PR"), first("O"), first("C"), first("R")
+            # each structure gate applies only where its beats are in the order
+            if "P" in order and pS is not None: gate("STORY-13", pS <= .25 * T, f"problem starts at {pS:.1f} s = {pS / T:.0%} of runtime (<= 25%)")
             if prS is not None: gate("STORY-05", prS <= .50 * T, f"proof starts at {prS:.1f} s = {prS / T:.0%} (<= 50%)", status=None if prS <= .5 * T else "WARN")
-            if prS is not None and oS is not None: gate("STORY-07", oS > prS, f"offer/price after the proof ({oS:.1f} s > {prS:.1f} s)")
+            if "O" in order and prS is not None and oS is not None: gate("STORY-07", oS > prS, f"offer/price after the proof ({oS:.1f} s > {prS:.1f} s)")
+            elif "R" in order and prS is not None and rS is not None: gate("STORY-07", rS > prS, f"risk reversal after the proof ({rS:.1f} s > {prS:.1f} s)")
             if cS is not None: gate("STORY-09b", cS >= .80 * T, f"CTA starts at {cS:.1f} s = {cS / T:.0%} (target >= 85%, CALIBRATE)", status="PASS" if cS >= .85 * T else "WARN")
     else:
         from ..render import Timeline

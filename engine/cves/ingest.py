@@ -2,8 +2,8 @@
 Steps (each idempotent, run by `cves ingest --steps a,b` or individually):
   probe           ffprobe every source -> Edit/ingest.json (size, SAR, rotation, VFR, HDR, bit depth, audio)
   transcribe_raw  every source's audio -> Edit/raw_words.json + raw_transcript.txt (Claude reads this to pick selects)
-  select          Edit/selects.yaml (Claude-written; clips may carry `src:`) -> conform plans, DeepFilterNet voice clips,
-                  pause tightening, edl.json, voice stems, voice_chain.json
+  select          Edit/selects.yaml (Claude-written; clips may carry `src:`) -> take alignment of every clip with a `text:`
+                  (cves.align), conform plans, DeepFilterNet voice clips, pause tightening, edl.json, voice stems, voice_chain.json
   conform         per referenced source: rotation, SAR, HDR->SDR tonemap, frame-rate conform, face-aware crop path
   words           voice_final.wav -> words.json (cut-time word timings for captions and cues)
   plate           one lossless 10-bit FFV1 decode per segment, conform filters applied in that single decode
@@ -430,6 +430,8 @@ def select(pr):
     order = sorted(set(srcs.values()), key=lambda s: (s != primary(pr), s))
     fr, _plans = conform_sources(pr, order, S); fps = float(fr)
     audio = {s: _extract_audio(pr, s) if (s != primary(pr) or not os.path.exists(pr.e("raw_audio.wav"))) else pr.e("raw_audio.wav") for s in order}
+    from . import align as AL       # take alignment: re-time each clip with a text: field from a local word-level transcript
+    AL.align_clips(pr, clips, srcs, S)
     with ThreadPoolExecutor(4) as ex: dfs = list(ex.map(lambda c: _df_clip(pr, c, audio[srcs[c["id"]]]), clips))
     segments = []
     for c, dfp in zip(clips, dfs):

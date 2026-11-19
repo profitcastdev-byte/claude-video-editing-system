@@ -68,8 +68,8 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 
 | file | written by | content |
 |---|---|---|
-| `selects.yaml` | Claude / human | source clips (`src` per clip for multi-source), in/out, `beat:` tag |
-| `edl.json` | ingest | fps, fps_rational, size, clips, segments (f0, n, in, out, src); non-aroll spines: `spine`, `duration`, `segments: []` (voiceover: `vo_kept`) |
+| `selects.yaml` | Claude / human | source clips (`src` per clip for multi-source), in/out, `beat:` tag (from the style's `grammar.structure`), `text:` (the clip's spoken words: take alignment and STORY-17 need it), optional `align: false` |
+| `edl.json` | ingest | fps, fps_rational, size, clips (selects.yaml clips with their aligned in/out and `aligned: {in, out, score, status, hand: [in, out]}`), segments (f0, n, in, out, src); non-aroll spines: `spine`, `duration`, `segments: []` (voiceover: `vo_kept`) |
 | `ingest.json` | ingest | per source: probe (w, h, fps, rotation, hdr, sar), conform applied, plate_scale; top level: canvas, fps_rational, plate_scale (max), language_detected. See [INGEST.md](INGEST.md) |
 | `voice_chain.json` | ingest | `{"steps": [{"name", "generative": bool, "params"}]}` (SND-30 reads it) |
 | `words.json` | ingest | `[[t0, t1, word]]` in cut time; language from `edit.yaml project.language` > `captions.language` (`auto` = detect) |

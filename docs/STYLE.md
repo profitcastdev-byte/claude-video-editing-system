@@ -175,7 +175,9 @@ graphics gets gates that match:
 | `grammar.max_cutaway_s` | RET-22 / RET-22b longest stretch without the face |
 | `grammar.face_on_first_frame` | RET-13 face on frame 0 (only when true) |
 | `grammar.roto_max` | GFX-25 behind-the-head moments |
-| `grammar.beats` | story-stage beat order |
+| `grammar.structure`, `grammar.beats` | STORY-01 beat order (STORY-07 / STORY-13 apply only where their beats exist), the beat labels, the music hook / turn / drop beats |
+| `qc.words_recall_min`, `qc.words_edges` (or the same `edit.yaml qc:` keys) | STORY-17 word recall of each clip's `text:`, and its first / last word |
+| `story.align*` | take alignment in `cves select` (not a gate; its result is in `edl.json` clips `aligned:`) |
 | `framing.min_step` | CUT-05 scale change at every direct A-roll cut |
 | `framing.extreme_max` | FRAME-09 extreme punch-ins |
 | `sound.master_lufs`, `sound.true_peak` | SND-01, SND-02 |
@@ -392,7 +394,31 @@ pacing rules the QC gates enforce; null = not enforced for this client
 | `grammar.roto_max` | `4` | behind-the-head moments per video (GFX-25) |
 | `grammar.face_on_first_frame` | `false` | frame 0 must show the presenter (RET-13) |
 | `grammar.topic_by_s` | `2.0` | topic keyword spoken / shown by this time, s (RET-01/12) |
-| `grammar.beats` | `["H", "P", "A", "PR", "O", "C"]` | story beat order the story gates expect (hook problem agitate proof offer cta) |
+| `grammar.structure` | `problem` | the story structure, `cves.structure`: `problem` H P A PR O C (hook, problem, agitation, proof, offer, CTA), `offer` H M PR R C (hook / promise, mechanism, proof, risk reversal, CTA), `story` H S T PR C (hook, setup, turn, proof, CTA), `custom` (= `grammar.beats`). Sets the STORY-01 order, the labels and the music beats |
+| `grammar.beats` | `null` | an explicit beat order; overrides the structure's (e.g. `[H, M, PR, R, C]`). null = from `grammar.structure` |
+
+#### `story`
+
+the story step: take alignment in `cves select` (`cves.align`, [INGEST.md](INGEST.md) "Take alignment")
+
+| key | default | meaning |
+|---|---|---|
+| `story.align` | `true` | re-time every `selects.yaml` clip that has `text:` from a local word-level transcript (per clip: `align: false`) |
+| `story.align_window_s` | `1.5` | transcribe `in` - this .. `out` + this around each clip (narrowed / widened per pass) |
+| `story.align_passes` | `3` | windows per clip; their edge estimates are pooled (median, or the one nearest the hand time when they disagree) |
+| `story.align_min_score` | `0.8` | a fuzzy match of `text:` to the heard words below this keeps the hand times (and warns) |
+| `story.align_pad_s` | `[0.04, 0.08]` | pad before the first word / after the last word, kept inside the pause |
+| `story.align_search_s` | `0.5` | how far an edge looks for a pause beyond the word estimate, s |
+| `story.align_quiet_db` | `12` | a pause is quieter than the window's noise floor (10th percentile) + this, dB |
+
+#### `qc`
+
+story-stage thresholds (an `edit.yaml qc:` key of the same name wins for one video)
+
+| key | default | meaning |
+|---|---|---|
+| `qc.words_recall_min` | `0.85` | STORY-17: share of each clip's `text:` words heard in its own span of `voice_final.wav` |
+| `qc.words_edges` | `true` | STORY-17 also fails a clip whose first or last `text:` word is not heard (the signature of a clipped take), whatever its recall |
 
 #### `sound`
 
@@ -459,7 +485,7 @@ beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these pe
 | `music.beats_per_bar` | `4` | bar length for bar-line edits |
 | `music.tempo_range` | `[60, 150]` | BPM range the detected tempo is folded into (double/half-time fix); e.g. [120, 190] for drum & bass |
 | `music.snap_tolerance_s` | `0.12` | cuts mode: a cut point / graphic entry moves only to a beat this close |
-| `music.drop_beats` | `["PR", "O"]` | default drop moment: first clip tagged with one of these story beats (music.drop_cut > 0 wins) |
+| `music.drop_beats` | `null` | drop moment: first clip tagged with one of these story beats (music.drop_cut > 0 wins); null = from `grammar.structure` (problem `[PR, O]`, offer and story `[PR]`) |
 | `music.drop_pick` | `auto` | auto (strongest drop candidate that needs no silent lead-in) / an index into beats.json drops |
 | `music.drop_min_rise_db` | `3.0` | a drop candidate's next 2 bars are this much louder than the 4 before |
 | `music.loop_xfade_s` | `0.08` | equal-power crossfade on a loop seam (seams sit on downbeats) |
@@ -475,8 +501,8 @@ beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these pe
 | `music.build_min_rise_db` | `2.0` | a build rises at least this much into its drop |
 | `music.build_step_db` | `1.0` | ... and each of its bars at least this much over the bar before |
 | `music.phrase_turn_weight` | `1.0` | drop pick: score points lost per bar between the build start and the turn |
-| `music.hook_beats` | `["H"]` | story beats of the hook (riser into / out of it) |
-| `music.turn_beats` | `["P", "A"]` | story beats of the turn (the build should start here); default: the end of the hook |
+| `music.hook_beats` | `null` | story beats of the hook (riser into / out of it); null = from `grammar.structure` (`[H]`) |
+| `music.turn_beats` | `null` | story beats of the turn (the build should start here); null = from `grammar.structure` (problem `[P, A]`, offer `[M]`, story `[T]`); none tagged: the end of the hook |
 | `music.hook_cut` | `0` | cut s of the hook when > 0 (else from `music.hook_beats`) |
 | `music.turn_cut` | `0` | cut s of the turn when > 0 (else from `music.turn_beats`) |
 

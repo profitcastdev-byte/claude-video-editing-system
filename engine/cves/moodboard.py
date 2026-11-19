@@ -150,7 +150,8 @@ def moodboard(pr):
     # ---------------- EDIT-PLAN.html (the user's plan)
     W_ = 1000; px = lambda t: t / T * W_
     beat_of = {c["id"]: c.get("beat") for c in (pr.json("edl.json") or {}).get("clips", [])}
-    BEATC = {"H": "#ff9f43", "P": "#ff6b6b", "A": "#c56cf0", "PR": "#19e6a0", "O": "#54a0ff", "C": "#feca57"}
+    from . import structure as STR
+    BEATC = STR.COLORS
     lanes = [("Beats", "beat"), ("Shots", "shot"), ("Framing", "zoom"), ("Roto", "roto"), ("Chest", "chest"), ("Captions", "caption"), ("Transitions", "trans"), ("SFX", "sfx"), ("Music", "music")]
     lane_y = {name: 22 + i * 26 for i, (name, _) in enumerate(lanes)}; H_ = 22 + len(lanes) * 26 + 24
     svg = [f'<svg viewBox="0 0 {W_ + 90} {H_}" class="tl" role="img" aria-label="timeline">']
@@ -162,7 +163,7 @@ def moodboard(pr):
                    + (f'<text x="{X(a) + 3:.1f}" y="{y + 13}" class="bl">{html.escape(label[:max(0, int(w / 6))])}</text>' if label and w > 24 else "") + "</g>")
     for s_ in TL.segs:
         bt = beat_of.get(s_["clip"])
-        if bt: rect("Beats", s_["t0"], s_["t1"], BEATC.get(bt, "#888"), bt, f"{bt}: {s_['clip']}")
+        if bt: rect("Beats", s_["t0"], s_["t1"], BEATC.get(bt, "#888"), bt, f"{bt} {STR.label(bt)}: {s_['clip']}")
     for i, sh in enumerate(S, 1):
         k = sh["kind"]; col = TRACK_COLORS["cutaway" if k == "cutaway" else "end" if k == "end" else "broll" if k == "broll" else "aroll"]
         rect("Shots", sh["start"], sh["end"], col, f"{i}", f"#{i} {describe(sh)}")
@@ -190,7 +191,7 @@ def moodboard(pr):
         if sh["kind"] in ("cutaway", "broll"):   # a cutaway sits on the beat of the voice under it
             mid = (sh["start"] + sh["end"]) / 2; sseg = next((x for x in TL.segs if x["t0"] <= mid < x["t1"]), None)
             sh["beat"] = beat_of.get(sseg["clip"], "") if sseg else ""
-        rows = [("Beat", {"H": "Hook", "P": "Problem", "A": "Agitation", "PR": "Proof", "O": "Offer", "C": "CTA"}.get(sh.get("beat") or "", "–")),
+        rows = [("Beat", STR.label(sh.get("beat")) or "–"),
                 ("Spoken", html.escape(sh["words"]) or "–"), ("On screen", html.escape(describe(sh)).replace("`", "")),
                 ("Transitions", f"{sh['trans_in']} → {sh['trans_out']}"), ("Captions", html.escape(" / ".join(sh["captions"])) or "–"), ("Sound", sfx)]
         kind = {"aroll": "A-roll", "cutaway": "Cutaway", "end": "End card", "broll": "B-roll", "gap": "Gap"}[sh["kind"]]

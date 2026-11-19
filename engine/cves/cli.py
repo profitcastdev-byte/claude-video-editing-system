@@ -1,7 +1,7 @@
 """cves: the Claude Video Editing System CLI. Run any command inside a client project folder (or pass --project).
   cves new "<Client>" "<Video title>" --raw <file>     create the project folders + edit.yaml
   cves ingest [--steps transcribe_raw]                  raw transcript for the story step (Claude writes Edit/selects.yaml)
-  cves select                                           selects.yaml -> tightened edl.json + clean voice (DeepFilterNet + chain)
+  cves select [--align-only]                            selects.yaml -> take alignment, tightened edl.json + clean voice (DeepFilterNet + chain)
   cves prep                                             words + plate + matte + faces (after select)
   cves story                                            print the raw transcript (Claude writes Edit/selects.yaml from it) and the current segments
   cves inspire [--refs DIR] [--dry-run] [--mix grade=refA,pacing=refB]   reference edits (Inspirations/) -> Edit/style.yaml + Edit/inspire/REPORT.md
@@ -48,7 +48,7 @@ def main(argv=None):
     sp = ap.add_subparsers(dest="cmd", required=True)
     n = sp.add_parser("new"); n.add_argument("client"); n.add_argument("title"); n.add_argument("--raw"); n.add_argument("--root")
     i = sp.add_parser("ingest"); i.add_argument("--steps", default="transcribe_raw")
-    sp.add_parser("select"); sp.add_parser("prep"); sp.add_parser("story"); sp.add_parser("plan"); sp.add_parser("moodboard")
+    sl = sp.add_parser("select"); sl.add_argument("--align-only", action="store_true", help="print the take alignment of selects.yaml and stop (no voice, no edl.json)"); sp.add_parser("prep"); sp.add_parser("story"); sp.add_parser("plan"); sp.add_parser("moodboard")
     r = sp.add_parser("render"); r.add_argument("--only", help="comma list: cutaway / segment / roto.N / chest.N / end_card ids, 12.5-14.0 (s), 300-420 (frames)"); r.add_argument("--mode", default="final"); r.add_argument("--out")
     ctl = sp.add_parser("control", help="update [PROJECT] --only <ids>: re-render just those control-mode layers + refresh layers.json")
     ctl.add_argument("action", choices=["update"]); ctl.add_argument("dir", nargs="?"); ctl.add_argument("--only", required=True)
@@ -208,13 +208,24 @@ def main(argv=None):
     if a.cmd == "ingest":
         from . import ingest; ingest.run_all(pr, a.steps.split(",")); print(f"read {pr.e('raw_transcript.txt')} and write {pr.e('selects.yaml')}")
     elif a.cmd == "select":
-        from . import ingest; n_, t_ = ingest.select(pr); print(f"{n_} segments, {t_:.2f} s; voice -> Edit/voice_final.wav")
+        from . import ingest
+        if a.align_only:
+            from . import align as AL
+            cl = ingest._clips(pr); AL.align_clips(pr, cl, {c["id"]: ingest.norm_src(pr, c.get("src")) for c in cl}, ingest._S(pr)); return
+        n_, t_ = ingest.select(pr); print(f"{n_} segments, {t_:.2f} s; voice -> Edit/voice_final.wav")
     elif a.cmd == "prep":
         from . import ingest; ingest.run_all(pr, ["words", "plate", "matte", "faces"])
     elif a.cmd == "story":
         print(open(pr.e("raw_transcript.txt"), encoding="utf-8").read() if os.path.exists(pr.e("raw_transcript.txt")) else "run `cves ingest` first")
+        from . import structure as STR, style as STY
+        S_ = STY.load(pr); G_ = S_.get("grammar.beats")
+        print(f"structure: {STR.preset_for(STR.beats_of(S_)) or 'custom' if G_ else STR.name_of(S_)}  beats: {STR.legend(S_)}  (X = cut)"
+              f"  [style grammar.structure: {' | '.join(STR.NAMES)}; grammar.beats overrides]")
         if os.path.exists(pr.e("edl.json")):
-            for s in pr.json("edl.json")["segments"]: print(f"  {s['id']:20s} {s['in']:8.2f} - {s['out']:8.2f}")
+            edl_ = pr.json("edl.json"); cl_ = {c["id"]: c for c in edl_.get("clips", [])}
+            for s in edl_["segments"]:
+                c_ = cl_.get(s.get("clip"), {}); b_ = c_.get("beat") or ""
+                print(f"  {s['id']:20s} {s['in']:8.2f} - {s['out']:8.2f}  {b_:3s} {STR.label(b_):14s} {(c_.get('text') or '')[:60]}")
     elif a.cmd == "plan":
         from . import templates as T
         E = pr.edit
