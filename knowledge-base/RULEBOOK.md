@@ -1,6 +1,6 @@
 # CVES Rulebook
 
-Read this file first in every editing session, together with `knowledge-base/EDIT-STANDARD.md` (ES) and the client's style profile (`STYLE.md`, `Edit/style.yaml`; schema in `docs/STYLE.md`). It covers talking-head selfie videos and ads (typically 30–60 s paid social ads such as Meta Reels), designed at 1080×1920 for 9:16; other ratios are reframes of that master.
+Every editing session loads the short [`RULEBOOK-CORE.md`](RULEBOOK-CORE.md) (the hard rules, and which section of this file to read at each step). Read this whole file for a new client's first edit and before changing a rule, gate or template; otherwise read the section of the step you are on. Use it with `knowledge-base/EDIT-STANDARD.md` (ES) and the client's style profile (`STYLE.md`, `Edit/style.yaml`; schema in `docs/STYLE.md`). It covers talking-head selfie videos and ads (typically 30–60 s paid social ads such as Meta Reels), designed at 1080×1920 for 9:16; other ratios are reframes of that master.
 
 **Precedence.** (1) **USER**: corrections the user has confirmed (ES, plus the auto-memory feedback notes). (2) **STYLE**: the client's style profile, for every per-client choice (palette, grade, captions, transition kinds, pacing bands, bed level). (3) **ES**: the edit standard. (4) Module rules from the curriculum videos, cited by video id `[x.y]` or module section `[5 B.7]`. When sources conflict, the higher one wins. Open conflicts are in `DECISIONS.md` (marked **(D)** here); their recommended default applies until the user answers.
 
@@ -140,7 +140,7 @@ Read this file first in every editing session, together with `knowledge-base/EDI
 - Watch four times on a phone: sound on, sound off, with the Reels UI overlay, and with fresh eyes. Render a review copy with a click on every cut (never in the delivery file). [2.1, 9.4, 6.2, 2.5]
 
 ## 11. Feedback loop
-- Every note from the user becomes a rule here or in ES, or a value in the client's style profile, plus a gate, so the same mistake cannot recur. [USER]
+- Every note from the user becomes a rule here or in ES, or a value in the client's style profile, plus a gate, so the same mistake cannot recur. A hard rule also gets its one line in `RULEBOOK-CORE.md`. [USER]
 - When a section feels wrong, look for the cause upstream first. [2.1]
 - Don't re-cut what already passed. Change only failed gates or noted items. [6.6]
 - Recalibrate the CALIBRATE gates on the inspiration edits, then on Meta retention and hold-rate data. Re-baseline the colour gates whenever a client's look is re-approved. [4.4, 6 B.7#8, 9 B.7#9, 8 B.5]

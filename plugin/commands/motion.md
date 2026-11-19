@@ -5,19 +5,12 @@ allowed-tools: Bash, Read, Glob, Grep
 ---
 
 # /cves:motion: preview motion pieces
+Arguments: `$ARGUMENTS` (piece, optional params JSON, optional size). Choosing: `skills/video-editor/reference/motion.md`, `docs/MOTION.md`.
 
-Arguments: `$ARGUMENTS` (a piece name, optional params JSON, optional size). Follow the `video-editor` skill (section "Motion pieces") and `docs/MOTION.md`.
+1. `cves motion list`: pieces, kinds, params (`!` = required), hero or not (`cves templates <name>` for one piece's docs).
+2. `cves motion preview <piece> --params '<JSON>' --size <WxH> --out <Moodboard/motion-<piece>.png>` (`--project .` in a project: its style + `Brand/motion/` pieces). Size defaults to the canvas; check delivery and variant aspects (`1080x1920`, `1920x1080`). `--params` times are piece-relative (edit.yaml: cut time). `--at 2.0` one full frame; `--out clip.mp4` the motion; `--bg video` over a mid-tone footage stand-in (legibility worst case).
+3. Read the PNG once (one sheet per piece and size): type not cramped / clipped, in the safe zone, readable contrast, build order reads, nothing pops in.
 
-## Run
-1. `cves motion list` (inside a project, add `--project .` to `preview` to use its style and `Brand/motion/` pieces): every piece, its kinds, params (`!` = required) and whether it is a hero piece.
-2. `cves motion preview <piece> --params '<JSON>' --size <WxH> --out <Moodboard/motion-<piece>.png>`:
-   - the size defaults to the style's canvas; check both the delivery aspect and any variant aspect (e.g. `1080x1920` and `1920x1080`);
-   - times in `--params` are piece-relative seconds (in edit.yaml they are cut-time seconds);
-   - `--at 2.0` writes one full-size frame instead of the contact sheet; `--out clip.mp4` writes the motion (ffmpeg from the CVES config);
-   - `--bg video` previews an overlay over a mid-tone stand-in for footage (the legibility worst case).
-3. Read the PNG once (images are expensive: one contact sheet per piece and size). Check: type not cramped or clipped, inside the safe zone, readable contrast, the build order reads, nothing pops in.
+Chromium missing: `python -m playwright install chromium` in the CVES venv (or re-run the installer).
 
-If Chromium is missing the command says so: run `python -m playwright install chromium` in the CVES venv (or re-run the installer).
-
-## Show the user
-Only when they asked to see options: the contact sheet path(s) and one line per piece on why it fits the beat.
+**Show** (only if they asked for options): sheet path(s), one line per piece on why it fits the beat.
