@@ -216,6 +216,16 @@ def on_import(pr, E0, rep, dry_run=False):
 def on_critique(pr, version, video):
     append(pr, "critique", version=version, video=os.path.basename(video))
 
+# ---- WS F: review loop (docs/REVIEW.md): each round, the safe patches applied, and Claude's sign-off (what was still wrong)
+@_safe
+def on_review(pr, rec): append(pr, "review", **rec)
+
+@_safe
+def on_review_apply(pr, rec): append(pr, "review-apply", **rec)
+
+@_safe
+def on_review_signoff(pr, rec): append(pr, "review-signoff", **rec)
+
 
 # ======================================================================== mining
 def project_roots(root):
