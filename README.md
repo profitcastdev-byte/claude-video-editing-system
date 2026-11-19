@@ -34,6 +34,8 @@ cves --project ~/CVES-demo build
 ```
 This builds a synthetic project (a drawn presenter, a synthesised voice, a generated music bed; no real person or licensed media) and renders, mixes, encodes and QCs it. The demo's presenter is drawn, so the face-detection gates that re-detect on the final file report on it; everything else is a normal edit.
 
+**Editors: start with [EDITORS.md](EDITORS.md)** (install, the 7-step workflow, team setup, fast commands).
+
 ## Install (Mac Apple Silicon or Windows 10/11)
 You need Claude Code. In Claude Code:
 ```

@@ -7,7 +7,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        os: [macos-latest, windows-latest, ubuntu-24.04]
         # the suite split by marker (tests/conftest.py): unit = everything that does not render a demo; e2e = render /
         # mix / encode / QC of the demo projects. Both run in parallel on pytest-xdist (-n auto, demo builds shared)
         suite: [unit, e2e]

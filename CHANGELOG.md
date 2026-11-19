@@ -3,7 +3,10 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
-## [Unreleased]
+## [0.5.0] - 2026-11-20
+
+### CI
+- The Linux job runs on `ubuntu-24.04`: `ubuntu-latest` moved to Ubuntu 26.04, which Playwright 1.58 cannot install Chromium on.
 
 ### Added (team)
 - **Team taste layer**: `team_taste:` in `~/.cves/config.yaml` (or `$CVES_TEAM_TASTE`) points every editor at one shared folder; `cves learn promote <id> --team` shares an approved lesson with the whole team (client scopes allowed, who/when recorded); merged between the repo and personal layers.
