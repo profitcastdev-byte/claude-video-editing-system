@@ -8,7 +8,7 @@ machine without whisper, RVM or DeepFilterNet (CI uses it; teammates can use it 
 
 --kind picks the timeline spine (docs/FORMATS.md); --size the canvas (style canvas.size, written to edit.yaml style:).
 --edit legacy (aroll kind, full script) uses tools/demo_edit_legacy.yaml: the v0.2 UI cutaways (card_list, stat,
-browser_list) and roto cards (map_card, big_words), which lay out per canvas shape.
+browser_list) and roto cards (map_card, top3_card), which lay out per canvas shape.
   aroll      (default) the drawn presenter below
   voiceover  a synthetic VO as the spine (Assets/vo.wav, registered) + a broll: track of drawn clips cut on the words
   music      no voice: a synthetic 100 BPM track drives the cut; the broll: track comes from `cves autocut` (on the bars)

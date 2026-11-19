@@ -426,7 +426,7 @@ def gates_captions(cx, gate):
     off = lambda f: min(np.abs(np.array(f[:3], float) - want).max(), np.abs(np.array(f[:3], float) - want_hi).max()) > 40
     nonwhite = [f"{m['id']} fill {[round(v) for v in m['fill']]} vs style {cx.CS.get('color', '#FFFFFF')}" for m in ms if off(m["fill"])]
     noshadow = [f"{m['id']} shadow {m['shadow']:+.1f}" for m in ms if cx.CS.get("shadow", True) and m["shadow"] is not None and m["shadow"] < 2]
-    plate = [f"{m['id']} layer extends {m['margin']} px past the ink" for m in ms if cx.CS.get("style") != "box" and m["margin"] > 26]
+    plate = [f"{m['id']} layer extends {m['margin']} px past the ink" for m in ms if cx.CS.get("style") != "box" and m["margin"] > 26 * max(1., U_)]   # px at a 1080 short side (the caption shadow scales by U)
     bad += nonwhite + noshadow + plate
     caph = [m["cap_h"] for m in ms if m["cap_ok"]]
     if cx._results.get("cap_unmeasured"): bad_note = f" ({len(cx._results['cap_unmeasured'])} events only on transition frames: not measured)"

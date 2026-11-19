@@ -132,8 +132,12 @@ def card_list(t, p, ctx):
         (x, y) = pos[k]; st = it.get("state"); sa = it.get("state_at", it["at"] + .25)
         sp = G.enter(t, sa, .25, F)
         out.append(El(faded(lambda d, x=x, y=y, it=it, pp=pp, st=st, sp=sp: G.card_row(d, x - slide * (1 - pp), y, cw, 124 * s, it.get("icon"), G.tidy(it["title"]), G.tidy(it.get("sub")) or None,
-                                                                                         st if (st and sp > 0) else None, 1, sp, sc=s), pp),
-                      f"list.item{k}", "cutaway", text=G.tidy(f"{it['title']} {it.get('sub') or ''}"), t_key=Q(it["at"]), asset=it.get("icon")))
+                                                                                         st if (st and sp > 0) else None, 1, sp, sc=s, draw_icon=False), pp),
+                      f"list.item{k}", "cutaway", text=G.tidy(f"{it['title']} {it.get('sub') or ''}"), t_key=Q(it["at"])))
+        if it.get("icon") and G.icon_file(it["icon"]):       # the icon is its own element: QC sees its real size (MOT-14), not the row's
+            def ico(d, x=x, y=y, it=it, pp=pp):
+                g = 90 * s; c = x - slide * (1 - pp) + 17 * s + g / 2; G.icon(d, it["icon"], c, y + 17 * s + g / 2, g * .52)
+            out.append(El(faded(ico, pp), f"list.item{k}.icon", "cutaway", t_key=Q(it["at"]), asset=it.get("icon")))
     if pB > 0: out.append(El(faded(lambda d: G.brackets(d, box, L=46 * s, w=3 * s), pB), "list.brackets", "cutaway"))
     return out
 

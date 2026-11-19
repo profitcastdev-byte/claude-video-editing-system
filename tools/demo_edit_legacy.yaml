@@ -28,21 +28,19 @@ cutaways:
       unit_at: "{start:03_proof+1.9}"
   - id: c3
     template: browser_list
-    start: "{start:04_offer+0.6}"
+    start: "{start:04_offer+0.1}"
     end: "{end:04_offer}"
-    snap: false
     params:
-      head: [["This", "{start:04_offer+0.6}"], ["engine", "{start:04_offer+0.8}"], ["edits", "{start:04_offer+1.0}", true]]
-      enter: "{start:04_offer+0.6}"
-      hero_at: "{start:04_offer+0.9}"
+      head: [["This", "{start:04_offer+0.1}"], ["engine", "{start:04_offer+0.4}"], ["edits", "{start:04_offer+0.7}", true]]
+      enter: "{start:04_offer+0.1}"
+      hero_at: "{start:04_offer+0.5}"
       rows:
-        - {text: "Tight cuts", at: "{start:04_offer+1.1}", icon: event}
-        - {text: "Readable captions", at: "{start:04_offer+1.35}", icon: chat}
-        - {text: "Sound design", at: "{start:04_offer+1.6}", icon: star}
+        - {text: "Tight cuts", at: "{start:04_offer+0.8}", icon: event}
+        - {text: "Readable captions", at: "{start:04_offer+1.1}", icon: chat}
+        - {text: "Sound design", at: "{start:04_offer+1.4}", icon: star}
 roto:
   - {segment: 01_hook_0, template: map_card, params: {at: "{start:01_hook+0.3}", pins: 4, pins_at: "{start:01_hook+0.9}"}}
-  - {segment: 05_cta_0, template: big_words, params: {color: card, accent_color: "#123A8C",     # dark type: the drawn wall behind the head is light (GFX-15)
-                                                      words: [["TRY", "{start:05_cta+0.3}"], ["IT", "{start:05_cta+0.55}"], ["TODAY", "{start:05_cta+0.8}", true]]}}
+  - {segment: 05_cta_0, template: top3_card, params: {at: "{start:05_cta+0.2}", rows_at: "{start:05_cta+0.8}"}}
 end_card:
   template: end_card
   duration: 2.0

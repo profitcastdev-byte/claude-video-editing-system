@@ -126,3 +126,7 @@ synthetic references (tests/test_inspire_v2.py) and on four real reference reels
 - **Mix and match**: a dimension whose references agree at consistency ≥ 0.6 is pooled; below that ONE reference is picked (rank × weight × distinctiveness × confidence) instead of an average (`inspire_mix.AGREE`). A pick the person forced (`--mix`, `refs.yaml use:`) is written down to confidence 0.2 (`FORCED_MIN_CONF`).
 - **Aesthetics** (grain, tone curve, saturation, temperature, vignette, letterbox, aspect) are notes in `_inspire.aesthetics`, not style keys: no added grain stays the rule (above), and the canvas is the brief's call.
 
+
+## v0.4 weak spots (2026-11-19, builder's call for WS J)
+- **PLAT-10 plate margin** is 26 px **at a 1080 short side** (`26 * max(1, U)`), like the cap-height line next to it. The caption shadow (blur and offset) already scales by `U`, so on a 3840x2160 master the unscaled 26 px flagged every caption (29 px) with no plate. Identical at 1080 and below.
+- **GFX-15 sampling**: text contrast is measured on frames whose bbox is static on both sides (as GFX-08), not just against the previous frame. Thresholds unchanged.

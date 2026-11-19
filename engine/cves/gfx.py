@@ -388,14 +388,14 @@ def brackets(d, box, L=46, col=None, w=3):
     for (x, y, sx, sy) in ((x0, y0, 1, 1), (x1, y0, -1, 1), (x0, y1, 1, -1), (x1, y1, -1, -1)):
         d.line((x, y, x + sx * L, y), fill=col, width=w); d.line((x, y, x, y + sy * L), fill=col, width=w)
 
-def card_row(d, x, y, w, h, icon_kind, title, sub, st, p_in, p_state, label_font=None, sc=1.0):
+def card_row(d, x, y, w, h, icon_kind, title, sub, st, p_in, p_state, label_font=None, sc=1.0, draw_icon=True):
     """One UI row card. p_in: entry progress (handled by caller via offset/alpha); p_state: check/cross pop.
     sc scales the inner px (padding, type, radius, mark) with the row: h is usually 124 * sc"""
     rrect(d, (x, y, x + w, y + h), 22 * sc, fill=CARD + (240,), outline=CARD_B, width=3 * sc)
     p = 17 * sc; s = h - 2 * p; tx = x + 34 * sc
     if icon_kind:
         rrect(d, (x + p, y + p, x + p + s, y + p + s), 14 * sc, fill=WELL)
-        icon(d, icon_kind, x + p + s / 2, y + p + s / 2, s * .52)
+        if draw_icon: icon(d, icon_kind, x + p + s / 2, y + p + s / 2, s * .52)
         tx = x + p + s + 28 * sc
     f1 = label_font or font("b", 34 * sc); f2 = font("b", 34 * sc)
     room = (x + w - (100 if st else 34) * sc) - tx
