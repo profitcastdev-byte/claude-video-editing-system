@@ -268,6 +268,7 @@ def craft_overlay(out, kind, fps, st=None, en=None):
         p0, p1, o0, c0 = st("03_proof"), en("03_proof"), st("04_offer"), st("05_cta")
         b_end = round(p0 + 1.6, 2)
         E["chest"] = []                                                    # the hook keeps its captions (topic keyword on screen)
+        E.setdefault("style", {})["grade"] = {"relight": True, "background_stops": 0.0}   # edge decontamination + dehalo, wall level unchanged (FRAME-03)
         E.setdefault("aroll", {})["snap"] = {"start": 0.45, "end": 1.45, "zoom": 1.3}     # the punch-in lands with the type slam
         dark = {"color": "card"}                                           # a light wall: charcoal type reads (GFX-15), one size for both (GFX-20)
         E["roto"] = [{"segment": "01_hook_0", "template": "text_behind", "params": dict(dark, text="2 SECONDS", at=0.45, entry="slam", size=150)},

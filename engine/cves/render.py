@@ -367,6 +367,8 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # lift: anchor at the frame bottom raises the face
         z0 = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
         M0 = M if z0 == z else affine(z0, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # the shot's framing without a snap
+        if TL.snap and TL.snap[0] < s["t1"] and s["t0"] < TL.snap[1]:     # a snap punch-in in this shot: roto type fits the tighter view
+            Ms = affine(max(z0, TL.snap[2]), cx, G.H if sid in TL.lift else cy - fh * .05, True); M0 = Ms if Ms[0, 0] > M0[0, 0] else M0
         if mode in ("overlay", "chest"): img = None
         else:
             g = np.asarray(TL.gain.get(sid, 1.0), np.float32)

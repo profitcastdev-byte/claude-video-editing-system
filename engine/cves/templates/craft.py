@@ -67,9 +67,9 @@ def text_behind(t, p, ctx):
     if not words: return []
     face = ctx.get("face"); fa = (ctx.get("face_at") or (lambda tt: None))(at) or face
     matte = bool(ctx.get("matte_ok", True))
-    sz = G.safe(); V = ctx.get("seg_view", ctx.get("view"))               # the shot's own framing (not a snap punch-in, which scales the
-    if V is not None:                                                      # type with the head): the type stays in the OUTPUT safe zone
-        sx, tx, ty = float(V[0][0]), float(V[0][2]), float(V[1][2])       # (plate px = (X - t) / s) and never re-fits mid-shot
+    sz = G.safe(); V = ctx.get("seg_view", ctx.get("view"))               # the shot's tightest framing (its zoom, or a snap punch-in in
+    if V is not None:                                                      # it): the type stays in the OUTPUT safe zone (plate px =
+        sx, tx, ty = float(V[0][0]), float(V[0][2]), float(V[1][2])       # (X - t) / s) on every frame and never re-fits mid-shot
         sz = ((sz[0] - tx) / sx, (sz[1] - ty) / sx, (sz[2] - tx) / sx, (sz[3] - ty) / sx)
     safe_w = sz[2] - sz[0]
     track = float(B("tracking", -4)) * G.U; max_w = safe_w * float(B("max_width", .92))
