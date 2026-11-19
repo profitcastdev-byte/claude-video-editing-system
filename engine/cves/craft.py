@@ -237,10 +237,12 @@ def blob(rgb, mode="saliency"):
     if mode == "centroid":
         g = cv2.cvtColor(np.ascontiguousarray(rgb[..., :3]), cv2.COLOR_RGB2GRAY).astype(np.float32)
         h, w = g.shape; k = 96 / max(h, w); g = cv2.resize(g, (max(8, int(w * k)), max(8, int(h * k))), interpolation=cv2.INTER_AREA)
-        con = np.abs(g - cv2.GaussianBlur(g, (0, 0), 6)); m = g / 255 * .6 + con / (con.max() + 1e-6) * .4
-    elif mode == "saliency": m = saliency(rgb)
+        lift = np.clip(g - cv2.GaussianBlur(g, (0, 0), 14), 0, None)       # brighter than its surroundings (not a lit gradient)
+        con = np.abs(g - cv2.GaussianBlur(g, (0, 0), 4)); m = lift / (lift.max() + 1e-6) * .75 + con / (con.max() + 1e-6) * .25
+        q = .97
+    elif mode == "saliency": m = saliency(rgb); q = .9
     else: raise SystemExit(f"match mode '{mode}' is not saliency | centroid")
-    thr = np.quantile(m, .9); wgt = np.clip(m - thr, 0, None)
+    thr = np.quantile(m, q); wgt = np.clip(m - thr, 0, None)
     if wgt.sum() <= 1e-9: wgt = np.ones_like(m)
     hh, ww = m.shape; ys, xs = np.mgrid[0:hh, 0:ww].astype(np.float32); W_ = wgt.sum()
     cx, cy = (wgt * xs).sum() / W_, (wgt * ys).sum() / W_
