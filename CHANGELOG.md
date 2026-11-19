@@ -6,6 +6,14 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
 ## [Unreleased]
 
 ### Speed (same pixels)
+Benchmark (40 s 1080x1920 60 fps selfie ad, 2502 frames, 12 shots, 4 motion pieces, text behind, shot match, 87 QC
+gates; a shared, heavily loaded 10-core Mac, so wall times are noisy): full build 1724 s -> 407 s (render 1394 -> 215 s,
+mix 26 -> 12 s, encode 81 -> 59 s, QC 223 -> 118 s); a one-cutaway tweak rebuild re-renders 234 frames in 11-18 s and
+the build takes 159-230 s, most of it encode + QC; `--draft` takes 196 s cold (Chromium re-renders the motion pieces at
+half size once) and 47 s per iteration after a one-cutaway tweak. Every frame, the element log, the timeline, the QC
+result per gate and the master file (sha256) are identical to the old build's.
+- Not adopted: the RVM matte at half the frame rate + interpolation saves only ~25 % of the matte step on MPS (decode and
+  encode dominate) and is not identical (IoU min 0.98, edge alpha error up to 0.75 on moving edges), so prep is unchanged.
 - **Incremental render by default** (`cves.rcache`, ARCHITECTURE §6b). Every frame of a final render is keyed by a hash
   of what decides it (engine code, visual style, canvas, its segment's plate / matte / faces / framing / colour match, the
   cutaway over it, its transition state and caption events, roto / end-card entries, the media files); `cves build` and
