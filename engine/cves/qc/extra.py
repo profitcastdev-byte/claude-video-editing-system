@@ -822,6 +822,37 @@ def gates_timeline(cx, gate):
     else: gate("RET-12", first is not None and first[0] / FPS <= 2.0, f"topic keyword on screen at {first[0] / FPS:.2f} s ({first[1]} '{first[2]}')" if first else "no text layer shows a topic keyword")
 
 
+# ======================================================================== visual events (SND-07; mix's cue sync uses the same list)
+def visual_events(cx, low=None):
+    """[(t, label)] of the picture events a sound may sit on: element entries (first logged frame of every non-caption
+    instance), cuts / transitions, the snap, logged bbox changes after a hold and, when `low` (frame -> quarter-res luma)
+    is given, pixel-change onsets on graphic frames. One definition for the SND-07 gate and for mix's cue sync."""
+    FPS = cx.FPS
+    ev = [(i.f0 / FPS, f"{i.key} appears") for i in cx.inst if i.role != "caption"]
+    ev += [(tb, f"{k} cut") for tb, k in cx.trans] + [(s["t0"], f"cut to {s['id']}") for s in cx.segs[1:]]
+    if cx.snap: ev += [(cx.snap[0], "snap punch-in"), (cx.snap[1], "snap release")]
+    for i in cx.inst:
+        if i.role == "caption": continue
+        for j in range(3, len(i.f)):
+            if np.abs(np.diff(i.bb[j - 3:j], axis=0)).max() <= 1 and np.abs(i.bb[j] - i.bb[j - 1]).max() > 2: ev.append((i.f[j] / FPS, f"{i.key} changes"))
+    if low: ev += [(f / FPS, f"pixel change on f{f}") for f in pixel_events(cx, low)]
+    return ev
+
+def pixel_events(cx, low, frames=None, min_px=12):
+    """frames on which a region of a graphic frame starts changing (quarter-res luma differs by > 25 on >= min_px px that
+    were still on the frame before). `low` maps frame -> luma; a frame needs itself and the one before; `frames` limits
+    the frames reported (warm-up frames before a window are measured but not reported)."""
+    out, prev = [], None
+    for f in range(1, cx.N):
+        if f in low and f - 1 in low and not cx.is_aroll(f) and not cx.is_aroll(f - 1) and not cx.in_trans(f, .05):
+            ch = (np.abs(low[f].astype(np.int16) - low[f - 1].astype(np.int16)) > 25).astype(np.uint8)
+            new = ch & (1 - cv2.dilate(prev, np.ones((5, 5), np.uint8))) if prev is not None else ch
+            if new.sum() >= min_px and (frames is None or f in frames): out.append(f)
+            prev = ch
+        else: prev = None
+    return out
+
+
 # ======================================================================== gates: sound
 def gates_sound(cx, gate):
     import soundfile as sf
@@ -843,23 +874,7 @@ def gates_sound(cx, gate):
                 if kw.get("trim"): y = y[int(kw["trim"][0] * SR):int(kw["trim"][1] * SR)]
                 cache[key] = y
             return cache[key]
-        # visual events: element entries, cuts / transitions, logged bbox changes after a hold, pixel-change onsets on graphic frames
-        ev = [(i.f0 / FPS, f"{i.key} appears") for i in cx.inst if i.role != "caption"]
-        ev += [(tb, f"{k} cut") for tb, k in cx.trans] + [(s["t0"], f"cut to {s['id']}") for s in cx.segs[1:]]
-        if cx.snap: ev += [(cx.snap[0], "snap punch-in"), (cx.snap[1], "snap release")]
-        for i in cx.inst:
-            if i.role == "caption": continue
-            for j in range(3, len(i.f)):
-                if np.abs(np.diff(i.bb[j - 3:j], axis=0)).max() <= 1 and np.abs(i.bb[j] - i.bb[j - 1]).max() > 2: ev.append((i.f[j] / FPS, f"{i.key} changes"))
-        # pixel events on graphic frames (1/4 res): a region that starts changing on frame f (changed now, still on f-1)
-        low = cx._results.get("low", {}); prev = None
-        for f in range(1, cx.N):
-            if f in low and f - 1 in low and not cx.is_aroll(f) and not cx.is_aroll(f - 1) and not cx.in_trans(f, .05):
-                ch = (np.abs(low[f].astype(np.int16) - low[f - 1].astype(np.int16)) > 25).astype(np.uint8)
-                new = ch & (1 - cv2.dilate(prev, np.ones((5, 5), np.uint8))) if prev is not None else ch
-                if new.sum() >= 12: ev.append((f / FPS, f"pixel change on f{f}"))
-                prev = ch
-            else: prev = None
+        ev = visual_events(cx, cx._results.get("low", {}))
         evt = np.array([e[0] for e in ev]); cut_t = np.array([tb for tb, _ in cx.trans] + [cx.T_END])     # transitions (whip / glitch / end card)
         ok_, off, unm, s8 = 0, [], [], []
         for t, name, gain, kw in cues:

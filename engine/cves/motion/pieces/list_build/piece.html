@@ -32,7 +32,7 @@
         const r = C.el('div', 'row glass lit', list), state = it.state || P.mark || 'check';
         const mk = C.el('div', 'mk ' + state, r);
         let path = null;
-        if (state === 'check' || state === 'cross') path = C.svg(mk, state === 'check' ? C.CHECK : C.CROSS).querySelector('path');
+        if (state === 'check' || state === 'cross') { path = C.svg(mk, state === 'check' ? C.CHECK : C.CROSS).querySelector('path'); mk.dataset.el = 'mk'; }   // its own part: the pop sound sits on its logged entry (SND-07)
         else if (state === 'number') mk.textContent = String(i + 1);
         if (state === 'cross' && items.some((y) => (y.state || P.mark || 'check') !== 'cross')) r.classList.add('cross');   // mute crosses only beside checks
         const tx = C.el('div', 'txt', r); const b = C.el('b', '', tx, C.plain(it.text)); r.dataset.text = C.plain(it.text) + (it.sub ? ' ' + C.plain(it.sub) : '');
@@ -50,8 +50,9 @@
       let lit = -1; rows.forEach((x, i) => { if (t >= x.at) lit = i; });
       rows.forEach((x, i) => {
         const p = C.rise(x.r, t, x.at, D(0.62), 9 * u, { axis: 'x', fade: 3 });
-        const pm = C.prog(t, x.at + D(0.22), D(0.42));
-        C.set(x.mk, { s: 0.5 + 0.5 * C.easings.outBack(C.prog(t, x.at + D(0.1), D(0.4))), o: p > 0 ? 1 : 0 });
+        const pop = x.at + D(0.22), pm = C.prog(t, pop, D(0.42));
+        // a check / cross mark pops in with its stroke, on the frame of its pop cue; a number / dot well arrives with the row
+        C.set(x.mk, { s: 0.5 + 0.5 * C.easings.outBack(C.prog(t, x.path ? pop : x.at + D(0.1), D(0.4))), o: (x.path ? t >= pop : p > 0) ? 1 : 0 });
         if (x.path) C.draw(x.path, C.easings.outCubic(pm));
         const glow = i === lit ? C.prog(t, x.at + D(0.2), D(0.3)) : Math.max(0, 1 - C.prog(t, (rows[i + 1] || {}).at || 1e9, D(0.3)));
         x.r.style.setProperty('--lit', (0.55 * glow).toFixed(3));

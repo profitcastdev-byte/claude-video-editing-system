@@ -36,7 +36,15 @@ grade:
   shoulder: 0.0               # filmic highlight roll-off
   shoulder_gain: 1.0          # output scale after the shoulder (keeps white below clip when shoulder > 0)
   black_lift: [0.0, 0.0, 0.0]
-  exposure_match: true        # per-shot skin balance across cuts
+  exposure_match: true        # per-shot skin balance across cuts (only used when shot_match is off: the colour match includes exposure)
+  shot_match: true            # per-shot colour match to a reference shot, in linear light, before the look (COL-06/07; engine/cves/shotmatch.py)
+  shot_match_reference: hook  # hook (the first A-roll shot on screen) | median (the visible shot nearest the median: least correction) | a segment id
+  shot_match_strength: 1.0    # 0..1: blend of the correction toward identity
+  shot_match_drift: 0.5       # 0..1: how much of the light drift inside a shot is followed (1 = every sample onto the shot median)
+  shot_match_smooth_s: 0.8    # Gaussian smoothing of the in-shot correction, s (a slow light drift is followed, a head turn is not)
+  shot_match_step_f: 4        # sample every N plate frames (plus the first / last visible frames of the shot)
+  shot_match_gain_range: [0.7, 1.45]   # clamp on every linear-light gain
+  shot_match_split_max: 0.18  # max difference (log, per channel) between the subject's gain (skin) and the wall's gain
   exposure_mode: rgb          # rgb: luminance gain + a small per-channel trim so skin colour also matches across cuts | luma
   exposure_chroma_max: 0.06   # cap on the per-channel trim (log units, ~6 %)
   exposure_gain_range: [0.85, 1.18]   # clamp on the per-shot balance gain
@@ -72,6 +80,7 @@ captions:
   lower_third_y: 0.68         # position lower_third: top as a fraction of the canvas height
   line_height: 1.32
   lead_s: 0.03                # a word shows this long before its spoken start
+  min_on_s: 0.83              # no caption fragment shorter than this round a cutaway / snap / hide window: merged, held or skipped (PLAT-06/07); 0 = off
   reveal_s: 0.0               # word_reveal fade-in per word (0 = crisp)
   pop_s: 0.16                 # pop / bounce / one_word entry duration per word
   karaoke_dim: 0.55           # unspoken words in karaoke, as a fraction of the text colour
@@ -118,6 +127,9 @@ sound:
   repeat_pitch_st: 1          # SND-09: an identical back-to-back cue is pitched +/- this many semitones (alternating, deterministic)
   repeat_gain_db: 1.5         # ... and its gain moved by -/+ this much
   phrase_tolerance_s: 0.05    # SND-33: the drop section must start this close to the payoff (cut s)
+  cue_sync: true              # after render: every cue's onset (a riser: its peak) lands exactly on its logged picture event (SND-07, any fps)
+  cue_sync_max_f: 6           # ... the event must be within this many frames of the time the template asked for
+  cue_sync_pixel_min: 40      # a pixel-change onset (no logged element near) counts only when this many quarter-res px start changing
   accents:                    # automatic risers / impacts on the story moments (docs/SOUND.md); budget: creative.sound_accents_per_30s
     enabled: true             # false (or edit.yaml sfx.auto: false) = no automatic accents
     reveals: true             # also an impact on reveal cues that carry no low hit of their own
@@ -139,6 +151,32 @@ mix:                          # how the music sits under the voice (docs/SOUND.m
   duck_release_ms: auto       # envelope: how fast it comes back; auto = 1.25 x the measured syllable period, within duck_release_range_ms
   duck_release_range_ms: [250, 400]   # clamp for the auto release
   duck_range_db: 30           # envelope: voice this far under its loud level does not duck; full depth from 6 dB under it
+  vmr_guard: true             # after ducking: trim the bed's speech band wherever a word would not clear it (review masking check)
+  vmr_band_hz: [1000, 4000]   # the band the vocal-to-music ratio is measured and trimmed in
+  vmr_min_db: null            # guaranteed vocal-to-music ratio while speaking; null = review.vmr_min_db + vmr_margin_db
+  vmr_margin_db: 2.0          # headroom over the review's limit
+  vmr_max_cut_db: 12.0        # deepest band trim
+  vmr_window_s: 0.4           # measurement window (the review's)
+  vmr_attack_ms: 30           # trim smoothing: in place before the word ...
+  vmr_release_ms: 250         # ... and back after it
+voice:                        # the voice chain after DeepFilterNet (docs/INGEST.md "Voice chain")
+  gate:                       # adaptive downward expander, measured per take (engine/cves/voicegate.py; SND-19)
+    enabled: true
+    floor_pct: 10             # room tone between words = this percentile of the take's 10 ms voice-band envelope
+    speech_pct: 90            # speech level = this percentile
+    open_frac: 0.3            # threshold = floor + this share of (speech - floor) ...
+    open_min_db: 6.0          # ... at least this far over the floor
+    open_max_db: 14.0         # ... at most this far
+    ratio: 6.0                # expander ratio under the threshold (a word tail fades faster, never switches off)
+    floor_target_db: -72.0    # the depth takes the room to this level (SND-19: p5 <= -60 dBFS)
+    range_min_db: 10.0        # depth limits
+    range_max_db: 40.0
+    min_snr_db: 12.0          # a take whose speech is closer than this to its room gets only range_min_db
+    attack_ms: 2.0            # opening ramp
+    lookahead_ms: 8.0         # opens this early: consonant onsets are never clipped
+    hold_ms: 15.0             # stays open this long after the voice drops
+    release_ms: 40.0          # closing ramp
+    band_hz: [150, 6000]      # detector band (rumble and hiss never open it)
 music:                        # beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these per video
   sync: "off"                 # off | drop | cuts | full (cumulative: cuts = drop + cut points on the beat; full = cuts + SFX peaks on the beat)
   fit: bars                   # bars (trim / loop on bar lines, end on a downbeat with a one-bar tail) | none (legacy: offset + 0.9 s fade)
