@@ -409,7 +409,8 @@ pacing rules the QC gates enforce; null = not enforced for this client
 | `sound.accents.riser_min_s` | `0.8` | shortest riser; a target with less room before it gets none |
 | `sound.accents.riser_max_s` | `2.2` | longest riser picked from the bank |
 | `sound.accents.riser_tail_max_s` | `0.1` | only risers that resolve: their peak is at most this far from their end |
-| `sound.accents.impact_max_s` | `2.0` | an impact longer than this (a recorded boom) is trimmed to it, s |
+| `sound.accents.impact_max_s` | `2.0` | an impact longer than this is trimmed to it, s |
+| `sound.accents.impact_attack_max_s` | `0.03` | only punchy impacts: onset to peak within this, s (a slow swell is not a hit) |
 | `sound.accents.min_gap_s` | `0.3` | a riser starts at least this long after the accent before it |
 | `sound.accents.payoff_riser` | `medium` | intensity (soft / medium / hard) of the riser into the payoff |
 | `sound.accents.payoff_impact` | `hard` | intensity of the downbeat hit on the payoff |

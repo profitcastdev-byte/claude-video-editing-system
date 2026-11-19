@@ -118,7 +118,9 @@ def accents(TL, cues, log=None):
             out.append((tgt - float(s["peak_at_s"]), s["id"], r_gain, {"peak_at": tgt, "accent": "riser", "target": tgt, "beat_snap": False, "why": why}))
         else:
             imx = float(A.get("impact_max_s", 2.0))
-            s = SFX.pick(cands, "impact", inten, exclude=[taken.get("impact")] if taken.get("impact") else ())
+            att = float(A.get("impact_attack_max_s", 0.03))        # a hit, not a swell: onset to peak within this
+            hits = [x for x in cands if x.get("category") == "impact" and x.get("peak_at_s") is not None and float(x["peak_at_s"]) - onset_offset(x["path"]) <= att]
+            s = SFX.pick(hits, "impact", inten, exclude=[taken.get("impact")] if taken.get("impact") else ())
             if s is None: rec["status"] = "skipped: no impact in the bank"; continue
             kw = {"accent": "impact", "target": tgt, "reveal": True, "beat_snap": False, "why": why}
             if float(s["duration_s"]) > imx: kw["trim"] = (0, imx)          # a long recorded boom: its first impact_max_s

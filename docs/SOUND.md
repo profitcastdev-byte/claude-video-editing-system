@@ -129,7 +129,7 @@ Listening notes (`earshot`, 2026-11-19):
 
 So:
 - for hero moments in a client ad, prefer real CC0 recordings: `cves sfx fetch`, then listen with `earshot describe` / `earshot realness` before using them;
-- `sfx.pick` takes a recording over a synthesized sound at the same intensity (SFX-METHOD rule 3), so the payoff riser and hit are the recorded `riser` and `boom`; the synthesized sounds fill the roles the recordings don't cover (a soft riser, short resolving risers, soft impacts).
+- `sfx.pick` takes a recording over a synthesized sound at the same intensity (SFX-METHOD rule 3), so the payoff riser is the recorded `riser`. Automatic impacts must be hits (onset to peak within `sound.accents.impact_attack_max_s`, 30 ms); the recorded `boom` is a slow swell, so the payoff hit is the synthesized `impact_hit`; the synthesized sounds fill the roles the recordings don't cover (a soft riser, short resolving risers, soft impacts).
 
 ## 5. QC
 
