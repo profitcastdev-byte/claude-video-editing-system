@@ -23,7 +23,7 @@ import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
-TRANSITIONS = ("cut", "whip", "glitch", "fade")
+TRANSITIONS = ("cut", "whip", "glitch", "fade", "whip_pan", "zoom_through", "mask_wipe", "luma_fade", "glitch_lite", "light_leak", "dip")   # craft.TRANSITIONS
 MEDIA_EXT = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".tif", ".tiff", ".bmp", ".mp4", ".mov", ".mkv", ".webm", ".m4v",
              ".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".aif", ".aiff", ".ttf", ".otf", ".woff", ".woff2", ".json", ".lottie")
 # style maps whose keys are data (any name is fine), not schema
@@ -64,7 +64,8 @@ EDIT = {
 }
 BROLL = {"id": "str|int", "src": "path", "asset": "str", "start!": "time", "end!": "time", "in": "number", "speed": "number",
          "framing": "str", "kenburns": "dict", "anchor": "list", "after": "str", "transition": "transition", "audio": "bool",
-         "gain": "number", "snap": "bool", "note": "str", "beat": "str"}
+         "gain": "number", "snap": "bool", "note": "str", "beat": "str",
+         "ramp": "dict|str", "camera": "dict|str", "match": "dict|str|bool", "out": "number", "depth": "str"}     # motion craft (docs/MOTION.md "Craft")
 
 
 class V:
@@ -319,6 +320,7 @@ def _broll(v, path, val):
         if x.get("after") is not None and x["after"] not in ("hold", "loop"): v.err(f"{p}.after", f"expected hold or loop, got {_show(x['after'])}")
         if _num(x.get("speed")) and x["speed"] <= 0: v.err(f"{p}.speed", "must be > 0")
         if _num(x.get("in")) and x["in"] < 0: v.err(f"{p}.in", "source seconds must be >= 0")
+        _craft_shot(v, p, x)
         a = x.get("anchor")
         if a is not None and not (isinstance(a, list) and len(a) == 2 and all(_num(q) and 0 <= q <= 1 for q in a)): v.err(f"{p}.anchor", "expected [x, y] in 0..1")
         if _num(x.get("start")) and _num(x.get("end")):
@@ -334,6 +336,28 @@ def _broll(v, path, val):
             cur = max(cur, a1)
         if v.T_END > cur + tol: gaps.append(f"{cur:.2f}-{v.T_END:.2f}")
         if gaps: v.warn(path, f"the {v.spine} timeline has frames no shot covers (the stage shows): {', '.join(gaps[:6])} s")
+
+
+def _craft_shot(v, p, x):
+    """ramp / camera / match values of a broll: shot (docs/MOTION.md "Craft")"""
+    from . import craft as CR
+    cam = x.get("camera")
+    if cam is not None:
+        mv = cam if isinstance(cam, str) else (cam.get("move") if isinstance(cam, dict) else None)
+        if mv is not None and mv not in CR.MOVES: v.err(f"{p}.camera", f"move '{mv}' is not one of {', '.join(CR.MOVES)}{_did_you_mean(mv, CR.MOVES)}")
+        if isinstance(cam, dict) and cam.get("ease") is not None and cam["ease"] not in CR.EASE: v.err(f"{p}.camera.ease", f"unknown ease '{cam['ease']}'{_did_you_mean(cam['ease'], tuple(CR.EASE))}")
+    m = x.get("match")
+    mode = m if isinstance(m, str) else (m.get("mode") if isinstance(m, dict) else None)
+    if mode is not None and mode not in ("saliency", "centroid"): v.err(f"{p}.match", f"mode '{mode}' is not saliency | centroid")
+    r = x.get("ramp")
+    if isinstance(r, dict):
+        if r.get("keys") is not None:
+            ks = r["keys"]
+            if not (isinstance(ks, list) and ks and all(isinstance(k, list) and len(k) == 2 and all(_num(q) for q in k) for k in ks)):
+                v.err(f"{p}.ramp.keys", "expected [[shot fraction 0..1, speed > 0], ...]")
+            elif any(k[1] <= 0 for k in ks): v.err(f"{p}.ramp.keys", "speeds must be > 0 (a ramp never runs backwards)")
+        if r.get("audio") is not None and r["audio"] not in ("mute", "pitch"): v.err(f"{p}.ramp.audio", "expected mute or pitch")
+        if r.get("blend") is not None and r["blend"] not in ("auto", "blend", "nearest"): v.err(f"{p}.ramp.blend", "expected auto, blend or nearest")
 
 
 SPECIAL = {"zoommap": _zoommap, "captions": _captions, "music": _music, "assets": _assets, "style": _style_section, "spine": _spine, "broll": _broll}

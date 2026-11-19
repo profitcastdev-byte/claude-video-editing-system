@@ -201,6 +201,9 @@ def critique(pr, which=None):
               ("transition kinds (not cut)", len(kinds), B("transition_kinds_max", 2)),
               ("animated graphics", len(gfx), round(B("motion_pieces_per_30s", 6) / per30, 1) if per30 else None),
               ("accent colours", "check by eye", B("accent_colors_max", 1))]
+    from . import craft as CR                   # craft moves: ramps, camera moves, match cuts, text behind (docs/MOTION.md "Craft")
+    cu, ca = CR.budget(E, S, dur or 30.0); budget.insert(3, ("craft moves", cu, ca if per30 else None))
+    facts["craft_moves"] = sorted(f"{k} ({w})" for k, w in CR.usage(E))
     budget = [(n, u, b, "OVER" if isinstance(u, (int, float)) and b is not None and u > b else "ok") for n, u, b in budget]
     with open(os.path.join(out, "critique.json"), "w", encoding="utf-8") as f:
         json.dump({"facts": facts, "budget": [{"item": n, "used": u, "budget": b, "status": s} for n, u, b, s in budget]}, f, indent=1, ensure_ascii=False)
