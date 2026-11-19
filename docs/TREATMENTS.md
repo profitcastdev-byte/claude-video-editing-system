@@ -44,7 +44,7 @@ folder's `treatment.yaml`; after `pick` it is `Edit/treatment.yaml`.
 | hint | values | what `make` does to the plan |
 |---|---|---|
 | `pace` | `fast` / `medium` / `slow` | a label for the cut density the hints below produce |
-| `max_shot_s` | seconds or null | broll spines: a fill shot longer than this (and not under a drawn cutaway) is split on a word near its middle into a wide shot and a punched-in shot (kenburns from 1.22x) |
+| `max_shot_s` | seconds or null | broll spines: a video shot (fill or fit) longer than this, not under a drawn cutaway, is split on a word near its middle into a wide shot and a punched-in shot (kenburns from 1.22x) |
 | `min_shot_s` | seconds or null | broll spines: a shot shorter than this absorbs the next one into a longer hold, never past `grammar.max_shot_s` and never past the clip's end |
 | `cutaways_per_30s` | number or null | caps drawn cutaways; the ones that carry a number, then a list, then the longest stay |
 | `punch_ins` | `add` / `keep` / `gentle` | `add`: an `aroll.snap` punch-in from the strongest word (a number first, else the longest word) of the first A-roll shot seen whole (no cutaway over it; shots under a chest graphic only as a fallback) to the end of that shot, at the scale `Timeline._auto_zoom` will give it stepped up by `framing.min_step`, at a scale level that still changes by `framing.min_step` at the next cut (CUT-05) and stays under 1.4x. `gentle`: removes a snap (pair it with smaller `framing.zoom_levels` in `style:`) |

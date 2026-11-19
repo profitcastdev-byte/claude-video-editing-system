@@ -117,7 +117,7 @@ def test_pick_promotes_journals_and_feeds_learning(demo_copy, tmp_path):
     TR.make(pr, "punchy,minimal")
     r = TR.pick(pr, "minimal")
     assert open(pr.e("edit.yaml"), encoding="utf-8").read() == open(os.path.join(TR.tdir(pr, "minimal"), "edit.yaml"), encoding="utf-8").read()
-    assert any(b.endswith(".bak-" + b.split(".bak-")[1]) and open(b, encoding="utf-8").read() == old for b in r["backups"])
+    assert any(os.path.basename(b).startswith("edit.yaml.bak-") and open(b, encoding="utf-8").read() == old for b in r["backups"])
     assert pr.edit["treatment"] == "minimal" and os.path.exists(pr.e("treatment.yaml"))
     S = STY.load(pr); assert "treatment:minimal" in S["_sources"] and S.get("captions.style") == "highlight"
     ev = learn.read_journal(pr)[-1]
@@ -137,9 +137,7 @@ def test_pick_promotes_journals_and_feeds_learning(demo_copy, tmp_path):
     assert rp.returncode != 0 and "cves treatments make cinematic" in rp.stderr and "Traceback" not in rp.stderr
 
 
-def _probe(f):
-    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", f], capture_output=True, text=True)
-    s = json.loads(r.stdout)["streams"][0]; return s["width"], s["height"]
+def _probe(f): return TR._probe_size(f)[:2]
 
 
 def test_proxy_renders_are_half_size_and_compare(demo_copy):

@@ -288,7 +288,7 @@ def _clip_len(pr, ref):
     except (SystemExit, OSError, ValueError): return None
 
 def _broll_pace(pr, E, S, st, notes):
-    """broll: track pace. max_shot_s splits long fill shots into a wide + punched-in pair (cut on a word);
+    """broll: track pace. max_shot_s splits long video shots (fill or fit) into a wide + punched-in pair (cut on a word);
     min_shot_s merges short shots into longer holds (never past grammar.max_shot_s, never past the clip's end)."""
     B = [dict(x) for x in E.get("broll") or [] if isinstance(x, dict)]
     if not B: return
@@ -311,7 +311,7 @@ def _broll_pace(pr, E, S, st, notes):
             a, b = float(x["start"]), float(x["end"]); d = b - a
             ref = str(x.get("asset") or x.get("src") or "")
             under = any(_num(c.get("start")) and c["start"] <= a + .05 and c["end"] >= b - .05 for c in E.get("cutaways") or [])
-            if d > hi and not under and x.get("framing", "fill") == "fill" and not x.get("kenburns") and _clip_len(pr, ref) is not None:
+            if d > hi and not under and x.get("framing", "fill") in ("fill", "fit") and not x.get("kenburns") and _clip_len(pr, ref) is not None:
                 mids = [float(w[0]) for w in W if a + .7 <= float(w[0]) <= b - .7]
                 m = min(mids, key=lambda t: abs(t - (a + b) / 2)) if mids else (a + b) / 2
                 if not mids and d < 1.4: out.append(x); continue
@@ -405,8 +405,11 @@ def make(pr, names=None):
         with open(os.path.join(d, "treatment.yaml"), "w", encoding="utf-8") as f:
             yaml.safe_dump({k: v for k, v in T.items() if not k.startswith("_")}, f, sort_keys=False, allow_unicode=True, width=140)
         v = PRJ.Variant(pr.root, d); v.save_edit(dict(base, treatment=name))       # provisional: S with the treatment layer
+        if os.path.exists(pr.e("beats.json")) and not os.path.exists(v.e("beats.json")): shutil.copy2(pr.e("beats.json"), v.e("beats.json"))   # seed: no re-analysis
         S = STY.load(v)
         E, notes = adapt(pr, base, T, S); v.save_edit(E)
+        for f in ("proxy.mp4", "full.mp4"):                                     # renders of an older plan are stale now
+            if os.path.exists(os.path.join(d, f)): os.remove(os.path.join(d, f))
         m = metrics(v, E, STY.load(v))
         with open(os.path.join(d, "plan.json"), "w", encoding="utf-8") as f:
             json.dump({"treatment": name, "label": T.get("label", name), "summary": T.get("summary", ""), "source": T["_source"], "changes": notes, "metrics": m}, f, indent=1)

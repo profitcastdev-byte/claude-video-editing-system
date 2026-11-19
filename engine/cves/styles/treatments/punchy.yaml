@@ -23,7 +23,7 @@ style:
   rhythm: {music_energy: rising}
 structure:
   pace: fast                  # fast | medium | slow (docs/TREATMENTS.md)
-  max_shot_s: 1.6             # broll spines: a fill shot longer than this is split into a wide + punched-in pair (cut on a word)
+  max_shot_s: 1.6             # broll spines: a video shot longer than this is split into a wide + punched-in pair (cut on a word)
   min_shot_s: null            # broll spines: shots shorter than this are merged into a longer hold (null = never)
   cutaways_per_30s: null      # cap on drawn cutaways (null = keep every one)
   punch_ins: add              # add (a punch-in on a key word) | keep | gentle (smaller scale steps, no snap)
