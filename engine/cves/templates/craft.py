@@ -101,6 +101,7 @@ def text_behind(t, p, ctx):
         if pos == "clear": return fc["cx"], fc["top"] - fc["h"] * .06
         return fc["cx"], fc["top"] + cap * float(B("overlap", .42))
     ax0, ay0 = anchor(fa); ax1, ay1 = anchor(face) if face else (ax0, ay0)
+    k_track *= CR.ease("inOutSine", clamp((t - at) / max(1e-3, ent)))       # follow the head only once the entry has landed (MOT-01)
     cx = ax0 + k_track * (ax1 - ax0); base = ay0 + k_track * (ay1 - ay0)       # baseline of the LAST line
     half = max(w for _, w in lines) / 2
     cx = min(max(cx, sz[0] + half), sz[2] - half)
@@ -113,16 +114,23 @@ def text_behind(t, p, ctx):
         rise = (1 - pe) * cap * .42 - pout * cap * .18; breathe = (1 - pe) * 10 * G.U
         alpha = min(1.0, pin * 2.6) * (1 - pout)
     col = G.col(p.get("color"), G.col(B("color", "text"), G.WHITE)); acc = G.col(p.get("accent"), G.col(B("accent", "accent"), G.MINT))
-    fs = G.font(weight, max(8, int(f.size * hold)))
     def draw(d):
         n = len(lines)
         for li, (ws, w) in enumerate(lines):
-            y = base - (n - 1 - li) * lead * hold + rise
-            ww = w * hold + (len(ws) - 1) * breathe; x = cx - ww / 2
+            y = base - (n - 1 - li) * lead + rise
+            ww = w + (len(ws) - 1) * breathe; x = cx - ww / 2
             for wd, a, wpx in ws:
-                G.draw_text(d, (x, y), wd, fs, acc if a else col, tracking=track + breathe / max(1, len(wd)), anchor="ls")
-                x += wpx * hold + sp * hold + breathe
+                G.draw_text(d, (x, y), wd, f, acc if a else col, tracking=track + breathe / max(1, len(wd)), anchor="ls")
+                x += wpx + sp + breathe
     im = faded(draw, alpha)
+    if abs(hold - 1) > 1e-4:                    # the push / slam scale as a sub-pixel transform about the baseline centre
+        import cv2, numpy as np
+        from PIL import Image
+        M = np.float32([[hold, 0, cx * (1 - hold)], [0, hold, base * (1 - hold)]])
+        a4 = np.asarray(im).astype(np.float32); a4[..., :3] *= a4[..., 3:4] / 255          # premultiplied: no dark fringes
+        w4 = cv2.warpAffine(a4, M, im.size, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+        w4[..., :3] /= np.maximum(w4[..., 3:4], 1e-3) / 255
+        im = Image.fromarray(np.clip(w4 + .5, 0, 255).astype(np.uint8))
     plain = " ".join(w for w, _ in words); out = []
     # legibility (GFX-15): a soft bed under the type, sized by the weaker of its colours against the assumed video tone;
     # it sits on the plate too, so the subject occludes it with the type
