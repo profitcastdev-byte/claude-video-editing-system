@@ -403,8 +403,11 @@ def aroll_frame(cx, f, yuv, matte, plate, src=None):
     lm = (np.array(face[4:14], float).reshape(5, 2) * z + [tx, ty]) if len(face) >= 14 and any(face[4:14]) else None
     chin = fb[1] + fb[3]; fcx, fcy = fb[0] + fb[2] / 2, fb[1] + fb[3] / 2
     els = cx.by_f.get(f, []); elmask = np.zeros((H, W), bool)
+    halo_mask = np.zeros((H, W), bool)
     for e in els:
         x0, y0, x1, y1 = e["bbox"]; elmask[max(0, int(y0) - 12):int(y1) + 13, max(0, int(x0) - 12):int(x1) + 13] = True
+        mg = 40 if e.get("role") == "roto" else 12     # FRAME-03 only: roto type is drawn against the matte edge by design (glyphs in the ring)
+        halo_mask[max(0, int(y0) - mg):int(y1) + mg + 1, max(0, int(x0) - mg):int(x1) + mg + 1] = True
     r = dict(f=f, sid=s["id"], snap=cx.in_snap(f))
     # FRAME-02: body exits through frame edges (bottom), no straight in-frame matte cut
     r["bottom"] = float(inside[-1].mean()); r["top"] = int(inside[0].sum())
@@ -428,7 +431,7 @@ def aroll_frame(cx, f, yuv, matte, plate, src=None):
     if Yh is None: Yh = Y                     # rings 2-3 Y at a hard edge, which is the encoder, not a halo; other gates judge the encode)
     Ys = cv2.warpAffine(src, M, (W, H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE).astype(float) if src is not None else None   # warped as render.compose warps the graded plate
     dist, lab = cv2.distanceTransformWithLabels((~inside).astype(np.uint8), cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
-    reg = np.zeros((H, W), bool); reg[6:int(min(H - 6, chin + .6 * fb[3])), 6:W - 6] = True; reg &= ~elmask
+    reg = np.zeros((H, W), bool); reg[6:int(min(H - 6, chin + .6 * fb[3])), 6:W - 6] = True; reg &= ~halo_mask
     src = np.flatnonzero(inside.ravel())   # label i -> i-th zero pixel of the source (= subject pixel) in raster order
     band = reg & (((dist >= 3) & (dist <= 7)) | ((dist >= 20) & (dist <= 40)))
     by, bx = np.where(band); nl = lab[by, bx] - 1; ok = (nl >= 0) & (nl < len(src)); by, bx, nl = by[ok], bx[ok], nl[ok]
@@ -437,11 +440,13 @@ def aroll_frame(cx, f, yuv, matte, plate, src=None):
     for cid in np.unique(cell):
         m = cell == cid; a, b = yv[m & isring], yv[m & ~isring]
         if len(a) < 40 or len(b) < 80 or b.std() > 10: continue
-        ex = float(np.median(a) - np.median(b))
+        ex = float(np.median(a) - np.median(b)); over = ex - 1.0          # absolute: ring brighter than its wall by > 1 Y
         if Ys is not None:
             ys_ = Ys[by[m], bx[m]]; ap, bp = float(np.median(ys_[isring[m]])), float(np.median(ys_[~isring[m]]))
-            ex = min(ex, ex - (ap - bp))        # a halo is brighter than its wall in the output AND brighter than the graded source made it
-        if worst is None or ex > worst[0]: worst = (ex, f"edge cell x{(cid % 1000) * 40} y{(cid // 1000) * 40}", float(np.median(a)), float(np.median(b)))
+            added = ex - (ap - bp)              # AND brighter than the graded source made it: the step the pipeline added, a difference of
+            over = min(over, added - 2.0)       # two separately rounded 8-bit measurements (+-1 Y each), judged at 2 Y (DECISIONS 2026-11-20)
+            ex = min(ex, added)
+        if worst is None or over > worst[4]: worst = (ex, f"edge cell x{(cid % 1000) * 40} y{(cid // 1000) * 40}", float(np.median(a)), float(np.median(b)), over)
     r["halo"] = worst
     # colour: skin core (cheeks), wall patch, frame statistics with graphics masked
     if lm is not None:      # each cheek summarised on its own, then averaged: side light makes the two cheeks 40-80 Y apart,
@@ -889,7 +894,7 @@ def gates_frame_colour(cx, gate):
          "\n".join(det[:12]), status=None if (fl or cut) else ("WARN" if top else "PASS"))
     # FRAME-03 halo: ring luma <= wall luma (worst 30-degree sector); 1 code value allowed for encode noise
     hv = [(r["halo"][0], r) for r in R if r.get("halo")]
-    bad = sorted([x for x in hv if x[0] > 1.0], key=lambda x: -x[0])
+    bad = sorted([x for x in hv if (x[1]["halo"][4] if len(x[1]["halo"]) > 4 else x[0] - 1.0) > 0], key=lambda x: -x[0])   # > 1 Y, and > 2 Y added
     by = collections.OrderedDict()
     for ex, r in bad: by.setdefault(r["sid"], (ex, r))
     gate("FRAME-03", not bad, f"edge ring 3-7 px vs wall 20-40 px out, {len(hv)} frames: worst ring - wall {max(x[0] for x in hv) if hv else float('nan'):+.1f} Y",
