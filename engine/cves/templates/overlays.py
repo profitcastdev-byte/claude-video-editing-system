@@ -60,7 +60,7 @@ def kinetic_caption_emphasis(t, p, ctx):
     z = G.safe(); sf = p.get("scale_from", 1.35); hold = clamp((t - G.q(at, F)) / 3) * .04
     sc = 1 + (sf - 1) * (1 - ease_out(qv)) + hold
     tr = p.get("tracking", 4); f = G.fit_font("xb", int(p.get("size", 260) * sc), wd, (z[2] - z[0]) * sc, tr)
-    c = G.col(p.get("color"), G.MINT); y = p.get("y", 560)
+    c = G.col(p.get("color"), G.MINT); y = p.get("y", 560 if G.is_design() else G.safe()[1] + .3 * (G.safe()[3] - G.safe()[1]))
     im = faded(lambda d: G.draw_text(d, (G.W / 2, y - 80 * po), wd, f, c, tracking=tr, anchor="ms"), min(1, qv * 2) * (1 - po))
     return [El(im, "emph.word", "roto", text=wd, t_key=Q(at))]
 

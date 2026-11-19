@@ -67,8 +67,23 @@ NNN auto-increments. The folder is built in `Export/.staging-*` and renamed at t
 | `<title>_<variant>.mp4` | each variant that passed its QC (+ `.srt` / `.vtt` for re-timed variants) |
 | `qc/<variant>.qc.json`, `qc/<variant>.QC-REPORT.txt` | each variant's QC, delivered or not |
 | `manifest.json` | see below |
+| `<title>.guide.wav`, `POSTING.md` | only with `music.slot: platform` (organic posts, [VIRAL.md](VIRAL.md) §4): the guide stem the edit was cut to, and the posting notes (see below) |
 
 `manifest.json`: `version`, `created`, `cves_version`, `qc_verified`, `master`, `master_sha256`, `qc` (the master stamp summary), `fps_rational`, `size`, `cover` (`t`, `how`, `title`), `style_sources`, `variants` (`id`, `kind`, `definition`, `status` (delivered | failed), `reason`, `qc`, `notes`, `file`) and `files` (`path`, `bytes`, `sha256`, and for media `duration`, `width`, `height`, `fps`, `frames`).
+
+### Platform sound slot (`music.slot: platform`)
+
+An organic post cut to a trending sound ships **without music**: the platform licenses the sound when the poster adds it
+in the app. The delivery then also holds:
+- `<title>.guide.wav`: `Edit/stems/guide.wav`, the reference track laid where the edit expects it (or a click track for a
+  bare tempo). It is for checking sync only, never for upload.
+- `POSTING.md`: the sound to add (`music.sound`), the tempo, where to start the sound in the track (`offset`, track seconds
+  at the video's first frame), where the drop lands in the video, the length against the `platform.target` band, the
+  in-app steps, and the first cuts against the nearest beat.
+- `manifest.json` gains `music_slot`: `slot`, `guide`, `posting`, `sound`, `tempo`, `start_in_track_s`, `drop_cut_s`, `platform`.
+
+QC for the slot: SND-04 checks the music stem is silent (FAIL if any music reached the master), RET-32 checks the cuts against
+the guide beat, RET-31 counts the guide as sound. Delivery refuses if `Edit/stems/guide.wav` is missing. Ads can't use the slot.
 
 ### Cover
 
@@ -98,17 +113,26 @@ variants:
 
 **Every variant goes through QC.** A variant that fails is not copied into the delivery. The manifest lists it as `failed` with the failing gates, and its QC report is kept under `qc/`. A variant cannot pass a gate the master failed, so fix the master first.
 
-### Reframes (4:5, 1:1, 16:9)
+### Reframes (any master to any aspect: 4:5, 1:1, 16:9, 9:16, 2.39:1 …)
 
-Reframes are cut from the QC'd 9:16 master. The source is the lossless `Edit/frames` when they are exactly the master's frames (same count, none newer than the master); otherwise it is the decoded master. The audio is copied from the master.
+Prefer a native canvas (`canvas.size`, [FORMATS.md](FORMATS.md)) when the edit is designed for one aspect; reframes are the
+fast way to more aspects from one QC'd master, whatever its own aspect:
+- **narrower target** (e.g. a 16:9 master to 9:16 or 1:1): the crop keeps the full height and moves horizontally
+  (`axis: x`), the face centred, captions and chest text kept whole;
+- **wider target** (e.g. 9:16 to 4:5, or 16:9 to 2.39:1): the crop keeps the full width and moves vertically (`axis: y`);
+- **portrait master to a landscape target** (9:16 to 16:9): a foreground crop on a blurred fill (below);
+- the same aspect as the master is refused.
+Ad-hoc aspects may be decimal (`--variants 2.39:1`).
 
-- **Crop.** The crop keeps the full width and moves vertically.
+Reframes are cut from the QC'd master. The source is the lossless `Edit/frames` when they are exactly the master's frames (same count, none newer than the master); otherwise it is the decoded master. The audio is copied from the master.
+
+- **Crop.** Along one axis (above); the rules below are written for the vertical case and apply the same way horizontally.
   - On A-roll shots it follows the face: YuNet is run on every A-roll frame of the master, so zooms, snaps and lifts are already baked in. The face centre sits at `delivery.reframe.face_y` (0.40) of the new frame.
   - **Smoothing.** A shot gets one static crop whenever a single crop can hold the face and the captions for the whole shot. Otherwise the crop follows a smoothed path (`smooth_s`, Gaussian, clamped to the constraints).
   - The crop never moves across a cut. Shots are split at segment starts, cutaway in/out points, snap in/out points and the end card.
 - **Captions.** Caption and chest text boxes from `elements.jsonl` are hard constraints: the crop shifts to keep them whole. If the text and the face cannot both fit, the text wins. The face frames this costs are counted (`RF-FACECUT` WARN, `notes.face_frames_cropped_for_captions`).
 - **Graphics.** On cutaway and end-card shots, one crop per shot is centred on everything drawn in that shot. Elements taller than the frame are listed in `notes.graphics_cropped` (`RF-GFX` WARN).
-- **16:9.** A `delivery.reframe.wide_fg` (4:5) crop on the same path is placed in the centre, over a blurred (`fill_blur`), dimmed (`fill_dim`) and scaled copy of the frame.
+- **16:9 from a portrait master.** A `delivery.reframe.wide_fg` (4:5) crop on the same path is placed in the centre, over a blurred (`fill_blur`), dimmed (`fill_dim`) and scaled copy of the frame.
 - **Reframe QC** (`qc/<id>.qc.json`):
   - `RF-00`: the master stamp is clean;
   - `DEL-01/02/03`, `COL-01`: size, constant frame rate equal to the master's, codec/profile/pix_fmt/AAC/faststart, bt709 tags;

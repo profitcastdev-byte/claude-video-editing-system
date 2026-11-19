@@ -1,0 +1,14 @@
+title: Logo sting
+description: An accent pill outline draws itself around the mark and breathes out, the logo (or wordmark) focus-pulls in with a light sweep across it, the tagline tracks in underneath.
+kinds: [cutaway, overlay, end]
+hero: true
+duration: 2.8
+params:
+  logo: {type: path, default: "", help: logo image (PNG/SVG with transparency); else the wordmark text is set}
+  text: {type: str, default: "", help: wordmark when there is no logo}
+  tagline: {type: str, default: ""}
+  ring: {type: bool, default: true, help: the drawn accent outline + breath}
+preview:
+  params: {text: "Morgan Roofing", tagline: "Built for storms"}
+cues:
+  - [0.0, boom, -17]

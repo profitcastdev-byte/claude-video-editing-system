@@ -1,0 +1,65 @@
+<div class="safe center" id="root">
+  <div class="mark" id="mark">
+    <svg class="frame" id="fs" xmlns="http://www.w3.org/2000/svg"><rect id="fr" pathLength="1"/></svg>
+    <div class="logo" id="logo"></div>
+  </div>
+  <div class="tag" id="tag"></div>
+</div>
+<style>
+  #root { gap: var(--s-4); }
+  .mark { position: relative; display: grid; place-items: center; padding: calc(var(--u) * 5) calc(var(--u) * 7); }
+  .frame { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  #fr { fill: none; stroke: var(--accent); stroke-linecap: round; }
+  .logo { position: relative; display: grid; place-items: center; }
+  .logo img { max-width: calc(var(--u) * 52); max-height: calc(var(--u) * 24); display: block; }
+  .word { font-size: var(--t-8); font-weight: 800; letter-spacing: -0.03em; line-height: 1; white-space: nowrap;
+          background: linear-gradient(100deg, var(--text) 0%, var(--text) 42%, var(--accent) 50%, var(--text) 58%, var(--text) 100%);
+          background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; padding: 0.08em 0.04em; }
+  .sweep { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .sweep::after { content: ""; position: absolute; top: 0; bottom: 0; width: 30%; left: 0; transform: translateX(var(--sx, -150%)) skewX(-20deg);
+                  background: linear-gradient(90deg, transparent, rgb(var(--text-rgb) / 0.6), transparent); }
+  .tag { font-size: var(--t-2); font-weight: 600; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let fr, fs, logo, word, sweep, tag, tl, mark;
+  C.piece({
+    setup(P, ctx) {
+      fr = document.getElementById('fr'); fs = document.getElementById('fs'); logo = document.getElementById('logo'); tag = document.getElementById('tag'); mark = document.getElementById('mark');
+      if (P.logo) {
+        const img = C.el('img', '', logo); img.src = P.logo; logo.dataset.text = C.plain(P.text || '');
+        sweep = C.el('div', 'sweep', logo);
+        for (const k of ['webkitMask', 'mask']) sweep.style[k] = `url("${P.logo}") center / contain no-repeat`;
+      } else { word = C.el('div', 'word', logo, C.plain(P.text || '')); logo.dataset.text = word.textContent; C.fit(word, ctx.w * 0.72, ctx.h * 0.3, 1, 0.3); }
+      if (P.tagline) { tag.textContent = C.plain(P.tagline); tag.dataset.text = tag.textContent; } else tag.remove();
+      if (P.ring === false) fs.remove();
+      tl = C.timeline().at('frame', 0, D(0.8)).at('burst', D(0.72), D(0.55)).at('logo', D(0.35), D(0.8)).at('sweep', D(0.85), D(0.9)).at('tag', D(1.0), D(0.8));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t);
+      if (fs.isConnected) {
+        // a pill outline draws itself around the mark (from the top centre, both ways at once), then breathes out and fades
+        const w = mark.offsetWidth, h = mark.offsetHeight, pb = C.easings.outCubic(tl.raw('burst', t)), g = 1 + 0.06 * pb;
+        const W = w * g, H = h * g, r = H / 2;
+        fr.setAttribute('x', ((w - W) / 2).toFixed(2)); fr.setAttribute('y', ((h - H) / 2).toFixed(2));
+        fr.setAttribute('width', W.toFixed(2)); fr.setAttribute('height', H.toFixed(2)); fr.setAttribute('rx', r.toFixed(2));
+        fr.setAttribute('stroke-width', (0.42 * u * (1 - 0.5 * pb)).toFixed(2));
+        C.draw(fr, tl.p('frame', t, C.MOVE)); fr.style.opacity = (tl.raw('frame', t) > 0 ? 1 - 0.75 * pb : 0) * (1 - ex);
+      }
+      const pl = tl.p('logo', t, 'spring(0.7)');
+      C.set(logo, { s: 0.86 + 0.14 * pl - ex * 0.05, o: Math.min(1, tl.raw('logo', t) * 2.2) * (1 - ex), blur: (1 - C.easings.outCubic(tl.raw('logo', t))) * 2 * u + ex * u });
+      const ps = tl.p('sweep', t, C.MOVE);
+      if (word) word.style.backgroundPosition = `${(100 - ps * 100).toFixed(2)}% 0`;
+      if (sweep) sweep.style.setProperty('--sx', `${(-150 + 500 * ps).toFixed(1)}%`);
+      if (tag.isConnected) {
+        const p = tl.p('tag', t); tag.style.letterSpacing = `${(0.22 + 0.4 * (1 - p)).toFixed(4)}em`;
+        C.set(tag, { o: Math.min(1, tl.raw('tag', t) * 1.6) * (1 - ex) });
+      }
+    },
+    cues(P) {
+      C.cue(tl.t0('logo'), 'boom', -17, { trim: [0, 1.0], reveal: true });   // on the mark's entry frame
+      if (P.tagline) C.cue(tl.t0('tag'), 'swipe', -26, { trim: [0, 0.3] });
+    },
+  });
+})();
+</script>

@@ -5,6 +5,7 @@ from .. import gfx as G
 from ..gfx import ease_out, ease_in, back, clamp
 
 KIND = "roto"
+DESIGN = True             # fixed 1080x1920 layout: fitted into the canvas safe zone on other canvases (templates._canvas_render)
 def _el(): from . import El, faded; return El, faded
 def _t(ctx): F = G.fps_of(ctx); return F, (lambda v: G.q(v, F))
 def _deep(a=235): return G.mix(G.CARD, (0, 0, 0), .35) + (a,)          # roto card body: a darker card, slightly see-through

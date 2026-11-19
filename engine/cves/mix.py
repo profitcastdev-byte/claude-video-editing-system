@@ -1,5 +1,7 @@
 """Mix: voice_final + music (placed and fitted by beats.plan, frequency-split ducking with look-ahead) + SFX (template cues + extras)
 -> Edit/mix_premaster.wav, Edit/mix.wav (style sound.master_lufs / sound.true_peak; default -14 LUFS, <= -1 dBTP) and stems (Edit/stems/voice|music|sfx.wav).
+`music.slot: platform` (organic posts, cves.guide): no music in the mix at all; the guide the edit is cut to is written as
+Edit/stems/guide.wav instead (never mixed in).
 Levels come from the style (`sound.*`); music placement / fit / beat sync from `music.*` (docs/MUSIC.md).
 Cue post-pass (all_cues): transition whooshes are placed by their measured PEAK on the cut (SND-08), identical back-to-back
 repeats get a deterministic pitch / gain variation (SND-09), and in `music.sync: full` transition-type cues are nudged so
@@ -22,13 +24,29 @@ def sfx_bank(TL):
         if name.startswith("asset:"):         # media templates' own audio (video_broll audio: true): an asset id
             from . import assets
             p = assets.resolve(TL.pr, name[6:])
-            if p is None: raise SystemExit(f"audio cue '{name}': no such asset; add it with `cves assets add`")
+            if p is None:                     # a footage path (broll: src) is fine too
+                q = name[6:] if os.path.isabs(name[6:]) else TL.pr.p(name[6:])
+                if os.path.exists(q): return q
+                raise SystemExit(f"audio cue '{name}': no such asset; add it with `cves assets add`")
             return p
         for r in roots:
             for ext in (".mp3", ".wav"):
                 if os.path.exists(os.path.join(r, name + ext)): return os.path.join(r, name + ext)
         raise SystemExit(f"sfx '{name}' not found in {roots}")
     return find
+
+def load_audio(path):
+    """mono float audio at SR from any file: soundfile / librosa for audio files, ffmpeg for a video's sound track
+    (B-roll clips with `audio: true`; librosa cannot read an .mp4 without audioread)"""
+    try:
+        y, _ = librosa.load(path, sr=SR, mono=True); return y
+    except Exception:
+        d = tempfile.mkdtemp(prefix="cves_aud_"); w = os.path.join(d, "a.wav")
+        try:
+            r = subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", "-i", path, "-vn", "-ac", "1", "-ar", str(SR), w], capture_output=True, text=True)
+            if r.returncode or not os.path.exists(w): raise SystemExit(f"no readable audio in {path}: {r.stderr.strip()[:160]}")
+            y, _ = sf.read(w, dtype="float32"); return y
+        finally: shutil.rmtree(d, ignore_errors=True)
 
 # ------------------------------------------------------------------ SFX peak offsets (measured, cached)
 _PEAKS = {}
@@ -123,15 +141,23 @@ def _music(pr, TL, P, N, T):
 
 def mix(pr):
     TL = Timeline(pr); T = TL.N / TL.FPS; N = int(T * SR); find = sfx_bank(TL)
-    vo, _ = librosa.load(pr.e("voice_final.wav"), sr=SR, mono=True); vo = np.pad(vo, (0, max(0, N - len(vo))))[:N]
+    from . import spines as SP
+    has_vo = SP.has_voice(TL.spine)          # music / broll spines: no voice; the music (and clip sound) lead
+    if has_vo:
+        vo, _ = librosa.load(pr.e("voice_final.wav"), sr=SR, mono=True); vo = np.pad(vo, (0, max(0, N - len(vo))))[:N]
+    else: vo = np.zeros(N, np.float32)
     M = TL.E.get("music") or {}; mus = np.zeros((N, 2), np.float32); SND = TL.S.get("sound") or {}
     bed_lu = M.get("bed_lu", SND.get("bed_lu", -10)); tmp = tempfile.mkdtemp(prefix="cves_mix_")
     TV, TM, TB = (os.path.join(tmp, f"{k}.wav") for k in "vmb")
-    P = BT.plan(pr, TL) if M.get("file") else None
+    from . import guide as GD
+    slot = GD.is_slot(pr)          # music.slot: platform -> the master carries no music (the poster adds the sound in-app)
+    if slot and M.get("file"): raise SystemExit("music.slot: platform delivers no music: remove music.file (put the reference track in music.guide)")
+    P = BT.plan(pr, TL) if M.get("file") and not slot else None
     if P:
         y, legacy_fade = _music(pr, TL, P, N, T)
         sf.write(TV, vo, SR); sf.write(TM, y, SR)
-        y *= db(lufs(TV) - lufs(TM) + bed_lu + 3)   # +3: ducking takes ~3 LU back off
+        if has_vo: y *= db(lufs(TV) - lufs(TM) + bed_lu + 3)   # +3: ducking takes ~3 LU back off
+        else: y *= db(SND.get("master_lufs", -14) - 6 - lufs(TM))    # no voice: the music leads, 6 LU under the master target (headroom; the master stage sets the level)
         env = np.convolve(np.abs(vo), np.ones(int(.1 * SR)) / int(.1 * SR), "same"); env /= env.max() + 1e-9
         speech = np.clip((env - .04) / .1, 0, 1); duck = np.zeros(N); lv = 0.
         aa, ar = 1 - np.exp(-48 / (.03 * SR)), 1 - np.exp(-48 / (.4 * SR))
@@ -139,6 +165,7 @@ def mix(pr):
             tg = speech[k]; lv += (tg - lv) * (aa if tg > lv else ar); duck[k:k + 48] = lv
         la = int(SND.get("duck_lookahead_s", .12) * SR); duck = np.concatenate([duck[la:], np.full(la, duck[-1])])         # look-ahead
         lo = sosfiltfilt(butter(4, 250, "low", fs=SR, output="sos"), y, axis=0); hi = sosfiltfilt(butter(4, 5000, "high", fs=SR, output="sos"), y, axis=0)
+        if not has_vo: duck[:] = 0
         y = (lo + hi) * (db(SND.get("duck_other_db", -3)) ** duck)[:, None] + (y - lo - hi) * (db(SND.get("duck_voice_band_db", -8)) ** duck)[:, None]
         if legacy_fade: fo = int(.9 * SR); y[N - fo:] *= (np.linspace(1, 0, fo) ** 1.5)[:, None]
         mus = y.astype(np.float32); music_target = bed_lu
@@ -146,7 +173,7 @@ def mix(pr):
     for t, name, gain, kw in cues:
         sp = float(kw.get("speed", 1) or 1); key = (name, str(kw.get("trim")), kw.get("pitch", 0), sp, bool(kw.get("raw")))
         if key not in cache:
-            y, _ = librosa.load(find(name), sr=SR, mono=True)
+            y = load_audio(find(name))
             if kw.get("trim"): y = y[int(kw["trim"][0] * SR):int(kw["trim"][1] * SR)]
             if sp != 1 and len(y) > 2048: y = librosa.effects.time_stretch(y, rate=sp)      # media clip played at speed
             if kw.get("pitch"): y = librosa.effects.pitch_shift(y, sr=SR, n_steps=kw["pitch"])
@@ -156,7 +183,7 @@ def mix(pr):
         y = cache[key]; g = gain if kw.get("reveal") else gain + SND.get("sfx_offset_db", -3); i = int(round(t * SR)); j = min(N, i + len(y))
         if i < 0: y, i = y[-i:], 0                      # a cue placed before 0 keeps its peak where it belongs
         if i < N: sfx[i:j] += y[:j - i] * db(g)
-    if M.get("file"):     # measure the real bed (music + SFX) vs voice and correct the music gain: no guessed compensation
+    if P and has_vo:      # measure the real bed (music + SFX) vs voice and correct the music gain: no guessed compensation
         sf.write(TV, vo, SR)
         for _ in range(3):
             sf.write(TB, mus.mean(1) + sfx, SR); err = music_target - (lufs(TB) - lufs(TV))
@@ -168,6 +195,14 @@ def mix(pr):
     pk = max(1., np.abs(mixd).max() * 1.05); sf.write(pr.e("mix_premaster.wav"), mixd / pk, SR)
     for st in ("voice", "music", "sfx"):     # stems at the same scale as the premaster (for control-mode faders)
         y, _ = sf.read(pr.e("stems", f"{st}.wav")); sf.write(pr.e("stems", f"{st}.wav"), y / pk, SR)
+    gi = None
+    if os.path.exists(pr.e("stems", "guide.wav")): os.remove(pr.e("stems", "guide.wav"))
+    if slot:
+        gy, g = GD.stem(pr, N, SR, TL.S, TL)
+        if gy is None: raise SystemExit("music.slot: platform: " + ("; ".join(GD.problems(pr)) or "no guide grid"))
+        sf.write(pr.e("stems", "guide.wav"), gy, SR)
+        gi = {"slot": "platform", "kind": g["kind"], "tempo": g.get("tempo"), "offset_s": g.get("offset"), "drop_cut": g.get("drop_cut"),
+              "beats": len(g["beats"]), "sound": g["spec"].get("sound"), "notes": g.get("notes", [])}
     shutil.rmtree(tmp, ignore_errors=True)
     target = SND.get("master_lufs", -14); lim = SND.get("true_peak", -1.0) - 1.0      # limiter ceiling 1 dB under the TP target (inter-sample headroom)
     g = target - lufs(pr.e("mix_premaster.wav"))
@@ -179,6 +214,7 @@ def mix(pr):
         g += err
     info = {"master_gain_db": round(g, 2), "cues": len(cues), "peak_placed": sum(1 for c in cues if c[3].get("peak_at") is not None),
             "beat_nudged": len(snaps)}
+    if gi: info["guide"] = gi
     if P:
         lay = P.get("lay") or {}
         info["music"] = {"sync": P["mode"], "fit": P["fit"], "offset_s": round(P["offset"], 3), "drop": P["drop"],

@@ -4,7 +4,7 @@
   cves select                                           selects.yaml -> tightened edl.json + clean voice (DeepFilterNet + chain)
   cves prep                                             words + plate + matte + faces (after select)
   cves story                                            print the raw transcript (Claude writes Edit/selects.yaml from it) and the current segments
-  cves inspire [--refs DIR] [--dry-run]                 reference edits (Inspirations/) -> measured style profile Edit/style.yaml
+  cves inspire [--refs DIR] [--dry-run] [--mix grade=refA,pacing=refB]   reference edits (Inspirations/) -> Edit/style.yaml + Edit/inspire/REPORT.md
   cves validate                                         check edit.yaml / selects.yaml / style keys (render and build run it first)
   cves assets add|list|check|todo ...                   images, B-roll, overlays, generated media -> Assets/ + provenance (docs/MEDIA.md)
   cves plan                                             first run: write a skeleton edit.yaml; then validate it (`cves templates` lists params)
@@ -21,7 +21,15 @@
   cves deliver [--variants 4:5,1:1,cut15] [--only master] [--force-unchecked]   QC-stamped Export/vNNN/ (docs/DELIVERY.md)
   cves export resolve [--push] | kdenlive | all          control mode: layered media + layers.json + Resolve / Kdenlive project
   cves music search|download|generate|credit ...        Openverse (licence-checked, credits logged) + ElevenLabs/Magnific hand-off
-  cves doctor                                           check tools, models, GPU backend, fonts"""
+  cves doctor                                           check tools, models, GPU backend, fonts
+  cves learn note|rate|approve|reject|results|mine|list|show|promote|forget|study ...   self-learning (docs/LEARNING.md)
+  cves critique [vNNN|master]                           review pack: contact sheet + energy timeline + CRITIQUE.md rubric
+
+  cves motion list | preview <piece> [--params JSON] [--size WxH] [--out f.png|f.mp4]   HTML motion pieces (docs/MOTION.md)
+
+  -- formats + spines (docs/FORMATS.md) --
+  cves ingest                                           on a voiceover spine: tighten + transcribe the VO; music / broll: edl.json (rate, canvas)
+  cves autocut [--every beats|downbeats|bars] [--bars 2] [--min-shot S] [--folder Raw] [--apply]   a broll: track cut on the music grid"""
 import argparse, os, sys, json, subprocess
 
 def _project(a):
@@ -54,10 +62,31 @@ def main(argv=None):
     dr = sp.add_parser("doctor"); dr.add_argument("rest", nargs=argparse.REMAINDER); sp.add_parser("templates")
     vl = sp.add_parser("validate", help="[PROJECT]: check edit.yaml, selects.yaml and style keys (types, templates, times, ids, paths)"); vl.add_argument("dir", nargs="?"); vl.add_argument("--json", action="store_true")
     isp = sp.add_parser("inspire", help="[PROJECT] [--refs DIR] [--dry-run]: measure reference edits -> Edit/style.yaml (docs/STYLE.md)"); isp.add_argument("dir", nargs="?"); isp.add_argument("--refs"); isp.add_argument("--dry-run", action="store_true"); isp.add_argument("--max-s", type=float, default=90, help="seconds analysed per reference video")
+    # ---- WS B (Inspire v2): mix-and-match flags for `cves inspire` (docs/STYLE.md "How cves inspire fills it")
+    isp.add_argument("--mix", help='force the source per dimension, e.g. "grade=refA,captions=refB,pacing=refC" (grade palette captions pacing sound motion structure)')
+    isp.add_argument("--refresh", action="store_true", help="re-measure every reference (ignore Edit/inspire/cache)")
+    isp.add_argument("--min-conf", type=float, default=.5, help="keys below this confidence are not written (default 0.5)")
+    # ---- end WS B
+    # ---- motion layer (WS A, docs/MOTION.md): list / preview HTML motion pieces; no project needed
+    mo = sp.add_parser("motion", help="list | preview <piece> (HTML motion pieces, docs/MOTION.md)", add_help=False); mo.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- end motion layer
     asx = sp.add_parser("assets", help="add | list | check | todo | resolve (media assets + provenance, docs/MEDIA.md)", add_help=False); asx.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- WS E: self-learning + senior-editor review (docs/LEARNING.md) ----
+    lrn = sp.add_parser("learn", help="note | rate | approve | reject | results | journal | mine | list | show | promote | forget | study (docs/LEARNING.md)", add_help=False); lrn.add_argument("rest", nargs=argparse.REMAINDER)
+    crq = sp.add_parser("critique", help="[vNNN|master]: contact sheet + energy timeline + CRITIQUE.md rubric -> Edit/critique/"); crq.add_argument("which", nargs="?", default="master")
+    # ---- end WS E ----
+    # ---- formats + spines (WS C, docs/FORMATS.md) ----
+    ac = sp.add_parser("autocut", help="[PROJECT]: propose a broll: track whose cuts land on the music grid (Edit/beats.json)")
+    ac.add_argument("dir", nargs="?"); ac.add_argument("--every", choices=["beats", "downbeats", "bars"], help="grid (default: style autocut.every)")
+    ac.add_argument("--bars", type=int, help="with --every bars: cut every N bars (default: style autocut.bars)")
+    ac.add_argument("--min-shot", type=float, help="skip grid points closer than this to the previous cut (s; default: style autocut.min_shot_s)")
+    ac.add_argument("--folder", default="Raw", help="clips to cycle through (project-relative, default Raw)")
+    ac.add_argument("--apply", action="store_true", help="write the track into edit.yaml broll: (backup kept); else print it")
+    ac.add_argument("--json", action="store_true")
+    # ---- end formats + spines ----
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
-        if a.cmd in ("doctor", "music", "export", "assets"): a.rest = list(getattr(a, "rest", [])) + extra
+        if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion"): a.rest = list(getattr(a, "rest", [])) + extra
         else: ap.error("unrecognized arguments: " + " ".join(extra))
 
     if a.cmd == "new":
@@ -72,13 +101,17 @@ def main(argv=None):
         return
     if a.cmd == "assets":    # media registry: copy into Assets/, provenance in Edit/assets.json
         from . import assets; sys.exit(assets.main(a.rest, a.project))
+    if a.cmd == "motion":    # motion layer (WS A): `cves motion list | preview ...`; --project picks the style + Brand/motion
+        from . import motion; sys.exit(motion.main(list(a.rest) + (["--project", a.project] if a.project and a.rest and a.rest[0] == "preview" else [])))
     if a.cmd == "music":     # Openverse search/download (licence-checked, credits logged); ElevenLabs / Magnific hand-off
         from . import music; sys.exit(music.main(a.rest))
+    if a.cmd == "learn":     # WS E: journal notes / ratings / results; mine, promote, study (no project needed for mine/list/promote)
+        from . import learn; sys.exit(learn.main(a.rest, a.project))
     if a.cmd == "export" and a.target == "selftest":     # synthetic layers, no project needed
         from .export.__main__ import main as xmain; sys.exit(xmain(["selftest"] + list(a.rest)))
     if a.cmd == "beats" and a.dir: a.project = a.dir
     if a.cmd == "control" and a.dir: a.project = a.dir
-    if a.cmd in ("validate", "inspire") and a.dir: a.project = a.dir
+    if a.cmd in ("validate", "inspire", "autocut") and a.dir: a.project = a.dir
     if a.cmd == "import-edits" and len(a.paths) > 1: a.project = a.paths[0]
     pr = _project(a)
     if a.cmd == "control":       # control mode: re-render named layers in Export/control + refresh layers.json
@@ -86,15 +119,43 @@ def main(argv=None):
         for line in update(pr, a.only): print(line)
         print("relink in the editor (same paths), or rebuild the project file: `cves export resolve|kdenlive --no-build`"); return
     if a.cmd == "import-edits":  # human edits in Resolve / Kdenlive -> edit.yaml / selects.yaml + Edit/IMPORT-REPORT.md
-        from .importer import import_edits
-        rep = import_edits(pr, a.paths[-1], a.src, captions=a.captions, dry_run=a.dry_run); print(rep["summary"]); return
+        from .importer import import_edits; from . import learn
+        E0 = pr.edit; rep = import_edits(pr, a.paths[-1], a.src, captions=a.captions, dry_run=a.dry_run); print(rep["summary"])
+        learn.on_import(pr, E0, rep, a.dry_run); return     # WS E: journal what the human changed
+    if a.cmd == "critique":    # WS E: senior-editor review pack
+        from .critique import critique; r = critique(pr, a.which)
+        print(f"review pack -> {r['dir']}\n  {r['sheet']}\n  {r['timeline']}\n  {r['md']}  (fill the rubric; log it with `cves learn rate ... --by claude`)")
+        for n, u, b, s in r["budget"]:
+            if s == "OVER": print(f"  restraint budget OVER: {n} {u} > {b}")
+        return
     if a.cmd == "validate":
         from . import schema; e_, w_ = schema.validate(pr)
         print(json.dumps({"errors": e_, "warnings": w_}, indent=1) if a.json else schema.report(e_, w_)); sys.exit(1 if e_ else 0)
     if a.cmd == "inspire":
-        from . import inspire; inspire.run(pr, refs=a.refs, dry_run=a.dry_run, max_s=a.max_s); return
+        from . import inspire   # WS B: --mix / --refresh / --min-conf
+        inspire.run(pr, refs=a.refs, dry_run=a.dry_run, max_s=a.max_s, mix=a.mix, refresh=a.refresh, min_conf=a.min_conf); return
     if a.cmd == "beats":
         from . import beats; sys.exit(beats.report(pr, a.sync, a.apply, a.file, a.json, a.refresh))
+    # ---- formats + spines (WS C, docs/FORMATS.md) ----
+    if a.cmd in ("ingest", "select", "prep"):
+        from . import spines as SP
+        sp_ = SP.spine_of(pr.edit)
+        if sp_ != "aroll":
+            if a.cmd != "ingest": raise SystemExit(f"`cves {a.cmd}` is for A-roll: the {sp_} spine needs only `cves ingest`")
+            print(json.dumps(SP.ingest_spine(pr), indent=1)); return
+    if a.cmd == "autocut":
+        from . import spines as SP, style as STY
+        S_ = STY.load(pr)
+        track, info = SP.autocut(pr, every=a.every or S_.get("autocut.every", "downbeats"), min_shot=a.min_shot if a.min_shot is not None else S_.get("autocut.min_shot_s"),
+                                 folder=a.folder, bars=a.bars or S_.get("autocut.bars", 2))
+        if a.apply: SP.write_broll(pr, track)
+        if a.json: print(json.dumps({"broll": track, "info": info}, indent=1))
+        else:
+            import yaml
+            print(yaml.safe_dump({"broll": track}, sort_keys=False).rstrip())
+            print(f"# {info['shots']} shots on {info['every']} ({info['grid']} grid points, min shot {info['min_shot']} s)" + (" -> written to edit.yaml" if a.apply else " (--apply writes it to edit.yaml)"))
+        return
+    # ---- end formats + spines ----
     if a.cmd == "ingest":
         from . import ingest; ingest.run_all(pr, a.steps.split(",")); print(f"read {pr.e('raw_transcript.txt')} and write {pr.e('selects.yaml')}")
     elif a.cmd == "select":
@@ -108,7 +169,11 @@ def main(argv=None):
     elif a.cmd == "plan":
         from . import templates as T
         E = pr.edit
-        if not any(k in E for k in ("cutaways", "roto", "chest", "end_card")):      # first run: skeleton to fill in
+        from . import spines as SP
+        if SP.spine_of(E) != "aroll" and not any(k in E for k in ("cutaways", "broll", "end_card")):   # voiceover / music / broll: no A-roll keys
+            E.update({"broll": [], "captions": {"auto": True, "hide": [], "fixes": {}}, "cutaways": [], "sfx": {"auto": True, "extra": []}})
+            pr.save_edit(E); print("wrote skeleton Edit/edit.yaml: fill broll: (docs/FORMATS.md; `cves autocut` on a music spine) and cutaways from `cves templates`")
+        if not any(k in E for k in ("cutaways", "roto", "chest", "end_card", "broll")):      # first run: skeleton to fill in
             E.update({"edl": "edl.json", "aroll": {"zoom": {}, "creep": 0.015, "snap": None, "exposure_match": True},
                       "captions": {"auto": True, "max_chars": 34, "hide": [], "fixes": {}},
                       "cutaways": [], "roto": [], "chest": [],
@@ -121,7 +186,7 @@ def main(argv=None):
         for k in ("roto", "chest"):
             for c in E.get(k, []):
                 if c.get("template") not in T.REGISTRY: errs.append(f"{k} {c.get('segment')}: unknown template {c.get('template')}")
-        segs = {s["id"] for s in pr.json("edl.json", {"segments": []})["segments"]}
+        segs = {s["id"] for s in (pr.json("edl.json", {}) or {}).get("segments", [])}
         for k in ("roto", "chest"):
             for c in E.get(k, []):
                 for sid in ([c["segment"]] if isinstance(c["segment"], str) else c["segment"]):
@@ -137,20 +202,23 @@ def main(argv=None):
     elif a.cmd == "mix":
         from .mix import mix; print(f"mix {mix(pr):.2f} s -> {pr.e('mix.wav')}")
     elif a.cmd == "encode":
-        from .encode import encode; print(encode(pr, a.out))
+        from .encode import encode; from . import learn; v = encode(pr, a.out); print(v); learn.on_build(pr, v)
     elif a.cmd == "qc":
         from . import qc
         if a.stage in ("story", "plan"):
             nf, rep = qc.run_stage(pr, a.stage); print(rep); sys.exit(1 if nf else 0)
-        v = a.video or _latest_export(pr); nf, rep = qc.run(pr, v, fast=a.fast); print(rep); sys.exit(1 if nf else 0)
+        v = a.video or _latest_export(pr); nf, rep = qc.run(pr, v, fast=a.fast); print(rep)
+        from . import learn; learn.on_qc(pr); sys.exit(1 if nf else 0)
     elif a.cmd == "deliver":
         from .deliver import deliver
         d, m = deliver(pr, a.variants, a.only, a.force_unchecked, a.video, a.keep_temp)
         for v in m["variants"]: print(f"  {v['status']:9s} {v['id']:10s} {v.get('file') or v.get('reason', '')[:160]}")
         print(("UNCHECKED (forced) " if m.get("forced_unchecked") else "") + f"delivered {m['version']} -> {d}")
+        from . import learn; learn.on_deliver(pr, m)
     elif a.cmd == "build":
         from .render import render; from .mix import mix; from .encode import encode; from . import qc, schema
-        schema.require_valid(pr); render(pr); mix(pr); v = encode(pr); nf, rep = qc.run(pr, v, fast=True); print(rep); sys.exit(1 if nf else 0)
+        schema.require_valid(pr); render(pr); mix(pr); v = encode(pr); nf, rep = qc.run(pr, v, fast=True); print(rep)
+        from . import learn; learn.on_build(pr, v); learn.on_qc(pr); sys.exit(1 if nf else 0)
     elif a.cmd == "export":     # control mode: layered media + layers.json, then the Resolve / Kdenlive project
         if a.target != "selftest" and "--no-build" not in a.rest:
             from .layered import build; print("layers ->", build(pr))

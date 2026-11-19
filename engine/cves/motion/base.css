@@ -1,0 +1,67 @@
+/* CVES motion base styles (docs/MOTION.md). Every colour, font and size comes from the CSS variables the engine
+   writes from the style profile: --accent, --text, --card, ... (+ -rgb triplets), --font-sans, --font-serif,
+   --u (1 % of the shorter canvas side), the type scale --t-0 .. --t-9, spacing --s-1 .. --s-6, --r (radius),
+   and the safe zone --safe-l / --safe-t / --safe-r / --safe-b. Never write a literal colour in a piece. */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; transition: none !important; animation: none !important; }
+html, body { width: 100%; height: 100%; background: transparent !important; overflow: hidden; }
+body {
+  font-family: var(--font-sans); font-weight: 600; color: var(--text); font-size: var(--t-2); line-height: 1.15;
+  -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; font-kerning: normal;
+  font-feature-settings: "kern" 1, "liga" 1; font-variant-numeric: lining-nums;
+}
+h1, h2, h3, p, .title, .body, .display { text-wrap: balance; }
+.stage { position: absolute; inset: 0; }
+/* the area kept free of platform UI: lay pieces out inside it */
+.safe { position: absolute; left: var(--safe-l); top: var(--safe-t); right: var(--safe-r); bottom: var(--safe-b); }
+.center { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.abs { position: absolute; }
+.acc, em, .accent-c { color: var(--accent); font-style: normal; }
+
+/* word masks (CVES.words): the outer span clips, the inner one moves */
+.w { display: inline-block; overflow: clip; overflow-clip-margin: 0.12em; vertical-align: top; padding: 0.04em 0.02em 0.1em; margin: -0.04em -0.02em -0.1em; }
+.wi { display: inline-block; will-change: transform; }
+.ch { display: inline-block; }
+
+/* type */
+.eyebrow {
+  font-size: var(--t-1); font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted);
+  display: inline-flex; align-items: center; gap: var(--s-2); line-height: 1;
+}
+.eyebrow::before { content: ""; width: calc(var(--u) * 3.2); height: calc(var(--u) * 0.36); border-radius: 99px; background: var(--accent); }
+.eyebrow.bare::before { display: none; }
+.display { font-weight: 800; letter-spacing: -0.025em; line-height: 1.02; }
+.title { font-weight: 700; letter-spacing: -0.015em; line-height: 1.05; }
+.body { font-weight: 500; line-height: 1.35; color: var(--muted); }
+.num { font-weight: 800; letter-spacing: -0.035em; font-variant-numeric: tabular-nums lining-nums; line-height: 0.9; }
+.serif { font-family: var(--font-serif); font-weight: 700; letter-spacing: -0.01em; }
+.on-video { text-shadow: 0 calc(var(--u) * 0.25) calc(var(--u) * 1.4) rgb(0 0 0 / 0.42); }
+
+/* surfaces: the video / stage is composited later, so "glass" is a translucent tinted fill with a lit edge */
+.glass {
+  position: relative; border-radius: var(--r);
+  background:
+    linear-gradient(165deg, rgb(var(--text-rgb) / 0.13) 0%, rgb(var(--text-rgb) / 0.035) 46%, rgb(var(--text-rgb) / 0.06) 100%),
+    rgb(var(--card-rgb) / var(--glass-alpha));
+  border: max(1px, calc(var(--u) * 0.12)) solid rgb(var(--text-rgb) / 0.16);
+  box-shadow: 0 calc(var(--u) * 2.2) calc(var(--u) * 6) rgb(0 0 0 / 0.38), inset 0 max(1px, calc(var(--u) * 0.12)) 0 rgb(var(--text-rgb) / 0.22);
+}
+.solid {
+  position: relative; border-radius: var(--r); background: rgb(var(--card-rgb) / 0.96);
+  border: max(1px, calc(var(--u) * 0.12)) solid rgb(var(--card-border-rgb) / 1);
+  box-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 5) rgb(0 0 0 / 0.35);
+}
+.chip {
+  display: inline-flex; align-items: center; gap: var(--s-1); padding: calc(var(--u) * 1.1) calc(var(--u) * 2.2);
+  border-radius: 999px; font-size: var(--t-1); font-weight: 700; letter-spacing: 0.04em; line-height: 1;
+  background: rgb(var(--accent-rgb) / 0.16); color: var(--accent); border: max(1px, calc(var(--u) * 0.12)) solid rgb(var(--accent-rgb) / 0.4);
+}
+.rule { height: max(2px, calc(var(--u) * 0.36)); border-radius: 99px; background: var(--accent); transform-origin: left center; }
+/* a soft sheen that a piece sweeps across a surface (translateX it from -120% to 120%) */
+.sheen { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
+.sheen::after {
+  content: ""; position: absolute; top: -20%; bottom: -20%; width: 38%; left: 0; transform: translateX(var(--sheen-x, -140%)) skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgb(var(--text-rgb) / 0.16), transparent);
+}
+.ic { display: inline-block; width: 1em; height: 1em; background: currentColor; flex: none;
+      -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+svg { display: block; overflow: visible; }

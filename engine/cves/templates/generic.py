@@ -11,7 +11,7 @@ Rules every template here follows:
 import os, sys, numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from .. import gfx as G
-from ..gfx import ease_out, ease_in, back, clamp, W, H
+from ..gfx import ease_out, ease_in, back, clamp
 
 KIND = "cutaway"
 def _el(): from . import El, faded; return El, faded
@@ -373,17 +373,17 @@ def logo_reveal(t, p, ctx):
     El, faded = _el(); k = _K(t, p, ctx); res = []; out = k.out()
     at = p.get("at", k.start); pp = k.e(at, p.get("dur", .55)); mode = p.get("mode", "scale")
     if pp <= 0: return res
-    lg = G.image(asset(ctx, p["logo"])); wpx = min(p.get("width", 560), k.w); hpx = wpx * lg.height / lg.width; cy = p.get("y", 860)
+    lg = G.image(asset(ctx, p["logo"])); wpx = min(p.get("width", 560), k.w); hpx = wpx * lg.height / lg.width; cy = p.get("y", 860 if G.is_design() else (k.box[1] + k.box[3]) / 2)
     e = ease_out(pp); sc = (.78 + .22 * back(pp)) if mode == "scale" else 1.0; op = min(1, pp * 2.2) if mode != "wipe" else 1.0
     def mark(d):
         w = wpx * sc; d.paste(lg, k.cx - w / 2, cy - hpx * sc / 2, w, opacity=op * (1 - out))
     im = G.layer(mark)
     if mode == "wipe":
-        a = np.asarray(im).copy(); xs = np.arange(W)[None, :]; x0 = k.cx - wpx / 2; edge = x0 + e * (wpx + 80)
+        a = np.asarray(im).copy(); xs = np.arange(G.W)[None, :]; x0 = k.cx - wpx / 2; edge = x0 + e * (wpx + 80)
         a[..., 3] = (a[..., 3] * np.clip((edge - xs) / 80, 0, 1)).astype(np.uint8); im = Image.fromarray(a)
     if p.get("glow", True):
         gl = Image.fromarray(np.asarray(im)[..., 3]).filter(ImageFilter.GaussianBlur(40))
-        g = Image.new("RGBA", (W, H), G.col(p.get("glow_color"), G.MINT) + (0,)); g.putalpha(gl.point(lambda v: int(v * .5 * e))); res.append(El(g, "logo.glow", "cutaway"))
+        g = Image.new("RGBA", (G.W, G.H), G.col(p.get("glow_color"), G.MINT) + (0,)); g.putalpha(gl.point(lambda v: int(v * .5 * e))); res.append(El(g, "logo.glow", "cutaway"))
     res.append(El(im, "logo.mark", "cutaway", text="logo", t_key=k.q(at), asset=p["logo"]))
     tg = _txt(p.get("tagline")); ta = p.get("tagline_at", at + .45); pt = ease_out(k.e(ta))
     if tg and pt > 0:
@@ -403,7 +403,7 @@ def progress_bar(t, p, ctx):
     suffix ('%'), prefix, decimals, color, y (track centre), height (34)"""
     El, faded = _el(); k = _K(t, p, ctx); res = []; out = k.out()
     at = p.get("at", k.start); dur = p.get("dur", 1.0); mx = float(p.get("max", 100 if float(p.get("value", 0)) > 1 else 1))
-    v = float(p.get("value", 0)) / mx; v0 = float(p.get("from", 0)) / mx; y = p.get("y", 900); h = p.get("height", 34)
+    v = float(p.get("value", 0)) / mx; v0 = float(p.get("from", 0)) / mx; y = p.get("y", 900 if G.is_design() else (k.box[1] + k.box[3]) / 2); h = p.get("height", 34)
     ent = p.get("enter", at - .25); pe = ease_out(k.e(ent)); x0, x1 = k.box[0], k.box[2]; c = G.col(p.get("color"), G.MINT)
     lab = _txt(p.get("label")); la = p.get("label_at", ent)
     if lab:
@@ -442,7 +442,7 @@ def chart(t, p, ctx):
     data = [(str(x[0]), float(x[1])) if isinstance(x, (list, tuple)) else (str(x.get("label", "")), float(x.get("value", 0))) for x in (p.get("data") or [])]
     if not data: return res
     kind = p.get("kind", "bar"); at = p.get("at", k.start); n = len(data); title = _txt(p.get("title"))
-    height = p.get("height", 560); th = 100 if title else 0; total = th + height + 90; top = _block_top(k, total, p.get("y"))
+    th = 100 if title else 0; height = p.get("height", 560 if G.is_design() else min(560, (k.box[3] - k.box[1]) - th - 90)); total = th + height + 90; top = _block_top(k, total, p.get("y"))
     base_y = top + th + height; x0, x1 = k.box[0], k.box[2]; vmax = float(p.get("max") or max(v for _, v in data) or 1)
     hl = p.get("highlight"); hi = (hl if isinstance(hl, int) else next((j for j, (l, _) in enumerate(data) if l == hl), None)) if hl is not None else None
     dec = int(p.get("decimals", 0)); fmt = lambda v: f"{p.get('prefix', '')}{G.fmt_num(v, dec, p.get('grouping'))}{p.get('suffix', '')}"

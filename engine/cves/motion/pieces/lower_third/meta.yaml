@@ -1,0 +1,13 @@
+title: Lower third
+description: An accent bar grows, a solid plate wipes open from it, the name rises inside and the role tracks in; it wipes back out before the shot ends.
+kinds: [overlay, cutaway]
+duration: 4.0
+params:
+  name: {type: str, required: true}
+  role: {type: str, default: ""}
+  align: {type: str, default: left, help: left | center}
+  position: {type: str, default: bottom, help: bottom | top (of the safe zone)}
+preview:
+  params: {name: "Alex Morgan", role: "Owner · Morgan Roofing"}
+cues:
+  - [0.0, swipe, -22]

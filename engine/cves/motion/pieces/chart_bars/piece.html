@@ -1,0 +1,58 @@
+<div class="safe center">
+  <div class="ch" id="ch">
+    <h2 class="title" id="tt"></h2>
+    <div class="plot" id="plot"></div>
+    <div class="base" id="base"></div>
+    <div class="labs" id="labs"></div>
+  </div>
+</div>
+<style>
+  .ch { width: min(100%, calc(var(--u) * 86)); text-align: left; }
+  @media (min-aspect-ratio: 1/1) { .ch { width: min(100%, calc(var(--u) * 120)); } }
+  #tt { font-size: var(--t-5); margin-bottom: var(--s-5); }
+  .plot { display: flex; align-items: flex-end; gap: calc(var(--u) * 3); height: min(calc(var(--safe-h) * 0.55), calc(var(--u) * 52)); }
+  .col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
+  .bar { width: 100%; border-radius: calc(var(--r) * 0.5) calc(var(--r) * 0.5) calc(var(--u) * 0.4) calc(var(--u) * 0.4); transform-origin: bottom center;
+         background: linear-gradient(180deg, rgb(var(--text-rgb) / 0.22), rgb(var(--text-rgb) / 0.08)); }
+  .col.hi .bar { background: linear-gradient(180deg, var(--accent), var(--accent-dark)); box-shadow: 0 0 calc(var(--u) * 4) rgb(var(--accent-rgb) / 0.45); }
+  .val { position: absolute; font-size: var(--t-3); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+  .col.hi .val { color: var(--text); font-size: var(--t-4); }
+  .base { height: max(2px, calc(var(--u) * 0.25)); background: rgb(var(--text-rgb) / 0.3); border-radius: 99px; transform-origin: left center; margin-top: calc(var(--u) * 0.6); }
+  .labs { display: flex; gap: calc(var(--u) * 3); margin-top: calc(var(--u) * 1.8); }
+  .labs span { flex: 1; text-align: center; font-size: var(--t-2); font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .labs span.hi { color: var(--text); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let tt, base, cols = [], tl, plotH;
+  C.piece({
+    setup(P, ctx) {
+      tt = document.getElementById('tt'); base = document.getElementById('base'); const plot = document.getElementById('plot'), labs = document.getElementById('labs');
+      if (P.title) C.words(tt, P.title); else tt.remove();
+      const bars = P.bars || [], mx = Math.max(...bars.map((b) => +b.value), 1e-9);
+      let hi = +P.highlight; if (!(hi >= 0 && hi < bars.length)) hi = bars.findIndex((b) => +b.value === mx);
+      plotH = plot.clientHeight;
+      bars.forEach((b, i) => {
+        const col = C.el('div', 'col' + (i === hi ? ' hi' : ''), plot); const bar = C.el('div', 'bar', col); const val = C.el('div', 'val', col);
+        const h = Math.max(0.02, +b.value / mx) * (plotH - ctx.u * 7); bar.style.height = h + 'px';
+        const lab = C.el('span', i === hi ? 'hi' : '', labs, C.plain(b.label)); col.dataset.text = `${C.plain(b.label)} ${P.prefix || ''}${C.fmt(+b.value, P.decimals || 0)}${P.suffix || ''}`;
+        cols.push({ col, bar, val, lab, h, v: +b.value, at: D(0.5) + i * D(0.14) });
+      });
+      tl = C.timeline().at('tt', 0, D(0.6)).at('base', D(0.25), D(0.6));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u;
+      if (tt.isConnected) tt.querySelectorAll('.wi').forEach((wi, i) => C.rise(wi, t, i * D(0.04), D(0.6), wi.offsetHeight));
+      base.style.transform = `scaleX(${tl.p('base', t, C.MOVE).toFixed(4)})`;
+      cols.forEach((c, i) => {
+        const p = C.easings.outExpo(C.prog(t, c.at, D(1.1)));
+        c.bar.style.transform = `scaleY(${Math.max(0.0001, p).toFixed(4)})`;
+        c.val.textContent = `${P.prefix || ''}${C.fmt(c.v * p, P.decimals || 0)}${P.suffix || ''}`;
+        c.val.style.bottom = (c.h * p + u * 1.2) + 'px'; c.val.style.opacity = Math.min(1, C.prog(t, c.at, D(0.3)) * 2).toFixed(3);
+        C.set(c.lab, { o: Math.min(1, C.prog(t, c.at - D(0.1), D(0.4)) * 1.5), y: (1 - C.IN(C.prog(t, c.at - D(0.1), D(0.5)))) * 1.2 * u });
+      });
+    },
+    cues() { cols.forEach((c, i) => C.cue(c.at, 'pop', c.col.classList.contains('hi') ? -16 : -24, { pitch: i * 0.9 })); },
+  });
+})();
+</script>

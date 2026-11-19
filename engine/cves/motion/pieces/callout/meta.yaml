@@ -1,0 +1,15 @@
+title: Map-pin callout
+description: A pin drops onto a point with a squash and two sonar rings, a leader line draws out from it and a glass label card slides off the end of the line.
+kinds: [overlay, cutaway]
+duration: 3.4
+params:
+  label: {type: str, required: true, help: the label on the card}
+  sub: {type: str, default: "", help: smaller second line}
+  x: {type: number, default: 0.5, help: "point to call out, fraction of the canvas width"}
+  y: {type: number, default: 0.42, help: "point to call out, fraction of the canvas height"}
+  side: {type: str, default: auto, help: "auto | left | right (where the card sits)"}
+  icon: {type: icon, default: place, help: "icon on the card (assets/icons name) or empty for none"}
+preview:
+  params: {label: "Morgan Roofing", sub: "4.9 · 212 reviews", x: 0.36, y: 0.46}
+cues:
+  - [0.0, pop, -18]

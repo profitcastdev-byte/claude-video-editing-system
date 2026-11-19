@@ -1,0 +1,12 @@
+title: Steps timeline
+description: Numbered nodes on a line that draws itself from step to step; each node fills and its label rises as the line reaches it. Vertical on tall canvases, horizontal on wide ones.
+kinds: [cutaway, overlay]
+duration: 4.0
+params:
+  title: {type: str, default: ""}
+  steps: {type: list, required: true, help: "strings, or {text, sub, at}"}
+  stagger: {type: number, default: 0.55, help: seconds between steps when they have no `at`}
+preview:
+  params: {title: "How it works", steps: [{text: "Free audit", sub: "we read your profile"}, {text: "Fix the basics", sub: "photos, hours, services"}, {text: "Post weekly", sub: "offers and updates"}]}
+cues:
+  - [0.2, pop, -20]

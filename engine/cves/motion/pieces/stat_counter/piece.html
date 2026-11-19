@@ -1,0 +1,56 @@
+<div class="safe center" id="root">
+  <div class="eyebrow" id="lb"></div>
+  <div class="numrow" id="row"><span class="num" id="num"></span></div>
+  <div class="meter" id="mt"><div class="fill" id="fill"></div></div>
+  <p class="body" id="cp"></p>
+</div>
+<style>
+  #root { gap: var(--s-3); }
+  .numrow { position: relative; display: flex; align-items: flex-start; justify-content: center; }
+  #num { font-size: calc(var(--t-9) * 1.55); color: var(--text); text-shadow: 0 0 calc(var(--u) * 6) rgb(var(--accent-rgb) / 0.35); white-space: nowrap; }
+  #num .sfx { color: var(--accent); font-size: 0.55em; margin-left: 0.04em; display: inline-block; vertical-align: 0.62em; letter-spacing: -0.02em; }
+  #num .pre { color: var(--accent); font-size: 0.62em; vertical-align: 0.5em; margin-right: 0.03em; display: inline-block; }
+  .meter { width: min(76%, calc(var(--u) * 62)); height: calc(var(--u) * 1.1); border-radius: 99px; background: rgb(var(--text-rgb) / 0.1); overflow: hidden; margin-top: var(--s-2); }
+  .fill { height: 100%; width: 100%; border-radius: 99px; transform-origin: left center;
+          background: linear-gradient(90deg, var(--accent-dark), var(--accent)); box-shadow: 0 0 calc(var(--u) * 2) rgb(var(--accent-rgb) / 0.6); }
+  #cp { font-size: var(--t-3); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let lb, num, mt, fill, cp, row, tl, pre, val, sfx;
+  C.piece({
+    setup(P, ctx) {
+      lb = document.getElementById('lb'); num = document.getElementById('num'); mt = document.getElementById('mt');
+      fill = document.getElementById('fill'); cp = document.getElementById('cp'); row = document.getElementById('row');
+      if (P.label) { lb.textContent = C.plain(P.label); lb.dataset.text = lb.textContent; } else lb.remove();
+      if (P.caption) { cp.textContent = C.plain(P.caption); cp.dataset.text = cp.textContent; } else cp.remove();
+      pre = C.el('span', 'pre', num, P.prefix || ''); val = C.el('span', '', num); sfx = C.el('span', 'sfx', num, P.suffix || ''); if (P.suffix) sfx.dataset.el = 'suffix';
+      val.textContent = C.fmt(+P.value, P.decimals || 0, P.grouping);
+      num.dataset.text = `${P.prefix || ''}${val.textContent}${P.suffix || ''}`;
+      C.fit(num, row.parentElement.clientWidth * 0.94, ctx.h * 0.4, 1, 0.3);
+      num.style.minWidth = num.getBoundingClientRect().width + 'px'; num.style.textAlign = 'center';   // tabular digits: no jitter while counting
+      tl = C.timeline().at('lb', 0, D(0.5)).at('num', D(0.12), D(0.6)).at('count', D(0.18), D(P.count_s || 1.3));
+      tl.at('sfx', tl.end('count') - D(0.12), D(0.45)).at('meter', D(0.3), D(P.count_s || 1.3) + D(0.1)).at('cp', tl.end('count') - D(0.25), D(0.6));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), pc = C.easings.outExpo(tl.raw('count', t));
+      const v = (+P.from || 0) + ((+P.value) - (+P.from || 0)) * pc;
+      val.textContent = C.fmt(tl.raw('count', t) >= 1 ? +P.value : v, P.decimals || 0, P.grouping);
+      if (lb.isConnected) C.rise(lb, t, 0, D(0.5), 1.6 * u);
+      const pn = tl.p('num', t);
+      C.set(row, { y: (1 - pn) * 4 * u - ex * 3 * u, s: 0.92 + 0.08 * pn, o: Math.min(1, tl.raw('num', t) * 2.5) * (1 - ex), blur: (1 - pn) * 1.2 * u });
+      const ps = tl.raw('sfx', t); C.set(sfx, { s: 0.6 + 0.4 * C.easings.outBack(ps), o: Math.min(1, ps * 3) });
+      C.set(pre, { o: Math.min(1, tl.raw('num', t) * 2) });
+      const frac = (+P.max > 0) ? C.clamp((+P.value) / (+P.max)) : 1;
+      fill.style.transform = `scaleX(${(frac * pc).toFixed(4)})`;
+      C.set(mt, { o: Math.min(1, tl.raw('num', t) * 2) * (1 - ex) });
+      if (cp.isConnected) { C.rise(cp, t, tl.t0('cp'), D(0.6), 1.6 * u); if (ex) C.set(cp, { o: 1 - ex }); }
+      if (lb.isConnected && ex) C.set(lb, { o: 1 - ex });
+    },
+    cues(P) {
+      C.cue(tl.t0('num'), 'pop', -22, { pitch: 4 });                              // the number enters
+      if (P.suffix) C.cue(tl.t0('sfx'), 'lowhit', -13, { reveal: true });     // the suffix lands with the final digit
+    },
+  });
+})();
+</script>

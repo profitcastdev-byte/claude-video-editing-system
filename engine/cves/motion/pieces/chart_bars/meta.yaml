@@ -1,0 +1,15 @@
+title: Bar chart
+description: Bars grow from a baseline on a stagger with their values counting above them; the highlighted bar is in the accent, the rest stay quiet.
+kinds: [cutaway]
+duration: 3.6
+params:
+  title: {type: str, default: ""}
+  bars: {type: list, required: true, help: "{label, value} items"}
+  prefix: {type: str, default: ""}
+  suffix: {type: str, default: ""}
+  decimals: {type: int, default: 0}
+  highlight: {type: int, default: -1, help: "index of the lit bar (-1: the largest)"}
+preview:
+  params: {title: "Calls per month", bars: [{label: "Jan", value: 12}, {label: "Feb", value: 18}, {label: "Mar", value: 31}, {label: "Apr", value: 54}]}
+cues:
+  - [0.0, swipe, -24]

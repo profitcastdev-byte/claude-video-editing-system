@@ -1,6 +1,7 @@
 """Control mode: render the edit as separate layers and write Export/control/layers.json (schema cves.layers/1, see
 docs/CONTROL-MODE.md §3). The exporters in cves/export/ turn it into a DaVinci Resolve or Kdenlive project.
-  V1  graded A-roll per segment (zoom, exposure balance and roto baked; no captions, no chest graphics)  ProRes 422 HQ
+  V1  graded A-roll per segment (zoom, exposure balance and roto baked; no captions, no chest graphics)  ProRes 422 HQ;
+      on a voiceover / music / broll spine: one clip per B-roll shot (framing baked, no captions)
   V2  every cutaway (incl. its transition frames inside the window) + the end card, cut from the final frames  ProRes 422 HQ
   V3  chest graphics (wordmark, logo lockup) on transparent                                            ProRes 4444 + alpha
   A1-A3  voice / music / sfx stems as mixed; captions as editable subtitle events (not burned in).
@@ -69,9 +70,11 @@ def plan(TL):
     """every video layer: {id, track, kind, f0, f1, rel path, edit_ref, alpha}"""
     F = TL.FPS; out = []
     for s in TL.segs:
+        ref = f"edl.{s['id']}" if TL.aroll else (f"broll.{s['id']}" if s.get("kind") == "broll" else f"gap.{s['id']}")
         out.append({"id": f"a_{s['id']}", "track": "V1", "kind": "aroll", "f0": s["f0"], "f1": s["f0"] + s["n"],
-                    "rel": os.path.join("media", "aroll", f"{s['id']}.mov"), "edit_ref": f"edl.{s['id']}", "alpha": False})
+                    "rel": os.path.join("media", "aroll", f"{s['id']}.mov"), "edit_ref": ref, "alpha": False})
     for c in TL.cuts:
+        if c.get("broll") and not TL.aroll: continue          # B-roll shots are the V1 picture on the non-aroll spines
         out.append({"id": str(c["id"]), "track": "V2", "kind": "cutaway", "f0": round(c["start"] * F), "f1": round(c["end"] * F),
                     "rel": os.path.join("media", "cutaways", f"{c['id']}.mov"), "edit_ref": f"cutaways.{c['id']}", "alpha": False})
     if TL.END:
@@ -88,7 +91,7 @@ def captions(TL):
     `ref` is the index into the Timeline's caption events, so an edited caption maps back to edit.yaml."""
     F = TL.FPS; caps, idx, last_end = [], 1, 0.0
     chest_t = [(s["t0"], s["t1"]) for sid in TL.chest for s in TL.segs if s["id"] == sid]
-    hidden = lambda t: TL.in_cut(t) or any(a <= t < b for a, b in chest_t) or any(a <= t < b for a, b in getattr(TL, "cap_hide", [])) or \
+    hidden = lambda t: (TL.in_cut(t) and not TL.in_cut(t).get("broll")) or any(a <= t < b for a, b in chest_t) or any(a <= t < b for a, b in getattr(TL, "cap_hide", [])) or \
                        (TL.snap and TL.snap[0] <= t < TL.snap[1]) or t >= TL.T_END
     for ref, (a, b, words) in enumerate(TL.caps):
         a, b = max(a, last_end, 0.0), min(b, TL.T_END)

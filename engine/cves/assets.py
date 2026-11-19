@@ -59,7 +59,8 @@ def declared(pr):
     return {str(k): (v if isinstance(v, dict) else {"path": v}) for k, v in a.items()}
 
 def referenced(pr):
-    """every asset id the edit's templates use: any `asset:` key (or `assets:` list) inside cutaways/roto/chest/end_card params"""
+    """every asset id the edit uses: any `asset:` key (or `assets:` list) inside cutaways/roto/chest/end_card params, the
+    broll: track and voiceover:"""
     E = pr.edit; out = []
     def walk(x, where):
         if isinstance(x, dict):
@@ -72,6 +73,10 @@ def referenced(pr):
     for sec in ("cutaways", "roto", "chest"):
         for c in E.get(sec) or []: walk(c.get("params") or {}, f"{sec}:{c.get('id') or c.get('segment')}")
     if E.get("end_card"): walk(E["end_card"].get("params") or {}, "end_card")
+    for j, x in enumerate(E.get("broll") or []):               # the broll: track (docs/FORMATS.md); `src:` is footage, not an asset
+        if isinstance(x, dict) and isinstance(x.get("asset"), str): out.append((x["asset"], f"broll[{j}]"))
+    vo = E.get("voiceover") or {}
+    if isinstance(vo, dict) and isinstance(vo.get("asset"), str): out.append((vo["asset"], "voiceover"))
     return out
 
 

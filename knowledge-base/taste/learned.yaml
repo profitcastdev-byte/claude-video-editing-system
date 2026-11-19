@@ -1,0 +1,5 @@
+# Learned taste layer (docs/LEARNING.md). Written by `cves learn promote --share`; every entry was approved by a person.
+# scopes: {global | goal:<ad|viral> | platform:<name>: {style keys}}. Never client-scoped: client taste stays in ~/.cves/taste.
+# Merged after styles/default.yaml and before the personal layer, the preset and the project (docs/CONTRACTS.md §1).
+scopes: {}
+_promoted: {}

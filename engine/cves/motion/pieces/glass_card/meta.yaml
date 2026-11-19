@@ -1,0 +1,15 @@
+title: Glass card
+description: A frosted card focus-pulls in (blur to sharp, slight scale), a sheen sweeps across, then icon, tag, title and body build inside it.
+kinds: [cutaway, overlay]
+duration: 3.2
+params:
+  title: {type: str, required: true, help: "card title; *stars* mark accent words"}
+  body: {type: str, default: "", help: one or two lines under the title}
+  eyebrow: {type: str, default: "", help: small tracked label above the title}
+  icon: {type: icon, default: "", help: "icon name from assets/icons (call, chat, event, link, place, search, star) or a path"}
+  chip: {type: str, default: "", help: small pill in the top-right corner}
+  align: {type: str, default: left, help: left | center (text inside the card)}
+preview:
+  params: {icon: place, chip: "+38%", eyebrow: "Google profile", title: "Show up when they *search*", body: "Complete listings get seven times more clicks than empty ones."}
+cues:
+  - [0.0, swipe, -20]

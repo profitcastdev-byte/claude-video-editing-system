@@ -1,0 +1,55 @@
+<div class="safe center" id="root">
+  <div class="eyebrow" id="eb"></div>
+  <h1 class="display" id="hd"></h1>
+  <p class="body" id="sub"></p>
+</div>
+<style>
+  #root { gap: var(--s-4); padding: 0 var(--s-2); }
+  #root.left { align-items: flex-start; text-align: left; }
+  #hd { font-size: calc(var(--t-8) * var(--k, 1)); max-width: 100%; text-wrap: balance; }
+  #sub { font-size: var(--t-3); max-width: 88%; }
+  .acc { position: relative; display: inline-block; }
+  .uline { position: absolute; left: -0.06em; right: -0.06em; bottom: 0.06em; height: 0.3em; border-radius: 0.06em; z-index: -1;
+           background: rgb(var(--accent-rgb) / 0.24); transform-origin: left center; transform: scaleX(0); }
+  .acc { z-index: 0; isolation: isolate; }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D;
+  let W, eb, sub, lines, ul = [], tl;
+  C.piece({
+    setup(P, ctx) {
+      const root = document.getElementById('root'), hd = document.getElementById('hd');
+      eb = document.getElementById('eb'); sub = document.getElementById('sub');
+      if (P.align === 'left') root.classList.add('left');
+      hd.style.setProperty('--k', P.scale || 1);
+      if (P.eyebrow) { eb.textContent = C.plain(P.eyebrow); eb.dataset.text = eb.textContent; } else eb.remove();
+      if (P.sub) { sub.textContent = C.plain(P.sub); sub.dataset.text = sub.textContent; } else sub.remove();
+      W = C.words(hd, P.text);
+      const sw = root.clientWidth - 2 * ctx.u * 2, sh = root.clientHeight * (P.sub || P.eyebrow ? 0.62 : 0.8);
+      C.fit(hd, sw, sh, Math.min(4, Math.max(2, Math.ceil(W.words.length / 3))));
+      lines = C.lines(W.words);
+      if (P.underline !== false) document.querySelectorAll('#hd .acc').forEach((a) => { const b = C.el('span', 'uline', a); b.dataset.el = 'bed'; ul.push(b); });   // .bed: logged as decoration, not type
+      const n = W.words.length, each = D(Math.min(0.07, 0.42 / Math.max(1, n)));
+      tl = C.timeline().at('eb', 0, D(0.55)).at('words', D(0.1), D(0.72) + each * (n - 1));
+      tl.at('ul', tl.end('words') - D(0.12), D(0.5)).at('sub', tl.end('words') - D(0.3), D(0.6));
+      tl.each = each;
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), exd = ex * -1.2 * u * 6;
+      if (eb.isConnected) { C.rise(eb, t, 0, D(0.55), 2.4 * u); if (ex) C.set(eb, { y: exd, o: 1 - ex }); }
+      W.inners.forEach((wi, i) => {
+        const t0 = tl.t0('words') + i * tl.each, h = wi.offsetHeight * 1.08;
+        const p = C.rise(wi, t, t0, D(0.72), h);
+        if (ex > 0) { const li = lines.findIndex((l) => l.includes(i)); const pe = C.OUT(C.prog(t, ctx.dur - C.motion.exit_s - 0.02 + li * 0.04, C.motion.exit_s - 0.04 * li)); C.set(wi, { y: -pe * h, o: 1 - pe * 0.6 }); }
+        return p;
+      });
+      ul.forEach((u_, j) => { const p = tl.p('ul', t - j * D(0.08), C.MOVE); u_.style.transform = `scaleX(${p.toFixed(4)})`; u_.style.opacity = 1 - ex; });
+      if (sub.isConnected) C.set(sub, { y: (1 - tl.p('sub', t)) * 2.2 * u + exd * 0.6, o: tl.raw('sub', t) * (1 - ex) });
+    },
+    cues(P, ctx) {
+      C.cue(tl.t0('words'), 'whoosh', -20, { trim: [0, 0.6] });          // on the headline's entry frame
+    },
+  });
+})();
+</script>

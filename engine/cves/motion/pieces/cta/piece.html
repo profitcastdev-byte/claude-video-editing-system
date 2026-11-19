@@ -1,0 +1,66 @@
+<div class="safe center" id="root">
+  <h2 class="title" id="tt"></h2>
+  <div class="btnwrap" id="bw">
+    <div class="ripple" id="rp" data-el="ripple"></div>
+    <div class="btn" id="btn"><span class="lbl" id="lb1"></span><span class="lbl done" id="lb2" data-el="done"></span></div>
+  </div>
+  <p class="body" id="sub"></p>
+  <svg class="cursor" id="cur" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 2 L4 19 L8.6 14.8 L11.6 21.4 L14.6 20 L11.7 13.6 L18 13.4 Z"/></svg>
+</div>
+<style>
+  #root { gap: var(--s-5); }
+  #tt { font-size: var(--t-6); font-weight: 800; letter-spacing: -0.02em; }
+  .btnwrap { position: relative; }
+  .btn { position: relative; display: grid; place-items: center; padding: calc(var(--u) * 3.2) calc(var(--u) * 8); border-radius: 999px;
+         background: linear-gradient(180deg, var(--accent), var(--accent-dark)); color: var(--text); font-size: var(--t-4); font-weight: 800; letter-spacing: 0.01em;
+         box-shadow: 0 calc(var(--u) * 1.6) calc(var(--u) * 5) rgb(var(--accent-rgb) / 0.45), inset 0 max(1px, calc(var(--u) * 0.18)) 0 rgb(var(--text-rgb) / 0.35); white-space: nowrap; }
+  .lbl { grid-area: 1 / 1; }
+  .ripple { position: absolute; inset: 0; border-radius: 999px;
+            border: calc(var(--u) * 0.45) solid var(--accent); opacity: 0; }
+  #sub { font-size: var(--t-2); }
+  .cursor { position: absolute; left: 0; top: 0; width: calc(var(--u) * 6.4); height: calc(var(--u) * 6.4); fill: var(--text); stroke: var(--bg); stroke-width: 1.2; stroke-linejoin: round;
+            filter: drop-shadow(0 calc(var(--u) * 0.5) calc(var(--u) * 0.8) rgb(0 0 0 / 0.5)); transform-origin: 17% 8%; }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let tt, bw, btn, lb1, lb2, rp, sub, cur, tl, tgt, root;
+  C.piece({
+    setup(P, ctx) {
+      root = document.getElementById('root'); tt = document.getElementById('tt'); bw = document.getElementById('bw'); btn = document.getElementById('btn');
+      lb1 = document.getElementById('lb1'); lb2 = document.getElementById('lb2'); rp = document.getElementById('rp'); sub = document.getElementById('sub'); cur = document.getElementById('cur');
+      if (P.title) { C.words(tt, P.title); C.fit(tt, root.clientWidth, ctx.h * 0.3, 3); } else tt.remove();
+      lb1.textContent = C.plain(P.text); btn.dataset.text = lb1.textContent;
+      if (P.done) lb2.textContent = C.plain(P.done); else lb2.remove();
+      if (P.sub) { sub.textContent = C.plain(P.sub); sub.dataset.text = sub.textContent; } else sub.remove();
+      if (P.cursor === false) cur.remove();
+      C.fit(btn, root.clientWidth * 0.9, ctx.h, 1, 0.5);
+      const rr = root.getBoundingClientRect(), rb = btn.getBoundingClientRect();
+      tgt = { x: rb.left - rr.left + rb.width * 0.62, y: rb.top - rr.top + rb.height * 0.58, sx: rr.width * 0.92, sy: rb.top - rr.top + rb.height * 2.6 };
+      tl = C.timeline().at('tt', 0, D(0.6)).at('btn', D(0.3), D(0.75)).at('cur', D(0.65), D(0.8)).at('click', D(0.65) + D(0.8), D(0.36)).at('sub', D(0.6), D(0.6));
+      tl.at('ripple', tl.t0('click') + D(0.08), D(0.7)).at('done', tl.t0('click') + D(0.15), D(0.4));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t);
+      if (tt.isConnected) tt.querySelectorAll('.wi').forEach((wi, i) => { C.rise(wi, t, i * D(0.045), D(0.65), wi.offsetHeight); if (ex) C.set(wi, { o: 1 - ex }); });
+      const pb = tl.p('btn', t, 'spring(0.5)'), pc = tl.raw('click', t), press = Math.sin(Math.PI * C.clamp(pc)) * 0.06;
+      C.set(btn, { s: (0.6 + 0.4 * pb) * (1 - press), o: Math.min(1, tl.raw('btn', t) * 3) * (1 - ex) });
+      const pr = tl.raw('ripple', t); C.set(rp, { s: 1 + 0.35 * C.easings.outCubic(pr), o: pr > 0 ? (1 - pr) * 0.9 * (1 - ex) : 0 });
+      if (lb2) { const pd = tl.p('done', t); C.set(lb1, { y: -pd * 1.2 * u, o: 1 - pd }); if (lb2.isConnected) C.set(lb2, { y: (1 - pd) * 1.2 * u, o: pd }); }
+      if (sub.isConnected) { C.rise(sub, t, tl.t0('sub'), D(0.6), 1.5 * u); if (ex) C.set(sub, { o: 1 - ex }); }
+      if (cur.isConnected) {
+        // a curved glide (quadratic Bezier) from the lower right to the button, a dip on the click, then it drifts away
+        const pm = C.easings.inOutCubic(tl.raw('cur', t)), q = 1 - pm;
+        const cx = tgt.sx + 6 * u, cy = tgt.sy + 4 * u, mx = tgt.x + 14 * u, my = tgt.sy + 2 * u;
+        let x = q * q * cx + 2 * q * pm * mx + pm * pm * tgt.x, y = q * q * cy + 2 * q * pm * my + pm * pm * tgt.y;
+        const away = C.easings.inCubic(C.prog(t, tl.end('ripple'), D(0.5)));
+        x += away * 4 * u; y += away * 6 * u;
+        C.set(cur, { x, y, s: 1 - 0.14 * Math.sin(Math.PI * C.clamp(pc)), o: Math.min(1, tl.raw('cur', t) * 4) * (1 - away) * (1 - ex) });
+      }
+    },
+    cues(P) {
+      C.cue(tl.t0('btn'), 'pop', -18); if (P.cursor !== false) C.cue(tl.t0('ripple'), 'button', -14);       // the ripple enters on the click
+      if (P.done) C.cue(tl.t0('done'), 'ding', -22);
+    },
+  });
+})();
+</script>

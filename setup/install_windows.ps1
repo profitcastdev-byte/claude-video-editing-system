@@ -183,6 +183,8 @@ if ($HasNvidia) {
   }
 }
 & $Py -c "import torch; print('    torch', torch.__version__, 'CUDA available:', torch.cuda.is_available())"
+# motion layer: the Chromium build Playwright drives (idempotent: an installed build is skipped)
+Invoke-Checked $Py @("-m", "playwright", "install", "chromium"); Ok "Chromium for motion pieces (playwright)"
 Set-Content -Path (Join-Path $Bin "cves.cmd") -Value "@echo off`r`n`"$Venv\Scripts\cves.exe`" %*" -Encoding ASCII
 
 # ---- 7. voice venv -------------------------------------------------------------------------------------------------

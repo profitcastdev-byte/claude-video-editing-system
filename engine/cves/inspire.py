@@ -17,14 +17,28 @@ What is measured (per video, then pooled across references):
   captions    burned-in text lines on A-roll frames -> captions.position (chin / lower_third / center / y:px), size, case, box,
               color, highlight_color, style (one_word / word_reveal / highlight / box), max_lines; OCR (tesseract) is optional
   transitions per cut: zoom/motion blur spike (whip), RGB split (glitch), luma dip (fade) -> transitions.in / out (+ *_s)
-  sound       ebur128 momentary loudness: gaps between words vs speech -> sound.bed_lu (rough)"""
+  sound       ebur128 integrated loudness (a note only: downloads are platform-normalised)
+Inspire v2 (per reference, then MIXED per dimension instead of averaged: inspire_mix.py):
+  hear        inspire_audio.py: voice / music presence, bed vs voice, ducking, tempo + beat grid, SFX density, drop-outs,
+              music energy -> sound.bed_lu, sound.duck_other_db, rhythm.*
+  feel        inspire_feel.py: cut-on-beat, cut-rate curve, hook timing, pattern interrupts, loop seam, energy arc ->
+              rhythm.*, structure.*, music.sync
+  see         inspire_see.py: contact sheet Edit/inspire/<ref>-sheet.jpg + grain, tone curve, saturation, temperature,
+              vignette, letterbox, aspect, motion blur -> `_inspire.aesthetics` notes; aesthetic-review.md for Claude
+  report      Edit/inspire/REPORT.md (inspire_report.py)"""
 import os, sys, json, math, shutil, subprocess, tempfile, datetime, collections
 import numpy as np, cv2, yaml
 
 VIDEO_EXT = (".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi")
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
-from .gfx import W as DESIGN_W, H as DESIGN_H     # template design space (docs/CONTRACTS.md §2); caption px are reported in it
-AW, AH = DESIGN_W // 2, DESIGN_H // 2              # analysis frame: half the design space; other aspects are letter-fitted
+from .gfx import DESIGN as _DESIGN
+DESIGN_W, DESIGN_H = _DESIGN                     # the project canvas (style canvas.size; set_frame); caption px are reported in it
+AW, AH = DESIGN_W // 2, DESIGN_H // 2              # analysis frame: half the canvas; references of another aspect are letter-fitted
+
+def set_frame(w, h):
+    """measure references on the project's canvas (docs/FORMATS.md). Spawned workers get it through their job args."""
+    global DESIGN_W, DESIGN_H, AW, AH
+    DESIGN_W, DESIGN_H = int(w), int(h); AW, AH = max(2, DESIGN_W // 4 * 2), max(2, DESIGN_H // 4 * 2)
 LW, LH = 90, 160           # cut-detection thumbnail
 SAMPLE_FPS = 6.0           # face / grade / caption samples per second
 
@@ -212,7 +226,7 @@ def analyse_video(path, max_s=90.0):
                     if sat.any(): out["palette"].append(px[sat][::2].tolist())
                     out["bg"].append(px[::5].tolist()); out["bottom"].append(np.median(sm[int(.78 * 240):].reshape(-1, 3), 0).tolist())
                 out["samples"].append(s)
-        out["dur"] = out["times"][-1] if out["times"] else 0.0; out["size"] = [W0, H0]
+        out["dur"] = out["times"][-1] if out["times"] else 0.0; out["size"] = [W0, H0]; out["rot"] = rot
     out["cuts"] = detect_cuts(out["times"], out["diffs"])
     out["audio"] = audio_stats(path, max_s)
     return out
@@ -284,7 +298,7 @@ def source_stats(pr, max_frames=60):
     srcs = [pr.e("plate", f) for f in paths]
     if not srcs:
         try: srcs = [pr.raw]
-        except SystemExit: return None, "no Edit/plate and no Raw/ video"
+        except (SystemExit, OSError): return None, "no Edit/plate and no Raw/ video"
     det = _yunet(AW, AH); got = []; per = max(4, max_frames // max(1, min(len(srcs), 12)))
     for p in srcs[::max(1, len(srcs) // 12)]:
         try:
@@ -428,19 +442,12 @@ def derive(R, src, ev):
         ev.put("colors.accent_dark", _hex(dark), "accent at 55% value (same hue)", len(pal), min(1, len(pal) / 3000) * .6)
     # ---------------- captions
     caption_style(R, ev)
-    # ---------------- sound
+    # ---------------- sound: integrated loudness is a note; the bed / duck / rhythm keys come from HEAR (inspire_audio)
     A = [r["audio"] for r in vids if r.get("audio")]
-    if A:
-        beds = []
-        for a in A:
-            M = np.array([m for m in a["M"] if m > -70])
-            if len(M) > 50: beds.append(_pct(M, 8) - _pct(M, 60))
-        if beds:
-            ev.put("sound.bed_lu", _r(np.clip(np.median(beds), -20, -4), 1),
-                   f"ebur128 momentary loudness: quiet gaps (p8) vs speech (p60) per ref {', '.join(f'{b:.1f}' for b in beds)} LU (rough: assumes the gaps hold the music bed)",
-                   len(beds), .45)
-        Is = [a["I"] for a in A if a.get("I") is not None]
-        if Is: ev.note("sound.master_lufs", f"references measure {', '.join(f'{x:.1f}' for x in Is)} LUFS integrated (platform-normalised downloads: not written)")
+    Is = [a["I"] for a in A if a.get("I") is not None]
+    if Is: ev.note("sound.master_lufs", f"references measure {', '.join(f'{x:.1f}' for x in Is)} LUFS integrated (platform-normalised downloads: not written)")
+    from . import inspire_audio, inspire_feel
+    inspire_audio.derive(vids, ev); inspire_feel.derive(vids, ev)
 
 
 def _levels(levels, step):
@@ -517,8 +524,9 @@ def caption_style(R, ev):
     else: pos, how = f"y:{int(round(mab * DESIGN_H))}", f"caption top at {mab * DESIGN_H:.0f} px (std {as_ * DESIGN_H:.0f} px)"
     ev.put("captions.position", pos, how, n, c0 * (.9 if pos == "chin" else .75))
     if pos == "lower_third": ev.put("captions.lower_third_y", _r(mab), "median caption top / frame height", n, c0 * .7)
-    if pos == "chin": ev.put("captions.chin_gap", int(round(max(10, mrel * DESIGN_H))), "median gap chin -> caption top (design px)", n, c0 * .6)
-    cap_h = float(np.median(hts)) * DESIGN_H / AH
+    u = min(DESIGN_W, DESIGN_H) / 1080          # caption px keys are at a 1080 short side (scaled by gfx.U on the canvas)
+    if pos == "chin": ev.put("captions.chin_gap", int(round(max(10, mrel * DESIGN_H / u))), "median gap chin -> caption top (design px)", n, c0 * .6)
+    cap_h = float(np.median(hts)) * DESIGN_H / AH / u
     ev.put("captions.size", int(round(cap_h / .72)), f"median cap height {cap_h:.0f} px (design space) / 0.72 cap-height ratio", n, c0 * .7)
     tall = float(np.median(ratio_tall))
     ev.put("captions.case", "upper" if tall > .8 else "sentence", f"{tall:.0%} of glyphs reach cap height (upper case > 80%)", n, c0 * .6)
@@ -561,11 +569,23 @@ def _collect(d):
     return vids, ims
 
 
+V2 = 1      # bump when an Edit/inspire/cache entry must be re-measured
+
+
 def _job(a):
-    path, max_s = a
-    try: return analyse_video(path, max_s)
+    path, max_s, sheet, frame = a
+    set_frame(*frame)                       # spawn: this worker re-imported the module with the default canvas
+    try: r = analyse_video(path, max_s)
     except SystemExit: raise
     except Exception as e: return dict(path=path, kind="error", error=f"{type(e).__name__}: {e}")
+    from . import inspire_audio, inspire_feel, inspire_see
+    for name, fn in (("hear", lambda: inspire_audio.analyse(path, max_s)), ("seam", lambda: inspire_feel.seam(path, rot=r.get("rot", 0))),
+                     ("feel", lambda: inspire_feel.analyse(r, r.get("hear"))), ("see", lambda: inspire_see.analyse(path, r, sheet))):
+        try: r[name] = fn()
+        except SystemExit: raise
+        except Exception as e:     # one failed measurement must not lose the others
+            r[name] = None; r.setdefault("warnings", []).append(f"{name}: {type(e).__name__}: {e}")
+    return r
 
 
 def _set(d, dotted, v):
@@ -574,44 +594,130 @@ def _set(d, dotted, v):
     cur[ks[-1]] = v
 
 
-def run(pr, refs=None, dry_run=False, max_s=90.0, min_conf=.5, workers=None):
+def _labels(paths, d):
+    """short unique names per reference: the file stem, else the relative path without extension"""
+    stems = [os.path.splitext(os.path.basename(p))[0] for p in paths]
+    out = []
+    for p, st in zip(paths, stems):
+        lab = st if stems.count(st) == 1 else os.path.splitext(os.path.relpath(p, d))[0].replace(os.sep, "_")
+        out.append(lab)
+    return out
+
+
+def _cache_key(path, max_s):
+    st = os.stat(path); return f"{V2}|{os.path.abspath(path)}|{st.st_size}|{int(st.st_mtime)}|{float(max_s):g}"
+
+
+def _cache_get(cdir, lab, key):
+    import pickle
+    p = os.path.join(cdir, lab + ".pkl")
+    if not os.path.exists(p): return None
+    try:
+        with open(p, "rb") as f: k, r = pickle.load(f)
+    except Exception: return None
+    if k != key or not os.path.exists(((r.get("see") or {}).get("sheet")) or ""): return None
+    return r
+
+
+def _cache_put(cdir, lab, key, r):
+    import pickle
+    os.makedirs(cdir, exist_ok=True)
+    with open(os.path.join(cdir, lab + ".pkl"), "wb") as f: pickle.dump((key, r), f)
+
+
+def run(pr, refs=None, dry_run=False, max_s=90.0, min_conf=.5, workers=None, mix=None, refresh=False):
+    """measure every reference (cached in Edit/inspire/cache), derive per reference and pooled, choose a source per
+    dimension (inspire_mix), write Edit/inspire/REPORT.md + contact sheets always and Edit/style.yaml unless dry_run"""
+    from . import inspire_mix as MX, inspire_report as RP, inspire_see, style as STY
     d = os.path.abspath(os.path.expanduser(refs)) if refs else pr.p("Inspirations")
+    from . import gfx as G, style as STY
+    set_frame(*G.canvas_of(STY.load(pr), pr))
     vids, ims = _collect(d)
     if not vids and not ims:
         raise SystemExit(f"no reference videos or images in {d}: put the client's reference edits there (or pass --refs DIR)")
     print(f"inspire: {len(vids)} video(s), {len(ims)} image(s) from {d}")
-    R = []
-    if vids:
+    idir = pr.e("inspire"); cdir = os.path.join(idir, "cache"); os.makedirs(idir, exist_ok=True)
+    paths = vids + ims; labs = dict(zip(paths, _labels(paths, d)))
+    meta_raw, ry = MX.load_refs_yaml(d)
+    rel = {labs[p]: os.path.relpath(p, d) for p in paths}
+    meta = {}
+    for k, v in meta_raw.items():
+        lab = MX.match_ref(k, rel)
+        if not lab: print(f"  refs.yaml: '{k}' matches no reference (refs: {', '.join(rel)})"); continue
+        meta[lab] = v
+    forced = MX.parse_mix(mix, rel) if mix else {}
+    if ry: print(f"  refs.yaml: {len(meta)} entr{'y' if len(meta) == 1 else 'ies'} from {ry}")
+    got = {}; todo = []
+    for v in vids:
+        key = _cache_key(v, max_s); r = None if refresh else _cache_get(cdir, labs[v], key)
+        if r: got[v] = r
+        else: todo.append(v)
+    if todo:
         import multiprocessing as _mp; Pool = _mp.get_context("spawn").Pool   # no fork: see render.py
-        with Pool(workers or max(1, min(len(vids), (os.cpu_count() or 4) // 2))) as pool:
-            for r in pool.imap(_job, [(v, max_s) for v in vids]):
+        with Pool(workers or max(1, min(len(todo), (os.cpu_count() or 4) // 2))) as pool:
+            for r in pool.imap(_job, [(v, max_s, os.path.join(idir, labs[v] + "-sheet.jpg"), (DESIGN_W, DESIGN_H)) for v in todo]):
                 if r.get("kind") == "error": print(f"  skipped {os.path.basename(r['path'])}: {r['error']}"); continue
-                nf = sum(1 for s in r["samples"] if s["face"])
-                print(f"  {os.path.basename(r['path'])[:48]:48s} {r['dur']:5.1f} s  {len(r['cuts']):3d} cuts  face in {nf}/{len(r['samples'])} samples")
-                R.append(r)
+                for w in r.get("warnings", []): print(f"  ({os.path.basename(r['path'])}: {w})")
+                _cache_put(cdir, labs[r["path"]], _cache_key(r["path"], max_s), r); got[r["path"]] = r
+    R, labels = [], []
+    for v in vids:
+        if v not in got: continue
+        r = got[v]; nf = sum(1 for s in r["samples"] if s["face"])
+        print(f"  {os.path.basename(v)[:44]:44s} {r['dur']:5.1f} s  {len(r['cuts']):3d} cuts  face {nf}/{len(r['samples'])}"
+              f"{'  (cached)' if v not in todo else ''}")
+        R.append(r); labels.append(labs[v])
     for p in ims:
         r = analyse_image(p)
-        if r: R.append(r)
+        if r:
+            r["see"] = inspire_see.analyse_image(p, os.path.join(idir, labs[p] + "-sheet.jpg")); R.append(r); labels.append(labs[p])
     src, src_how = source_stats(pr)
     print(f"  project footage for the grade comparison: {src_how}")
-    ev = Evidence(); derive(R, src, ev)
-    keep = {k: v for k, v in ev.keys.items() if ev.conf[k] >= min_conf}
+    # ---- per reference, pooled, then one source per dimension
+    per_ref = {}
+    for r, lab in zip(R, labels):
+        e = Evidence(); derive([r], src, e); per_ref[lab] = e
+    pool_R = [r for r, lab in zip(R, labels) if float(meta.get(lab, {}).get("weight", 1.0)) > 0] or R
+    pooled = Evidence(); derive(pool_R, src, pooled)
+    ev, plan, rows = MX.decide(per_ref, pooled, meta, STY.load(), forced, min_conf)
+    keep = {k: v for k, v in ev.keys.items() if ev.conf.get(k, 0) >= min_conf}
     out = {}
     for k, v in sorted(keep.items()): _set(out, k, v)
     out["_evidence"] = {k: ev.ev[k] for k in sorted(ev.ev)}
+    dropped = sorted(k for k in ev.keys if k not in keep)
     out["_inspire"] = {"refs": [os.path.relpath(r["path"], d) for r in R], "refs_dir": d, "date": datetime.date.today().isoformat(),
-                       "source": src_how, "min_confidence": min_conf, "dropped": sorted(k for k in ev.keys if k not in keep)}
+                       "source": src_how, "min_confidence": min_conf, "dropped": dropped,
+                       "mix": {dim: {"source": p["source"], "rule": p["rule"], "consistency": p["consistency"]} for dim, p in plan.items()},
+                       "ranking": {lab: {k: v for k, v in m.items() if k in ("rank", "weight", "kind", "use", "notes")} for lab, m in meta.items()},
+                       "aesthetics": {lab: _aesthetic_note(r.get("see")) for r, lab in zip(R, labels)},
+                       "report": os.path.join(idir, "REPORT.md")}
     print("\n" + summary(ev, keep))
-    if dry_run: print("\n--dry-run: nothing written"); return out
-    os.makedirs(pr.e(), exist_ok=True)
+    print("\n" + MX.table(plan, rows, labels))
+    rp, rv = RP.write(idir, R, labels, meta, plan, keep, dropped, d, written=not dry_run)
+    print(f"\nreport: {rp}\nlook at the contact sheets and fill: {rv}")
+    if dry_run: print("\n--dry-run: Edit/style.yaml not written"); return out
     p = pr.e("style.yaml")
     if os.path.exists(p): shutil.copy2(p, p + ".bak")
     with open(p, "w", encoding="utf-8") as f:
         f.write(f"# Written by `cves inspire` on {datetime.date.today()} from {len(R)} reference(s) in {d}.\n"
-                "# Merged over the preset, under Brand/style.yaml and edit.yaml `style:` (docs/STYLE.md). Edit freely; re-running overwrites (a .bak is kept).\n")
-        yaml.safe_dump(out, f, sort_keys=False, allow_unicode=True, width=160, default_flow_style=None)
+                "# Merged over the preset, under Brand/style.yaml and edit.yaml `style:` (docs/STYLE.md). Edit freely; re-running overwrites (a .bak is kept).\n"
+                "# Which reference each dimension came from: _inspire.mix; the full read: Edit/inspire/REPORT.md.\n")
+        yaml.safe_dump(_plain(out), f, sort_keys=False, allow_unicode=True, width=160, default_flow_style=None)
     print(f"\nwrote {p} ({len(keep)} keys)")
     return out
+
+
+def _aesthetic_note(s):
+    if not s or "contrast" not in s: return None
+    keep = ("size", "orientation", "display_aspect", "content_aspect", "letterbox", "contrast", "saturation", "temperature", "grain", "vignette", "motion_blur")
+    return {k: s[k] for k in keep if k in s}
+
+
+def _plain(x):
+    """numpy scalars / tuples -> plain YAML types"""
+    if isinstance(x, dict): return {k: _plain(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)): return [_plain(v) for v in x]
+    if isinstance(x, np.generic): return x.item()
+    return x
 
 
 def summary(ev, keep):

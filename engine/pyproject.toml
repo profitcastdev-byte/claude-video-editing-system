@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cves"
-version = "0.2.0"
+version = "0.3.0"
 description = "Claude Video Editing System: edit.yaml-driven talking-head ad editor with automated QC"
 requires-python = ">=3.11"
 dependencies = ["numpy", "opencv-python", "av", "pillow", "soundfile", "scipy", "librosa", "pyyaml", "torch", "opentimelineio"]
@@ -17,7 +17,8 @@ where = ["."]
 include = ["cves*"]
 
 [tool.setuptools.package-data]
-cves = ["styles/*.yaml", "styles/*.md"]
+cves = ["styles/*.yaml", "styles/*.md", "motion/*.js", "motion/*.css", "motion/pieces/*/*"]   # styles/ includes platforms.yaml and viral.yaml
 
 [project.optional-dependencies]
 test = ["pytest"]
+motion = ["playwright==1.58.0"]     # HTML motion pieces (docs/MOTION.md); then `python -m playwright install chromium`

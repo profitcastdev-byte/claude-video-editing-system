@@ -68,6 +68,25 @@ The file is patched as text, so comments are kept. The patch is verified by re-p
 
 `mix.json` records the music placement (`sync`, `fit`, `offset_s`, `drop`, `loops`, `end`), the cue count, `peak_placed` and `beat_nudged`.
 
+## 4b. Platform sound slot (`music.slot: platform`, organic posts)
+
+For a post that will use a trending sound added in the app, `edit.yaml music:` takes `slot: platform` and a `guide`
+instead of a `file` (full description in [VIRAL.md](VIRAL.md) §4):
+
+| key | value |
+|---|---|
+| `music.slot` | `file` (default: the music is in the file) or `platform` (no music in the file; `goal: viral` only) |
+| `music.guide` | what the edit is cut to: a reference track (`Music/trend.mp3`), a `beats.json`, or a tempo (`128`, `"128 bpm"`, `{bpm: 128, first_beat: 0.12}`) |
+| `music.sound` | the sound's name or link in the app (written into POSTING.md) |
+| `music.drop_cut`, `music.drop_track`, `music.offset` | as for music: where the drop lands (cut s), the drop in the track, the track time at cut 0 |
+
+- `cves beats` treats a reference-track guide like music: `--sync cuts --apply` moves cut points onto its beat.
+- `cves mix` mixes **no music** and writes `Edit/stems/guide.wav` (the track laid by `beats.plan`, or a click track on the
+  tempo grid, accented on downbeats) next to the other stems. `mix.json` records it under `guide`.
+- QC: SND-04 checks the music stem is silent; RET-32 measures the share of cuts within `music.snap_tolerance_s` of a guide beat.
+- `cves deliver` ships the guide stem and POSTING.md ([DELIVERY.md](DELIVERY.md) §3).
+- `cves validate` refuses the slot for ads (`goal: ad`, the default), a slot without a guide, and a slot with `music.file`.
+
 ## 5. Style keys
 
 `music.sync, fit, beats_per_bar, tempo_range, snap_tolerance_s, drop_beats, drop_pick, drop_min_rise_db, loop_xfade_s, loop_min_bars, end_min_tail_s, end_tail_bars, gfx_lead_s, min_aroll_s, sfx_snap, sfx_snap_max_f` and `sound.transition_sfx, repeat_pitch_st, repeat_gain_db`. They are all in `styles/default.yaml` with neutral values and comments.

@@ -1,6 +1,6 @@
 # CLAUDE.md: Claude Video Editing System (CVES)
 
-This repo is CVES, an autonomous, Claude-driven editor for talking-head videos and ads (designed at 1080×1920 for 9:16 Reels / Shorts; other aspect ratios are reframes of that master). **No look is hard-coded:** palette, grade, captions, transitions, pacing and sound levels all come from a style profile, normally measured from the client's own reference edits by `cves inspire` (see `docs/CONTRACTS.md` §1 and `docs/STYLE.md`). **Claude makes the decisions; the local `cves` engine does the work; humans fine-tune in a real editor** (DaVinci Resolve or Kdenlive). The full design is in `docs/ARCHITECTURE.md`.
+This repo is CVES, an autonomous, Claude-driven editor for talking-head videos and ads, and for voiceover-, music- and B-roll-led edits (any frame size, natively: style `canvas.size`, default 1080×1920; see `docs/FORMATS.md`). **No look is hard-coded:** palette, grade, captions, transitions, pacing and sound levels all come from a style profile, normally measured from the client's own reference edits by `cves inspire` (see `docs/CONTRACTS.md` §1 and `docs/STYLE.md`). **Claude makes the decisions; the local `cves` engine does the work; humans fine-tune in a real editor** (DaVinci Resolve or Kdenlive). The full design is in `docs/ARCHITECTURE.md`.
 
 There are two ways to use this repo:
 - **Editing a video.** Install the `cves` plugin (below) and work from any folder. The `video-editor` skill and the `/cves:*` commands run the workflow. Client footage lives **outside** this repo, in `~/CVES Projects/<Client>/<YYYY-MM-DD Video>/` (override with `$CVES_CLIENTS` or the `clients_root` config key).
@@ -17,7 +17,7 @@ Load `knowledge-base/RULEBOOK.md` and `knowledge-base/EDIT-STANDARD.md` before y
 | `engine/cves/` | Python package and the `cves` CLI: ingest, story, plan, moodboard, render, beats, mix, music, encode, deliver, assets, `qc/`, `export/`, `templates/`, `style.py` + `styles/` (default profile and optional presets) |
 | `plugin/` | Claude Code plugin `cves`: `skills/video-editor/SKILL.md` plus `commands/*.md` (one per workflow step) |
 | `.claude-plugin/marketplace.json` | Marketplace `cves`, so the plugin can be installed from this repo |
-| `knowledge-base/` | `RULEBOOK.md` (load every session), `CHECKLISTS.md`, `QA-REVIEW.md`, `QC-GATES.md` (172 rules; 84 measured automatically by `cves qc`), `DECISIONS.md`, `modules/`, `transcripts/`, `tools/` |
+| `knowledge-base/` | `RULEBOOK.md` (load every session), `CHECKLISTS.md`, `QA-REVIEW.md`, `QC-GATES.md` (181 rules; 93 measured automatically by `cves qc`), `DECISIONS.md`, `modules/`, `transcripts/`, `tools/` |
 | `assets/` | Fonts (OFL), Material icons (Apache-2.0), SFX (CC0), logos |
 | `setup/` | `install_mac.sh`, `install_windows.ps1`, `requirements*.txt`, `doctor.py` |
 | `examples/` | A demo project (`edit.yaml`, `edl.json`, notes; no client footage) |

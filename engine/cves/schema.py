@@ -27,7 +27,7 @@ TRANSITIONS = ("cut", "whip", "glitch", "fade")
 MEDIA_EXT = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".tif", ".tiff", ".bmp", ".mp4", ".mov", ".mkv", ".webm", ".m4v",
              ".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".aif", ".aiff", ".ttf", ".otf", ".woff", ".woff2", ".json", ".lottie")
 # style maps whose keys are data (any name is fine), not schema
-OPEN_STYLE = {"colors", "font_files", "font_files.script_fallback", "captions.per_style", "sound.transition_sfx", "media.device_box",
+OPEN_STYLE = {"colors", "font_files", "font_files.script_fallback", "captions.per_style", "sound.transition_sfx", "media.device_box", "canvas.safe_zones",
               "_evidence", "_inspire"}
 STYLE_META = {"name", "preset", "_evidence", "_inspire", "_sources", "description", "extends"}
 
@@ -37,6 +37,7 @@ CUT = {"id!": "str|int", "template!": "str", "start!": "time", "end!": "time", "
        "snap": "bool", "params": "dict", "sfx": "any", "note": "str", "beat": "str"}
 SEGREF = {"segment!": "segref", "template!": "str", "params": "dict", "note": "str"}
 EDIT = {
+    "goal": "str",            # ad (default) | viral: the goal layer, QC profile and music-slot rules (docs/VIRAL.md)
     "project": {"client": "str", "title": "str", "fps": "number|list|str", "size": "list", "raw": "path|null", "sources": "list", "language": "str"},
     "style": "style",
     "edl": "str",
@@ -55,7 +56,15 @@ EDIT = {
     "variants": "any",
     "delivery": "dict",
     "notes": "any",
+    # ---- formats + spines (docs/FORMATS.md)
+    "spine": "spine",
+    "duration": "number",
+    "voiceover": {"file": "path", "asset": "str", "denoise": "bool", "tighten": "bool", "chain": "bool", "note": "str"},
+    "broll": "broll",
 }
+BROLL = {"id": "str|int", "src": "path", "asset": "str", "start!": "time", "end!": "time", "in": "number", "speed": "number",
+         "framing": "str", "kenburns": "dict", "anchor": "list", "after": "str", "transition": "transition", "audio": "bool",
+         "gain": "number", "snap": "bool", "note": "str", "beat": "str"}
 
 
 class V:
@@ -216,7 +225,8 @@ def _captions(v, path, val):
 def _music(v, path, val):
     if not isinstance(val, dict): v.err(path, f"expected a mapping, got {_tname(val)}"); return
     own = {"file": "path|null", "drop_track": "number", "drop_cut": "number", "bed_lu": "number", "credits": "str", "offset": "number",
-           "gain_db": "number", "fade_out": "number", "start": "number", "licence": "str", "license": "str", "url": "str", "beats": "any"}
+           "gain_db": "number", "fade_out": "number", "start": "number", "licence": "str", "license": "str", "url": "str", "beats": "any",
+           "slot": "str", "guide": "any", "sound": "str"}      # slot: file (default) | platform (organic: the sound is added in-app; cves.guide)
     sty = (_default_style().get("music") or {})
     for k, x in val.items():
         p = f"{path}.{k}"
@@ -239,18 +249,94 @@ def _assets(v, path, val):
             if not os.path.exists(q if os.path.isabs(q) else v.pr.p(q)): v.warn(f"{p}.path", f"file not found yet: {q} (`cves assets add --id {k} --file ...`)")
 
 
+def _goal_and_slot(v, E):
+    """edit.yaml goal (ad | viral) and music.slot (file | platform): an ad never uses the platform slot (RULEBOOK §0.12)"""
+    from . import style as STY, guide as GD
+    g = E.get("goal")
+    if g is not None and (not isinstance(g, str) or g.strip().lower() not in STY.GOALS):
+        v.err("goal", f"expected one of {', '.join(STY.GOALS)}, got {_show(g)}{_did_you_mean(str(g), STY.GOALS)}")
+    M = E.get("music")
+    if not isinstance(M, dict): return
+    slot = M.get("slot")
+    if slot is None: return
+    if not isinstance(slot, str) or slot.strip().lower() not in ("file", "platform"):
+        v.err("music.slot", f"expected file or platform, got {_show(slot)}"); return
+    if slot.strip().lower() != "platform": return
+    if str(g or "ad").strip().lower() != "viral":
+        v.err("music.slot", "platform is for organic posts (goal: viral) only: an ad must carry licensed music in the file (RULEBOOK §0.12)")
+    if M.get("file"): v.err("music.file", "music.slot: platform delivers no music: remove music.file (put the reference track in music.guide)")
+    for m in GD.problems(_EditView(v.pr, E)): v.err("music.guide", m.split(": ", 1)[-1] if m.startswith("music.guide") else m)
+
+
+class _EditView:
+    """a project whose edit is the dict being validated (validate() may be handed an edit that is not on disk yet)"""
+    def __init__(self, pr, E): self._pr, self.edit = pr, E
+    def p(self, *a): return self._pr.p(*a)
+    def e(self, *a): return self._pr.e(*a)
+
+
+def _platform_target(v, d, path):
+    t = ((d or {}).get("platform") or {}).get("target") if isinstance((d or {}).get("platform"), dict) else None
+    if t in (None, "", "none", "null"): return
+    from . import platforms as PF
+    if not isinstance(t, str) or t.strip().lower() not in PF.names():
+        v.err(f"{path}.platform.target" if path else "platform.target", f"unknown platform {_show(t)} (one of {', '.join(PF.names())}){_did_you_mean(str(t), PF.names())}")
+
+
 def _style_section(v, path, val):
     if not isinstance(val, dict): v.err(path, f"expected a mapping ({{preset: name}} and/or style keys), got {_tname(val)}"); return
     pre = val.get("preset")
     if pre is not None:
         if not isinstance(pre, str): v.err(f"{path}.preset", f"expected a preset name, got {_tname(pre)}")
-        elif not os.path.exists(os.path.join(HERE, "styles", f"{pre}.yaml")):
-            names = [f[:-5] for f in os.listdir(os.path.join(HERE, "styles")) if f.endswith(".yaml")]
+        elif pre in ("default", "platforms") or not os.path.exists(os.path.join(HERE, "styles", f"{pre}.yaml")):
+            names = [f[:-5] for f in os.listdir(os.path.join(HERE, "styles")) if f.endswith(".yaml") and f[:-5] not in ("default", "platforms")]
             v.err(f"{path}.preset", f"style preset '{pre}' not found in engine/cves/styles{_did_you_mean(pre, names)}")
     check_style(v, {k: x for k, x in val.items() if k != "preset"}, path)
+    _platform_target(v, val, path)
 
 
-SPECIAL = {"zoommap": _zoommap, "captions": _captions, "music": _music, "assets": _assets, "style": _style_section}
+def _spine(v, path, val):
+    from . import spines as SP
+    if not isinstance(val, str) or val.strip().lower() not in SP.SPINES:
+        v.err(path, f"expected one of {', '.join(SP.SPINES)}, got {_show(val)}{_did_you_mean(val, SP.SPINES)}")
+
+
+def _broll(v, path, val):
+    """the broll: track: shot keys, src | asset, start < end, speed > 0, framing; on a non-aroll spine the shots tile the timeline"""
+    from . import spines as SP
+    if not isinstance(val, list): v.err(path, f"expected a list of shots {{src|asset, start, end}}, got {_tname(val)}"); return
+    spans = []
+    for j, x in enumerate(val):
+        p = f"{path}[{j}]"
+        if not isinstance(x, dict): v.err(p, f"expected a mapping {{src|asset, start, end}}, got {_tname(x)}"); continue
+        _check(v, p, x, BROLL)
+        if bool(x.get("src")) == bool(x.get("asset")): v.err(p, "needs exactly one of src (a footage path) or asset (an asset id)")
+        if isinstance(x.get("asset"), str):
+            ok = _resolves(v, x["asset"])
+            if ok is None: v.warn(f"{p}.asset", f"asset '{x['asset']}' is declared but has no file yet (`cves assets todo`)")
+            elif not ok: v.err(f"{p}.asset", f"'{x['asset']}' is not a declared / registered asset nor a file")
+        if x.get("framing") is not None and x["framing"] not in SP.FRAMINGS: v.err(f"{p}.framing", f"expected one of {', '.join(SP.FRAMINGS)}, got {_show(x['framing'])}")
+        if x.get("after") is not None and x["after"] not in ("hold", "loop"): v.err(f"{p}.after", f"expected hold or loop, got {_show(x['after'])}")
+        if _num(x.get("speed")) and x["speed"] <= 0: v.err(f"{p}.speed", "must be > 0")
+        if _num(x.get("in")) and x["in"] < 0: v.err(f"{p}.in", "source seconds must be >= 0")
+        a = x.get("anchor")
+        if a is not None and not (isinstance(a, list) and len(a) == 2 and all(_num(q) and 0 <= q <= 1 for q in a)): v.err(f"{p}.anchor", "expected [x, y] in 0..1")
+        if _num(x.get("start")) and _num(x.get("end")):
+            if x["end"] <= x["start"]: v.err(f"{p}.end", f"{x['end']:g} s is not after start {x['start']:g} s")
+            else: spans.append((x["start"], x["end"], j))
+    spans.sort(); tol = .5 / v.fps if v.fps else 1e-3
+    for (a0, a1, ja), (b0, b1, jb) in zip(spans[:-1], spans[1:]):
+        if b0 < a1 - tol: v.err(f"{path}[{jb}].start", f"{b0:g} s overlaps {path}[{ja}] ({a0:g}-{a1:g} s)")
+    if getattr(v, "spine", "aroll") != "aroll" and v.T_END:
+        cur, gaps = 0.0, []
+        for a0, a1, _ in spans:
+            if a0 > cur + tol: gaps.append(f"{cur:.2f}-{a0:.2f}")
+            cur = max(cur, a1)
+        if v.T_END > cur + tol: gaps.append(f"{cur:.2f}-{v.T_END:.2f}")
+        if gaps: v.warn(path, f"the {v.spine} timeline has frames no shot covers (the stage shows): {', '.join(gaps[:6])} s")
+
+
+SPECIAL = {"zoommap": _zoommap, "captions": _captions, "music": _music, "assets": _assets, "style": _style_section, "spine": _spine, "broll": _broll}
 
 
 # ------------------------------------------------------------------ style keys vs default.yaml
@@ -404,6 +490,22 @@ def _template(v, path, name, slot):
 
 # ------------------------------------------------------------------ timeline context
 def _load_timeline(v, E):
+    from . import spines as SP
+    try: sp = SP.spine_of(E)
+    except SystemExit: sp = "aroll"
+    v.spine = sp
+    if sp != "aroll":                    # voiceover / music / broll: the length comes from the spine, the rate from edl.json
+        edl = v.pr.json("edl.json") or {}
+        v.fps = float(edl.get("fps") or 0) or None
+        try: v.T_END = SP.duration(v.pr, sp, E)
+        except (SystemExit, Exception) as e: v.warn("spine", f"timeline length unknown ({e}): time checks skipped"); return
+        if not v.fps:
+            from . import style as STY
+            try: v.fps = float(SP.project_rate(v.pr, STY.load(v.pr), E))
+            except Exception: v.fps = 30.0
+        end = E.get("end_card") if isinstance(E.get("end_card"), dict) else {}
+        v.T_ALL = v.T_END + (end.get("duration") or 0 if _num(end.get("duration") or 0) else 0)
+        return
     edl = v.pr.json("edl.json") if os.path.exists(v.pr.e("edl.json")) else None
     if not edl:
         v.warn("edl", "Edit/edl.json missing: time and segment checks skipped (run `cves select`)"); return
@@ -459,6 +561,9 @@ def _edit_specific(v, E):
                     v.err(f"cutaways[{jb}]", f"after snapping to segment boundaries it overlaps cutaways[{ja}] ({a0:.2f}-{a1:.2f} s); set snap: false on one")
     # ---- roto / chest
     seen = {}
+    if getattr(v, "spine", "aroll") != "aroll":
+        for slot in ("roto", "chest"):
+            if E.get(slot): v.warn(slot, f"ignored: the {v.spine} spine has no presenter (roto / chest need A-roll)")
     for slot in ("roto", "chest"):
         for j, c in enumerate(E.get(slot) or [] if isinstance(E.get(slot), list) else []):
             p = f"{slot}[{j}]"
@@ -547,11 +652,12 @@ def validate(pr, edit=None):
     _load_timeline(v, edit)
     _check(v, "", edit, EDIT)
     _edit_specific(v, edit)
+    _goal_and_slot(v, edit)
     for name, p in (("Edit/style.yaml", pr.e("style.yaml")), ("Brand/style.yaml", pr.p("Brand", "style.yaml"))):
         if os.path.exists(p):
             try:
                 with open(p, encoding="utf-8") as fh: d = yaml.safe_load(fh) or {}
-                if isinstance(d, dict): check_style(v, d, name)
+                if isinstance(d, dict): check_style(v, d, name); _platform_target(v, d, name)
                 else: v.err(name, "expected a mapping of style keys")
             except yaml.YAMLError as e: v.err(name, f"YAML syntax error: {_yerr(e)}")
     pre = (edit.get("style") or {}).get("preset") if isinstance(edit.get("style"), dict) else None

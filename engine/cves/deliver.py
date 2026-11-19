@@ -4,6 +4,9 @@ Writes a new, never-overwritten Export/vNNN/ folder: the QC'd master, SRT + WebV
 qc.json + QC-REPORT.txt, edit.yaml + the merged style snapshot, every variant that passed its own QC, and manifest.json
 (files, sha256, durations, sizes, fps, cves version, variant definitions and results).
 
+`music.slot: platform` (organic posts): the master has no music; the delivery adds the guide stem (`<master>.guide.wav`)
+and POSTING.md (which sound to add in the app, where to start it, where the drop lands; cves.guide).
+
 Refuses unless Edit/qc.json exists, has fail == 0 and its sha256 equals the master's: re-encoding without re-running QC
 blocks. `--force-unchecked` delivers anyway and writes a loud warning into the manifest."""
 import os, re, sys, json, shutil, tempfile, datetime, subprocess
@@ -114,7 +117,7 @@ def draw_cover(pr, S, img, title, out, avoid=()):
     G.apply_style(S); CV = S.get("delivery.cover") or {}
     im = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).convert("RGBA")
     if title:
-        W, H = im.size; k = W / G.W
+        W, H = im.size; k = min(W, H) / 1080            # px keys are at a 1080 short side, on any canvas (docs/FORMATS.md)
         short = {"medium": "m", "semibold": "sb", "bold": "b", "extrabold": "xb", "serif": "serif"}.get(CV.get("title_font", "extrabold"), "xb")
         f = G.font(short, int(CV.get("title_size", 104) * k))
         col = lambda v: STY.rgb((S.get("colors") or {}).get(v, v))
@@ -125,8 +128,8 @@ def draw_cover(pr, S, img, title, out, avoid=()):
             cur.append(w)
         if cur: lines.append(cur)
         lay = Image.new("RGBA", im.size, (0, 0, 0, 0)); d = ImageDraw.Draw(lay); y = int(CV.get("title_y", .16) * H); lh = int(f.size * 1.12)
-        sz = S.get("platform.safe_zone"); x0z, x1z = (sz[0] * k, sz[2] * k) if sz else (0, W)
-        top = (sz[1] * k) if sz else S.get("platform.margin", 60) * k; bh = lh * len(lines); gap = 24 * k
+        sz = G.safe_zone(S, (W, H)); x0z, x1z = (sz[0], sz[2]) if sz else (0, W)
+        top = sz[1] if sz else S.get("platform.margin", 60) * k; bh = lh * len(lines); gap = 24 * k
         av = sorted(a for a in avoid if a)       # never over the face or burned-in text: preferred y, else above / below each
         hit = lambda y_: any(y_ < b + gap and y_ + bh > a - gap for a, b in av)
         cands = [y] + [int(a - gap - bh) for a, _ in av] + [int(b + gap) for _, b in av]
@@ -170,6 +173,27 @@ def _jsonable(o):
     return o
 
 
+# ------------------------------------------------------------------ platform sound slot
+def _platform_slot(pr, S, stage, base, master):
+    """music.slot: platform -> copy Edit/stems/guide.wav as <master>.guide.wav and write POSTING.md; None otherwise"""
+    from . import guide as GD
+    if not GD.is_slot(pr): return None
+    src = pr.e("stems", "guide.wav")
+    if not os.path.exists(src): raise SystemExit("music.slot: platform but Edit/stems/guide.wav is missing: run `cves mix` (and encode + qc) again")
+    from .variants import probe
+    T = float(probe(master).get("format", {}).get("duration", 0))
+    g = GD.grid(pr, T, S)
+    if g is None: raise SystemExit("music.slot: platform: " + ("; ".join(GD.problems(pr)) or "no guide grid"))
+    gname = os.path.basename(base) + ".guide.wav"; shutil.copy2(src, os.path.join(stage, gname))
+    tl = pr.json("timeline.json", {}) or {}
+    cuts = sorted(set([round(s_["t0"], 3) for s_ in tl.get("segments", [])[1:]] + [round(c["start"], 3) for c in tl.get("cutaways", [])]
+                      + [round(c["end"], 3) for c in tl.get("cutaways", [])]))
+    with open(os.path.join(stage, "POSTING.md"), "w", encoding="utf-8") as f:
+        f.write(GD.posting_md(pr, S, os.path.basename(master), gname, T, g, cuts))
+    return {"slot": "platform", "guide": gname, "posting": "POSTING.md", "sound": g["spec"].get("sound"), "tempo": g.get("tempo"),
+            "start_in_track_s": g.get("offset"), "drop_cut_s": g.get("drop_cut"), "platform": S.get("platform.target")}
+
+
 # ------------------------------------------------------------------ deliver
 def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, keep_temp=False):
     import yaml
@@ -200,6 +224,7 @@ def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, kee
             with open(pr.e("elements.jsonl"), encoding="utf-8") as f:
                 txt = [(e["bbox"][1], e["bbox"][3]) for e in map(json.loads, f) if e["f"] == fi and e["role"] in ("caption", "chest", "cutaway")]
         draw_cover(pr, S, img, (E.get("delivery") or {}).get("cover_title"), base + ".cover.jpg", [fbox] + txt)
+        slot_info = _platform_slot(pr, S, stage, base, master)
         shutil.copy2(pr.e("edit.yaml"), os.path.join(stage, "edit.yaml"))
         with open(os.path.join(stage, "style.yaml"), "w", encoding="utf-8") as f:
             f.write(f"# merged style profile used for this delivery; sources (later wins): {', '.join(S.get('_sources') or [])}\n")
@@ -225,7 +250,7 @@ def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, kee
                        "qc": {k: st[k] for k in ("fail", "warn", "pass", "sha256")},
                        "notes": {"caption_frames_cropped": len(nt["caption_cut"]), "face_frames_cropped_for_captions": len(nt["face_cut"]),
                                  "graphics_cropped": nt["gfx_cut"], "moving_crop_shots": nt["moving_shots"], "source": r["source_frames"],
-                                 "geometry": {"out": list(r["geometry"]["out"]), "crop_h": r["crop_h"], "fill": bool(r["geometry"]["wide"])}}}
+                                 "geometry": {"out": list(r["geometry"]["out"]), "crop_h": r["crop_h"], "axis": r["geometry"].get("axis", "y"), "fill": bool(r["geometry"]["wide"])}}}
                 if ok: shutil.copy2(r["file"], os.path.join(stage, os.path.basename(r["file"]))); ent["file"] = os.path.basename(r["file"])
                 else: ent["reason"] = "QC FAIL: " + "; ".join(f"{g} {m}" for g, s_, m, _ in R if s_ == "FAIL")
                 results.append(ent)
@@ -251,6 +276,7 @@ def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, kee
                "qc": {k: (stamp or {}).get(k) for k in ("fail", "warn", "pass", "sha256", "created", "fast")},
                "fps_rational": None, "cover": {"t": round(ct, 3), "how": how, "title": (E.get("delivery") or {}).get("cover_title")},
                "style_sources": S.get("_sources"), "variants": results}
+        if slot_info: man["music_slot"] = slot_info
         from .encode import stream_params
         fr, size = stream_params(pr); man["fps_rational"] = fr; man["size"] = list(size)
         if probs: man = {"WARNING": FORCE_WARNING, "forced_unchecked": True, "unchecked_reasons": probs, **man}
