@@ -7,7 +7,7 @@
   cves learn journal [--tail 20]                          print this project's journal
   cves learn mine [--root DIR] [--json]                   every project journal -> ~/.cves/taste/candidates.jsonl
   cves learn list [--all] | show ID
-  cves learn promote ID [--scope ..] [--share]            personal learned.yaml, or (--share, anonymised) the repo's
+  cves learn promote ID [--scope ..] [--share|--team]     personal learned.yaml; --team: the shared team folder; --share: the public repo (anonymised)
   cves learn reject ID --why ".."                         never propose it again
   cves learn forget ID                                    revert a promotion
   cves learn study FOLDER [--max-s 60]                    measure great videos (notes.txt: file | ad|viral | why)
@@ -30,10 +30,10 @@ IGNORE_EDIT = ("project.", "qc.", "captions.events", "captions.hide", "captions.
 
 # ======================================================================== paths
 def taste_dir():
-    return os.path.dirname(STY.learned_paths()[1][1])
+    return os.path.dirname(STY.learned_path("personal"))
 
 def kb_dir():
-    return os.path.dirname(os.path.dirname(STY.learned_paths()[0][1]))
+    return os.path.dirname(os.path.dirname(STY.learned_path("repo")))
 
 def _tp(*p):
     d = taste_dir(); os.makedirs(d, exist_ok=True); return os.path.join(d, *p)
@@ -623,26 +623,31 @@ def _public(c, scope, names):
     for n in names: assert n.lower() not in t.lower(), "client name in shared text"
     return t
 
-def promote(cid, scope=None, share=False):
+def promote(cid, scope=None, share=False, team=False):
     c = find(cid); scope = scope or c["scope"]
     try: parts = STY.scope_parts(scope)
     except ValueError as e: raise SystemExit(str(e))
+    if share and team: raise SystemExit("--share (public repo) and --team (shared folder): pick one")
+    if team and not STY.team_dir():
+        raise SystemExit("no team layer: set `team_taste: <shared folder>` in ~/.cves/config.yaml (or $CVES_TEAM_TASTE), e.g. a Google Drive folder every editor syncs")
     if share and any(k == "client" for k, _ in parts):
         raise SystemExit(f"{cid} is scoped to a client: client taste stays local. Promote without --share, or pass --scope global|goal:<..>|platform:<..> with --share")
     rej, prom = _status_maps()
     if cid in prom: raise SystemExit(f"{cid} is already promoted ({prom[cid]['scope']}{', shared' if prom[cid].get('share') else ''}); `cves learn forget {cid}` first")
     names = known_names([v for k, v in parts if k == "client"])
-    rec = {"id": cid, "t": _now(), "scope": scope, "share": bool(share), "type": c["type"]}
+    import getpass
+    rec = {"id": cid, "t": _now(), "scope": scope, "share": bool(share), "team": bool(team), "by": getpass.getuser(), "type": c["type"]}
     msgs = []
     if c["type"] == "style":
         key, val = c["change"]["key"], c["change"]["value"]
         if not is_style_key(key): raise SystemExit(f"`{key}` is not a key of engine/cves/styles/default.yaml: only existing style keys can be learned")
-        path = STY.learned_paths()[0 if share else 1][1]
+        path = STY.learned_path("repo" if share else "team" if team else "personal")
         L = _read_yaml(path); L.setdefault("scopes", {}); L["scopes"].setdefault(scope, {})
         prev = style_value(key, L["scopes"][scope])
         _dset(L["scopes"][scope], key, val)
         info = {"scope": scope, "key": key, "value": val, "date": _today(), "n": c.get("n"), "effect": c.get("effect")}
         if not share: info["statement"] = c["statement"]
+        if team: info["by"] = rec["by"]
         L.setdefault("_promoted", {})[cid] = info
         _write_learned(path, L)
         rec.update({"key": key, "value": val, "path": path, "prev": None if prev is MISSING else prev, "had_prev": prev is not MISSING})
@@ -654,11 +659,11 @@ def promote(cid, scope=None, share=False):
             _lessons_add(lp, cid, _public(c, scope, names), anonymise(text, names), scope, c)
             rec["path"] = lp; msgs.append(f"rule -> {lp}")
         else:
-            rp = _tp("rules.md")
-            new = not os.path.exists(rp)
+            rp = os.path.join(STY.team_dir(), "rules.md") if team else _tp("rules.md")
+            os.makedirs(os.path.dirname(rp), exist_ok=True); new = not os.path.exists(rp)
             with open(rp, "a", encoding="utf-8") as f:
-                if new: f.write("# Personal learned rules (`cves learn promote`; local only)\n\n")
-                f.write(f"- [{cid}] ({scope}, {_today()}) {text}\n")
+                if new: f.write("# Team learned rules (`cves learn promote --team`; shared folder)\n\n" if team else "# Personal learned rules (`cves learn promote`; local only)\n\n")
+                f.write(f"- [{cid}] ({scope}, {_today()}{', ' + rec['by'] if team else ''}) {text}\n")
             rec["path"] = rp; msgs.append(f"rule -> {rp}")
     if share:
         tp = os.path.join(kb_dir(), "TASTE.md")
@@ -897,7 +902,7 @@ def main(argv, project=None):
     m = sp.add_parser("mine"); m.add_argument("--root"); m.add_argument("--json", action="store_true")
     ls = sp.add_parser("list"); ls.add_argument("--all", action="store_true")
     sh = sp.add_parser("show"); sh.add_argument("id")
-    pm = sp.add_parser("promote"); pm.add_argument("id"); pm.add_argument("--scope"); pm.add_argument("--share", action="store_true")
+    pm = sp.add_parser("promote"); pm.add_argument("id"); pm.add_argument("--scope"); pm.add_argument("--share", action="store_true"); pm.add_argument("--team", action="store_true")
     fg = sp.add_parser("forget"); fg.add_argument("id")
     sd = sp.add_parser("study"); sd.add_argument("folder"); sd.add_argument("--max-s", type=float, default=60.0)
     a = ap.parse_args(argv)
@@ -947,7 +952,7 @@ def main(argv, project=None):
     if a.sub == "show":
         print(yaml.safe_dump(find(a.id), sort_keys=False, allow_unicode=True, width=140)); return 0
     if a.sub == "promote":
-        for x in promote(a.id, a.scope, a.share): print(x)
+        for x in promote(a.id, a.scope, a.share, a.team): print(x)
         return 0
     if a.sub == "forget":
         for x in forget(a.id): print(x)

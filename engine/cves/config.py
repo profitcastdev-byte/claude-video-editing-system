@@ -15,6 +15,7 @@ def _first(*paths):
 
 DEFAULTS = {
     "clients_root": lambda: "~/CVES Projects",      # where `cves new` puts client project folders
+    "team_taste": lambda: "",                       # a folder every editor shares (Google Drive / Dropbox): the team learned layer
     # binaries
     "ffmpeg": lambda: _first(os.path.join(CVES, "bin", "ffmpeg" + EXE), "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg", "ffmpeg"),
     "ffprobe": lambda: _first(os.path.join(CVES, "bin", "ffprobe" + EXE), "/opt/homebrew/opt/ffmpeg-full/bin/ffprobe", "ffprobe"),

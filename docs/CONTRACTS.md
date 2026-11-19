@@ -15,7 +15,8 @@ S.get("captions.style", "word_reveal")   # dotted lookup with a default
 **Merge order** (later wins):
 1. `engine/cves/styles/default.yaml`, the neutral defaults;
    - `engine/cves/styles/viral.yaml` when `edit.yaml goal: viral` (the goal layer, [VIRAL.md](VIRAL.md));
-2. `knowledge-base/taste/learned.yaml`, the repo's learned layer (team taste, shared through git);
+2. `knowledge-base/taste/learned.yaml`, the repo's learned layer (public, anonymised, shared through git);
+   `<team_taste>/learned.yaml`, the team layer when `team_taste` / `$CVES_TEAM_TASTE` is set (a shared folder; docs/LEARNING.md);
 3. `~/.cves/taste/learned.yaml`, the personal learned layer (`$CVES_TASTE`);
 4. the preset named by `edit.yaml style.preset`;
 5. `PROJECT/Edit/style.yaml`, written by `cves inspire`;
@@ -29,7 +30,7 @@ S.get("captions.style", "word_reveal")   # dotted lookup with a default
 The learned layers (2, 3) hold `scopes: {global | goal:<x> | platform:<x> | client:<x>: {style keys}}` and apply only the
 sections whose scope matches the project (`edit.yaml goal:`, `platform.target`, `project.client`; absent keys match only
 unscoped sections), general before specific. They are written only by `cves learn promote` (a person approves every
-entry) and may hold only keys that exist in `default.yaml`. `S["_sources"]` lists `learned:repo` / `learned:personal`
+entry) and may hold only keys that exist in `default.yaml`. `S["_sources"]` lists `learned:repo` / `learned:team` / `learned:personal`
 when they applied. See [LEARNING.md](LEARNING.md).
 
 After the merge, `platform.target` fills `platform.safe_zone`, `sound.master_lufs` and `sound.true_peak` from `styles/platforms.yaml` unless a layer set them. Platform boxes are fractions of the frame: compute pixels from the real frame size (`platforms.safe_zone(S, w, h)`), never from a fixed canvas.

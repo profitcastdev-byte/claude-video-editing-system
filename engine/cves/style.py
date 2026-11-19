@@ -3,7 +3,8 @@
 Merge order (later wins):
   1. styles/default.yaml                   neutral, safe defaults (no brand, no house look)
   1b. styles/viral.yaml                    only when edit.yaml `goal: viral` (retention-first defaults; docs/VIRAL.md)
-  2. knowledge-base/taste/learned.yaml     repo learned taste: team-shared through git (`cves learn promote --share`)
+  2. knowledge-base/taste/learned.yaml     repo learned taste: shared publicly through git (`cves learn promote --share`)
+     <team_taste>/learned.yaml               team learned taste: a shared folder ($CVES_TEAM_TASTE; `cves learn promote --team`)
   3. ~/.cves/taste/learned.yaml            personal learned taste (`cves learn promote`); may hold client-scoped sections
   4. styles/<preset>.yaml                  optional named preset (edit.yaml: style.preset)
   5. PROJECT/Edit/style.yaml               written by `cves inspire` from the client's reference edits
@@ -45,8 +46,23 @@ def learned_paths():
     $CVES_KB_DIR moves the repo knowledge base, $CVES_TASTE the personal taste folder (default ~/.cves/taste)."""
     kb = os.environ.get("CVES_KB_DIR") or os.path.join(HERE, "..", "..", "..", "knowledge-base")
     taste = os.environ.get("CVES_TASTE") or os.path.join(os.path.expanduser("~"), ".cves", "taste")
-    return [("repo", os.path.abspath(os.path.join(kb, "taste", "learned.yaml"))),
-            ("personal", os.path.abspath(os.path.join(taste, "learned.yaml")))]
+    out = [("repo", os.path.abspath(os.path.join(kb, "taste", "learned.yaml")))]
+    team = team_dir()
+    if team: out.append(("team", os.path.abspath(os.path.join(team, "learned.yaml"))))
+    return out + [("personal", os.path.abspath(os.path.join(taste, "learned.yaml")))]
+
+def team_dir():
+    """the team learned layer: a folder every editor's machine points at ($CVES_TEAM_TASTE or `team_taste:` in
+    ~/.cves/config.yaml), e.g. a synced Google Drive / Dropbox folder. Empty = no team layer. Client-scoped taste is
+    allowed here (it never goes to the public repo)."""
+    from . import config as C
+    try: d = C.get("team_taste")
+    except Exception: d = ""
+    return os.path.expanduser(d) if d else ""
+
+def learned_path(name):
+    """the learned.yaml of one layer: repo | team | personal (None when that layer is not configured)"""
+    return dict(learned_paths()).get(name)
 
 def scope_context(E):
     """goal / platform / client of an edit.yaml; every one is optional (absent = only unscoped sections match it)"""

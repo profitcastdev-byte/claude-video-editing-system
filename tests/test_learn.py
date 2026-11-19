@@ -204,3 +204,21 @@ def test_critique_counts_broll_footage_as_shots_not_graphics():
     shots, gfx, _ = CR.structure(_P(), 4.0)[:3]
     assert [g[2] for g in gfx] == ["c1"]                       # only the designed graphic counts toward the restraint budget
     assert any(abs(s[0] - 2.0) < 1e-6 for s in shots)          # the B-roll cut at 2.0 s is a shot boundary
+
+
+def test_team_layer_shared_folder(env, monkeypatch, tmp_path):
+    """--team writes to a shared folder every editor points at; it merges between the repo and the personal layer"""
+    _fleet(env, 4); cands, _ = learn.mine()
+    cid = next(c["id"] for c in cands if c["kind"] == "correlation" and c["change"]["key"] == "transitions.in")
+    with pytest.raises(SystemExit, match="no team layer"): learn.promote(cid, team=True)
+    team = tmp_path / "Shared Drive" / "taste"; monkeypatch.setenv("CVES_TEAM_TASTE", str(team))
+    with pytest.raises(SystemExit, match="pick one"): learn.promote(cid, share=True, team=True)
+    learn.promote(cid, team=True)
+    L = yaml.safe_load(open(team / "learned.yaml", encoding="utf-8"))
+    assert L["scopes"]["goal:viral"]["transitions"]["in"] == "whip" and L["_promoted"][cid]["by"]
+    assert not os.path.exists(os.path.join(env["tmp"], "taste", "learned.yaml")) or "goal:viral" not in (yaml.safe_load(open(os.path.join(env["tmp"], "taste", "learned.yaml"), encoding="utf-8")) or {}).get("scopes", {})
+    viral = _proj(env, "Acme Bakery", "Viral team", goal="viral")
+    src = STY.load(viral)["_sources"]; assert "learned:team" in src and STY.load(viral).get("transitions.in") == "whip"
+    assert [n for n, _ in STY.learned_paths()] == ["repo", "team", "personal"]
+    learn.forget(cid)
+    assert "learned:team" not in STY.load(viral)["_sources"]

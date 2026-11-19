@@ -5,6 +5,9 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
 
 ## [Unreleased]
 
+### Added (team)
+- **Team taste layer**: `team_taste:` in `~/.cves/config.yaml` (or `$CVES_TEAM_TASTE`) points every editor at one shared folder; `cves learn promote <id> --team` shares an approved lesson with the whole team (client scopes allowed, who/when recorded); merged between the repo and personal layers.
+
 ### Fixed (first real job, integration)
 - Prep no longer reuses a stale plate / matte after a re-cut that keeps segment ids (render ran out of frames); legacy plates are adopted when their length matches.
 - FRAME-03 judges the halo the pipeline added (output vs the source plate at the same edge), not the room's own edges.
