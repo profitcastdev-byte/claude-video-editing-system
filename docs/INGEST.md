@@ -76,6 +76,10 @@ Filter order per segment: `[SAR fix] [HDR→SDR] [fps] [crop] scale=W:H:lanczos 
   limited range, 10-bit, plates tagged BT.709. ffmpeg-full has `zscale` and `tonemap`. **Fallback** when they are missing:
   a matrix-only conversion (`scale=in_color_matrix=bt2020:out_color_matrix=bt709`): colours are re-matrixed but highlights
   are not tone-mapped, so the image looks flat and dim. `ingest.json` records which path ran (`tonemap: zscale | fallback-matrix-only`).
+  **B-roll and media clips** are not plated, but they get the same chain: `ingest.sdr_source(path, S, cache)` runs an HDR
+  clip through `_tonemap_chain` once into a lossless 10-bit FFV1 proxy (`Edit/conform/<name>-<key>.sdr.mkv`, BT.709-tagged,
+  video only, rotation applied, timestamps kept) that the media templates decode instead (`cves render` prepares every
+  referenced clip before its workers start). SDR clips are used as they are. Style `ingest.hdr.broll: false` turns it off.
 - **Aspect**: when the upright source aspect differs from the canvas (by > 0.2 %), the source is **cropped** to the canvas aspect,
   then scaled. It is never squashed or letterboxed.
   - `ingest.reframe: face` (default): YuNet runs on the source at `ingest.face_crop.sample_fps` (frames are streamed through an
@@ -139,6 +143,10 @@ runtime; on macOS Homebrew's `/opt/homebrew/lib` is not on the default search pa
 `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib` (or install `fribidi` where dyld looks) or vowel signs and conjuncts render unshaped.
 
 ## Tested (2026-11-18)
+
+- 2026-11-19: synthetic 10-bit PQ and HLG B-roll clips (H.264, BT.2020 VUI tags): the SDR proxy is BT.709, not HDR, keeps
+  the frame count, and decodes within 1 level (mean) of the original passed through `_tonemap_chain`
+  (`tests/test_weak_spots.py`).
 
 - Example project copy: `transcribe_raw, select, words, plate, faces` give byte-identical `raw_words.json`, `edl.json` segments
   (plus `src`), `words.json`, voice stems and transcript compared with the previous ingest code, and frame-identical plates

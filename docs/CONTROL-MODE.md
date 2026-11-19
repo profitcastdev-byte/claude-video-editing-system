@@ -225,7 +225,7 @@ reports every problem at once.
 | `clips[].alpha` | bool | default `true` on V3, else `false`; V3 must be `true` |
 | `clips[].gain_db` | number, optional | static gain written into the FCPXML (`adjust-volume`) and Kdenlive (`volume` filter); default 0 because stems are mixed as rendered |
 | `clips[].channels`, `sample_rate` | int, optional | audio only; default 2 and 48000 |
-| `clips[].edit_ref` | string, optional | where this layer comes from in `edit.yaml` (`cutaways.c3`, `chest.0`, `chest.0+1` for chest entries sharing a layer, `edl.<segment>`, `end_card`, `stems.music`); used for round trips |
+| `clips[].edit_ref` | string, optional | where this layer comes from in `edit.yaml` (`cutaways.c3`, `broll.b02` for a `broll:` shot (V2 on the A-roll spine, V1 on the others), `chest.0`, `chest.0+1` for chest entries sharing a layer, `edl.<segment>`, `gap.<id>`, `end_card`, `stems.music`); used for round trips |
 | `clips[].frames`, `hash` | int / string, optional | frame count and sha256 of the media as rendered; `cves control update` refreshes both |
 | `captions[]` | list | `{index, ref, start, end, text}`, seconds, non-overlapping, inside the timeline; `ref` is the caption's index in the renderer's caption events (round trips); `\n` in `text` makes a line break |
 
@@ -327,7 +327,10 @@ move and a trim are told apart.
 | cutaway trimmed (in or out) | `start` / `end` only (animation times stay: a trim reveals or hides frames) |
 | cutaway deleted | removed from `cutaways` |
 | end card trimmed / deleted | `end_card.duration` / `end_card` removed |
-| chest overlay moved / deleted | chest params shifted / the chest entry removed (a trim is reported, not mapped) |
+| chest overlay moved / deleted | chest params shifted / the chest entry removed (a trim of a drawn chest graphic is reported, not mapped) |
+| B-roll shot moved / trimmed / deleted | `broll[k].start/end` (`snap: false` when it leaves a segment boundary on the A-roll spine); a head trim moves `broll[k].in` by the trimmed frames at the shot's speed; deleted → removed from `broll:`. Works for V2 shots (A-roll spine) and V1 shots (voiceover / music / broll spines, where they do not touch `selects.yaml`) |
+| B-roll speed changed in the editor | `broll[k].speed` multiplied by the editor's speed |
+| motion piece (`m_*`) trimmed, in `cutaways:` or `chest:` | the piece re-times: `at` moves to the new in point when the head was trimmed past its clock start, `duration` fits the new out point, so the entry and exit both still play (a move shifts `at` like any animation time) |
 | A-roll head or tail trimmed at a clip's outer edge | `selects.yaml` clip `in` / `out` (then `cves select` + `cves prep` re-tighten) |
 | a whole clip's A-roll deleted / clips reordered | `selects.yaml` clip removed (with its roto/chest) / clips reordered |
 | ripple (later shots moved) | roto params, `captions.hide`, `sfx.extra`, `aroll.snap`, `music.drop_cut`, `transitions` follow their shot |
@@ -340,7 +343,7 @@ changed (backup alongside) and **`Edit/IMPORT-REPORT.md`**: what was applied, a 
 and a **Not mapped** list. Nothing is dropped silently; these are listed instead: new third-party media,
 effects, transitions, titles and generators, compositions, speed changes, compound / multicam clips,
 volume keyframes (only the static level is read), a layer split into pieces with a gap, trims between
-two tightened segments of one clip, moves of the voice or SFX stems, and chest overlay trims.
+two tightened segments of one clip, moves of the voice or SFX stems, and trims of drawn (non-motion) chest overlays.
 
 Limits: the rewrite of `edit.yaml` keeps a leading comment block only (the backup has every comment). The
 editor's timeline must stay at the exported rate (the importer refuses otherwise). Re-tightening after a
@@ -527,7 +530,18 @@ edit.yaml changed since the export. Then `cves control update --only c2,c4,capti
 that c4 no longer hides them) in 2 m 50 s on a heavily loaded machine; `cves export kdenlive --no-build`
 loads the result in melt.
 
+### Kdenlive round trip, automated (2026-11-19, macOS, melt from Kdenlive.app)
+
+`tests/test_weak_spots.py::test_kdenlive_round_trip` runs the whole cycle on every test run where melt is found (skipped
+otherwise): `make_demo` (540x960) plus a B-roll shot → render / mix / encode → `cves export kdenlive` → the test edits
+`project.kdenlive` the way Kdenlive saves it (cutaway `c2` moved 6 frames later through the playlist blanks, the B-roll
+layer's head trimmed 6 frames) and its `project.kdenlive.srt` (the first caption 6 frames earlier) → melt renders the edited
+project → `cves import-edits --from kdenlive` → `edit.yaml` has `broll[0].start` +0.2 s and `in` 0.5 → 0.7, `c2` +0.2 s with
+`snap: false`, the caption in `captions.events` → `cves render` places the shot and the cutaway at their new times.
+
 ### Still needs a live Resolve test (Resolve is not installed on this Mac)
+
+The step-by-step script for the first person with Resolve is [RESOLVE-CHECKLIST.md](RESOLVE-CHECKLIST.md).
 
 1. The bridge runs from Workspace > Scripts on Resolve **Free** 19/20 on Mac and Windows, with the hardened file,
    and the Python 3 requirement holds.

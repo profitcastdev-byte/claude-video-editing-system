@@ -249,3 +249,23 @@ def test_kdenlive_round_trip(tmp_path):
     render.render(project.Project(d)); TL = json.load(open(pr.e("timeline.json"), encoding="utf-8"))
     cuts = {c["id"]: c for c in TL["cutaways"]}
     assert abs(cuts["b01"]["start"] - br["start"]) < .5 / F and abs(cuts["c2"]["start"] - c2["start"]) < .5 / F
+
+
+def test_4k_media_cards_are_drawn_at_4k(tmp_path):
+    """the picture templates (media.py) sample their source and draw their card / mask at the real canvas too"""
+    from PIL import Image
+    y, x = np.mgrid[0:1600, 0:2400]; src = np.stack([x * 255 // 2400, y * 255 // 1600, (x + y) % 200 + 40], -1).astype(np.uint8)
+    src[700:900, 1000:1400] = 255; path = str(tmp_path / "still.png"); Image.fromarray(src).save(path)
+    p = {"asset": path, "frame": "card", "label": "THE PLAN", "caption": "step one"}
+    def frame(raster, size=(3840, 2160)):
+        TPL.RASTER["image"] = raster
+        try: els = _draw("image", size, t=1.0, p=p)
+        finally: TPL.RASTER["image"] = True
+        assert all(e.im.size == size for e in els)
+        img = np.zeros((size[1], size[0], 3), np.float32) + .05
+        for e in els: img = G.over(img, e.im)
+        return Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8))
+    a, b = frame(True), frame(False)
+    assert _sharpness(a) >= 1.3 * _sharpness(b)
+    sm = lambda im: np.asarray(im.resize((480, 270), Image.BOX), np.float32)
+    assert np.abs(sm(a) - sm(b)).mean() < 2.0                                  # same layout, only sharper

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Build the synthetic demo project: no real person, no client, no licensed media.
 
-    python tools/make_demo.py OUT_DIR [--fps 30] [--small] [--kind aroll|voiceover|music|broll] [--size WxH]
+    python tools/make_demo.py OUT_DIR [--fps 30] [--small] [--kind aroll|voiceover|music|broll] [--size WxH] [--edit default|legacy]
 
 It writes a complete CVES project in the state ingest leaves it in, so render, mix, QC, deliver and export can run on any
 machine without whisper, RVM or DeepFilterNet (CI uses it; teammates can use it to try the engine).
 
 --kind picks the timeline spine (docs/FORMATS.md); --size the canvas (style canvas.size, written to edit.yaml style:).
+--edit legacy (aroll kind, full script) uses tools/demo_edit_legacy.yaml: the v0.2 UI cutaways (card_list, stat,
+browser_list) and roto cards (map_card, big_words), which lay out per canvas shape.
   aroll      (default) the drawn presenter below
   voiceover  a synthetic VO as the spine (Assets/vo.wav, registered) + a broll: track of drawn clips cut on the words
   music      no voice: a synthetic 100 BPM track drives the cut; the broll: track comes from `cves autocut` (on the bars)
@@ -136,6 +138,7 @@ def main():
     ap.add_argument("--small", action="store_true", help="fewer words (CI speed)")
     ap.add_argument("--kind", choices=("aroll", "voiceover", "music", "broll"), default="aroll", help="the timeline spine (docs/FORMATS.md)")
     ap.add_argument("--size", default=None, help="canvas WxH (even numbers), e.g. 1920x1080; default 1080x1920")
+    ap.add_argument("--edit", choices=("default", "legacy"), default="default", help="aroll edit: tools/demo_edit.yaml or demo_edit_legacy.yaml")
     a = ap.parse_args(); fps = a.fps; out = os.path.abspath(a.out)
     if a.size:
         try: W, H = (int(v) for v in a.size.lower().split("x"))
@@ -194,7 +197,8 @@ def main():
         "music": {"file": "Music/demo_bed.wav", "drop_track": 9.6, "drop_cut": round(st(script[2][0]), 2)},
         "qc": {"topic_keywords": ["videos"], "brand_tail": [], "duration": [5, 60]},
     }
-    with open(os.path.join(HERE, "demo_edit.yaml"), encoding="utf-8") as fh: tmpl = yaml.safe_load(fh)
+    if a.edit == "legacy" and a.small: raise SystemExit("--edit legacy needs the full script (drop --small)")
+    with open(os.path.join(HERE, "demo_edit_legacy.yaml" if a.edit == "legacy" else "demo_edit.yaml"), encoding="utf-8") as fh: tmpl = yaml.safe_load(fh)
     edit = merge_demo(edit, tmpl, st, en)
     yaml.safe_dump(edit, open(os.path.join(E, "edit.yaml"), "w", encoding="utf-8"), sort_keys=False, allow_unicode=True)
     print(f"demo project: {out}  ({dur:.1f} s, {sum(len(v) for v in faces.values())} frames at {fps} fps, {len(segs)} segments)")

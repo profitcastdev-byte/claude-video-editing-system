@@ -285,8 +285,13 @@ def browser_list(t, p, ctx):
                 G.rrect(d, (bx0 - dx, yy, bx1 - dx, yy + 82 * s), 18 * s, fill=G.SURFACE, outline=(G.MINT_D if qv >= 1 else G.CARD_B), width=2 * s)
                 G.rrect(d, (bx0 + 20 * s - dx, yy + 17 * s, bx0 + 68 * s - dx, yy + 65 * s), 12 * s, fill=G.WELL); G.icon(d, r.get("icon", p.get("row_icon", "post")), bx0 + 44 * s - dx, yy + 41 * s, 26 * s)
                 G.draw_text(d, (bx0 + 92 * s - dx, yy + 52 * s), r["text"], G.fit_font("b", 28 * s, r["text"], (bx1 - bx0) - 180 * s, 2), G.WHITE, tracking=2)
-                G.state(d, "check", bx1 - 44 * s - dx, yy + 41 * s, 18 * s, G.enter(t, r["at"] + .15, .2, F))
             out.append(El(faded(row, qv), f"browser.row{k}", "cutaway", text=G.tidy(r["text"]), t_key=Q(r["at"]), asset=r.get("icon", p.get("row_icon", "post"))))
+            pc = G.enter(t, r["at"] + .15, .2, F)
+            if pc > 0:                       # the check is its own element: its pop cue has a logged visual event (SND-07)
+                def chk(d, qv=qv, bx1=bx1, by=by, pc=pc):
+                    yy = Y(by) + 40 * (1 - pb) * s; dx = 30 * (1 - qv) * s
+                    G.state(d, "check", bx1 - 44 * s - dx, yy + 41 * s, 18 * s, pc)
+                out.append(El(faded(chk, qv), f"browser.row{k}.check", "cutaway", t_key=Q(r["at"] + .15)))
     pe = G.enter(t, p.get("pill_at", 1e9), .25, F); pil = G.tidy(p.get("pill", ""))
     if pe > 0 and pil:
         out.append(El(G.layer(lambda d: G.pill(d, cx, Y(cbot + 40), pil, G.font("b", 30 * s), pad=(34 * s, 16 * s), sc=back(pe), text_p=pe)), "browser.pill", "cutaway", text=pil, t_key=Q(p.get("pill_at"))))

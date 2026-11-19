@@ -3,6 +3,21 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Changed (v0.4 workstream J: weak spots)
+- **The v0.2 UI cutaways and roto cards lay out per canvas** (`search_rows`, `card_list`, `stat` / `counter`, `browser_list`, `map_card`, `big_words`, `listing_card`, `top3_card`). They are relative templates now (`DESIGN = True` is gone from `cutaways.py` / `roto.py`); `templates/_layout.py` picks a tall arrangement (9:16: the original 1080×1920 numbers, frames pixel-identical to v0.3), a square one (scaled to fit the safe zone) or a wide one (two-column `card_list` and `browser_list` rows from 4 items, wider rows and panels, type scaled up to fill the zone, roto cards filling the zone height). Every element stays inside the safe zone on square and wide canvases. `browser_list` with 4+ rows grows its card on 9:16 instead of letting the pill cover the 4th row.
+- **No 4K softness**: relative templates lay out at a 1080 short side and are rasterised at the canvas's real resolution (`gfx.set_raster`, `G.PW` / `G.PH` / `G.R`, `G.px`): coordinates, type, strokes, icons, shadows and legibility beds scale inside `G.layer`, so 3840×2160 and 2160×3840 graphics are drawn at 4K (edges about 2× sharper than the old scaled path). The picture templates (`image`, `video_broll`, `screen_rec`, `pip`, `split`, `overlay_render`) sample their source into layer-sized buffers too (frames identical at 1080 canvases). A module that can't opts out with `RASTER = False`; in a raster-scaled call `ctx["aroll"]` stays at the real canvas size.
+- **HDR B-roll**: PQ / HLG clips in `broll:` and every media template are tonemapped to SDR BT.709 through the A-roll ingest chain (`ingest.sdr_source` → `Edit/conform/<name>-<key>.sdr.mkv`, lossless FFV1, prepared by `cves render` before its workers start). New style key `ingest.hdr.broll` (default `true`).
+- **`cves import-edits` maps B-roll and motion tracks**: a B-roll shot moved / trimmed / deleted / re-speeded in Kdenlive or Resolve maps to `broll[k].start/end/in/speed` (V2 on the A-roll spine, V1 on the voiceover / music / broll spines); a trimmed motion piece (`m_*`, in `cutaways:` or `chest:`) re-times its `at` / `duration`. B-roll layers in `layers.json` carry `edit_ref: broll.<id>`.
+- **QC GFX-15** samples text contrast only on frames whose bbox is static on both sides (as GFX-08 does), so a word still entering inside a static line is no longer measured by accident of 1 px rounding. No threshold changed.
+- `browser_list` row checks are their own elements (`browser.row<k>.check`), so their pop cue lands on a logged visual event (SND-07).
+- `tools/make_demo.py --edit legacy` (+ `tools/demo_edit_legacy.yaml`): a demo that uses the legacy cutaways and roto cards, to see the three arrangements.
+
+### Added
+- `tests/test_weak_spots.py`: legacy layouts on 16:9 / 1:1 / 4:5 / 4K (inside the safe zone, filling it), two columns on landscape, the 9:16 design numbers, 4K edge sharpness vs the scaled path, PQ and HLG B-roll tonemapping (matches the A-roll chain), the import-edits B-roll / motion mapping, and **the full Kdenlive round trip** (export → edit `project.kdenlive` and its subtitles → melt render → `import-edits` → `edit.yaml` → re-render; skipped without melt).
+- `docs/RESOLVE-CHECKLIST.md`: the step-by-step verification script for the first person with DaVinci Resolve (not installed on the build machine).
+
 ## [0.3.0] - 2026-11-19
 CVES becomes a senior editor for any video: motion design, inspirations it can hear and feel, any frame size and spine, viral mode, and a learning loop a person stays in charge of.
 

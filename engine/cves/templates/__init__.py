@@ -77,11 +77,13 @@ def _design_size():
     u = G.U; return (int(round(G.W / u)), int(round(G.H / u)))
 
 def _scaled_ctx(ctx, a, ox, oy, dsize):
+    """ctx for a call laid out in another space: chin positions mapped; ctx["aroll"] resized to dsize (None: kept at the
+    canvas resolution, for raster-scaled calls whose picture buffers are in layer px)"""
     if a == 1 and not ox and not oy: return ctx
     c = dict(ctx)
     for k in ("chin", "chin_hold"):
         if c.get(k) is not None: c[k] = (c[k] - oy) / a
-    if c.get("aroll") is not None and not callable(c["aroll"]):
+    if dsize is not None and c.get("aroll") is not None and not callable(c["aroll"]):
         import cv2
         rgb, m = c["aroll"][0], c["aroll"][1]
         c["aroll"] = (cv2.resize(rgb, dsize, interpolation=cv2.INTER_AREA), cv2.resize(m, dsize, interpolation=cv2.INTER_AREA))
@@ -126,7 +128,7 @@ def _canvas_render(name, fn, t, p, ctx):
         a, ox, oy = G.U, 0., 0.; size = _design_size()
         if RASTER.get(name, True):                     # lay out at a 1080 short side, draw at the canvas's real resolution
             W, H = G.W, G.H
-            els = _call_in(size, fn, t, p, _scaled_ctx(ctx, a, ox, oy, size), raster=(W, H)) or []
+            els = _call_in(size, fn, t, p, _scaled_ctx(ctx, a, ox, oy, None), raster=(W, H)) or []
             for el in els:
                 sz = el.im.size if isinstance(el.im, Image.Image) else (el.im.shape[1], el.im.shape[0])
                 if sz != (W, H): el.im = G.place(el.im, W / sz[0], 0., 0.)        # a layer drawn at the layout size (raw pixels)

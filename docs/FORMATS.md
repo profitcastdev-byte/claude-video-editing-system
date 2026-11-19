@@ -53,9 +53,22 @@ PLAT-01 / PLAT-02 measure against the same box.
 
 | layout | who | how |
 |---|---|---|
-| native | modules with `NATIVE = True` / `{names}` (e.g. `broll_shot`) | draw on the canvas itself, scale their own px by `G.U` |
-| relative (default) | `generic`, `media`, `chest`, `overlays`, `end`, user templates | lay out from `G.W` / `G.H` / `G.safe()`; on a canvas whose short side is not 1080 they draw in a same-aspect design canvas with a 1080 short side, scaled by `G.U` |
-| fixed | modules with `DESIGN = True` (`cutaways`, `roto`: hard-coded 1080×1920 coordinates) | drawn in 1080×1920 and fitted per instance into the canvas safe zone: the union of what they draw over their span (sampled) is scaled uniformly (never up) and centred |
+| native | modules with `NATIVE = True` / `{names}` (e.g. `broll_shot`, the motion pieces) | draw on the canvas itself, scale their own px by `G.U` |
+| relative (default) | `cutaways`, `roto`, `generic`, `chest`, `overlays`, `end`, `media`, user templates | lay out from `G.W` / `G.H` / `G.safe()` on a same-aspect layout canvas with a 1080 short side, and are **rasterised at the canvas's real resolution**: `G.layer` draws every coordinate, font size, stroke, icon, shadow and legibility bed `G.R` (= `G.U`) times larger, so a 3840×2160 or 2160×3840 graphic is drawn at 4K, not drawn at 1080 and scaled up. The picture templates (`media`) sample their source straight into layer-sized buffers, so a 4K card shows the photo at 4K. A module that can't be rasterised sets `RASTER = False` and is drawn at the layout size, then scaled by `G.U` |
+| fixed | third-party modules with `DESIGN = True` (hard-coded 1080×1920 coordinates) | drawn in 1080×1920 and fitted per instance into the canvas safe zone: the union of what they draw over their span (sampled) is scaled uniformly (never up) and centred. No built-in module uses it any more |
+
+**The v0.2 UI cutaways and roto cards** (`search_rows`, `card_list`, `stat` / `counter`, `browser_list`, `map_card`,
+`big_words`, `listing_card`, `top3_card`) lay out per canvas shape (`templates/_layout.py`):
+
+| shape | aspect (W/H) | arrangement |
+|---|---|---|
+| tall | ≤ 2/3 (9:16, 2:3) | the original vertical layout. On a 9:16 canvas it uses the 1080×1920 numbers exactly (frames are pixel-identical to v0.3); on a shorter tall canvas the block follows the safe-zone centre |
+| square | 2/3 – 1.3 (1:1, 4:5, 3:4) | the vertical block scaled to fit the safe zone, centred; the `stat` number grows (up to 1.5×) to fill it |
+| wide | ≥ 1.3 (16:9, 2.39:1) | a landscape arrangement: `card_list` in two columns from 4 items (column-major), `browser_list` rows in two columns from 4 rows, wider rows and panels, type scaled up (up to 1.3×) to fill the safe-zone height; roto cards fill the zone height, 1.35:1 wide, top edge high |
+
+Every inner size is `value × s` (s = 1 on 9:16), and every element stays inside the safe zone on square and wide
+canvases (`tests/test_weak_spots.py`). Template params given in px (`top`, `y`, `ys`) are 1080×1920 design px and
+apply on tall canvases; square and wide canvases place the block themselves.
 
 At 1080×1920 every path is the identity, so the v0.2 golden frames are unchanged.
 
@@ -127,6 +140,14 @@ Any source works: size, rotation (phone clips stored on their side), SAR and fra
 same reader as the media templates), rotation applied, and sampled by time at the timeline rate. QC MOT-14 checks the scale
 a shot applies to source pixels (WARN above 1.0×, FAIL above 1.5×, as FRAME-11 does for A-roll).
 
+**HDR B-roll.** A PQ (`smpte2084`) or HLG (`arib-std-b67`) clip, in `broll:` or in any media template (`video_broll`,
+`screen_rec`, `pip` / `split` panes, `overlay_render`), goes through the same HDR → SDR BT.709 chain as A-roll ingest
+(`ingest._tonemap_chain`: zscale + `ingest.hdr.tonemap` at `ingest.hdr.npl` nits). `ingest.sdr_source` writes it once to a
+lossless 10-bit FFV1 proxy `Edit/conform/<name>-<key>.sdr.mkv` (BT.709-tagged, rotation applied, timestamps kept; the key
+covers the file, its mtime and size, and the filter), and `cves render` does that for every referenced clip before its
+workers start. The clip's own sound is still read from the original. `ingest.hdr.broll: false` turns it off. HDR stills
+(PQ AVIF / HEIC) are not tonemapped.
+
 ## 6. `cves autocut`
 
 ```
@@ -141,7 +162,8 @@ used again continues where it left off; stills get `kenburns`. Without `--apply`
 
 ## 7. Demos
 
-`tools/make_demo.py OUT --kind aroll|voiceover|music|broll --size WxH [--small]` builds a synthetic project of each spine
+`tools/make_demo.py OUT --kind aroll|voiceover|music|broll --size WxH [--small] [--edit legacy]` builds a synthetic project of each spine
 at any canvas: drawn B-roll clips that cover what real footage throws at the engine (16:9, 9:16, a phone clip with a 90°
 rotation flag, 25 fps next to 30 fps, a 3:2 still), a synthetic VO, a 100 BPM track. `tests/test_formats.py` and
-`tests/test_spines.py` build them at 480×270 and run the full render → mix → encode → QC path.
+`tests/test_spines.py` build them at 480×270 and run the full render → mix → encode → QC path. `--edit legacy` (aroll, full
+script) uses `tools/demo_edit_legacy.yaml`: the v0.2 UI cutaways and roto cards, to see the tall / square / wide arrangements.

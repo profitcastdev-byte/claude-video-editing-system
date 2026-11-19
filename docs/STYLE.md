@@ -614,6 +614,7 @@ how any footage is conformed to the master canvas (docs/INGEST.md)
 | `ingest.hdr` |  | HDR -> SDR tone mapping |
 | `ingest.hdr.tonemap` | `hable` | HDR (PQ / HLG) -> SDR BT.709 operator: hable / mobius / reinhard / clip |
 | `ingest.hdr.npl` | `100` | nominal peak luminance (nits) used to linearise |
+| `ingest.hdr.broll` | `true` | HDR B-roll and media clips (`broll:`, `video_broll`, `screen_rec`, `pip` / `split` panes, `overlay_render`) go through the same tonemap once, into `Edit/conform/<name>-<key>.sdr.mkv` (FORMATS.md §5); `false` = decode them as they are |
 | `ingest.whisper` |  | long-audio transcription chunking |
 | `ingest.whisper.chunk_over_s` | `600` | audio longer than this is transcribed in chunks split on silences |
 | `ingest.whisper.chunk_s` | `300` | longest chunk, seconds |
