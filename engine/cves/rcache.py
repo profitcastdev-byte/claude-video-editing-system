@@ -6,7 +6,8 @@ Every frame of a full render is keyed by a hash of everything that decides its p
     style minus the sections the renderer never reads (sound, mix, voice, music, delivery, review, treatments, qc, story,
     autocut, render), the canvas, proxy, rate, timeline length, the end card, the caption config, the roto list (text_behind
     harmonises one size across instances), snap / creep / lift, the broll track, the assets registry and a listing
-    (path, size, mtime) of Raw/, Assets/, Brand/ and Edit/conform/;
+    (path, size, mtime) of Raw/, Assets/, Brand/, Edit/conform/ and the user template / motion folders (~/.cves/templates,
+    ~/.cves/motion, $CVES_TEMPLATES, $CVES_MOTION);
   * per A-roll segment, for the frames that show it: the segment, its plate / matte files (size, mtime), its face track,
     zoom, colour match / exposure gain, roto and chest entries;
   * per frame: the frame index, the cutaway covering it (its whole entry), the transition state there (kind, strength,
@@ -18,7 +19,7 @@ of the untouched frames, so frames, element log and the encoded master are the s
 PNG is missing is rendered again. The index (`<frames>/_cache.json`) records the element log it pairs with (sha256):
 anything else that rewrote the log invalidates every frame. `--only` renders drop their frames from the index.
 Off with style `render.cache: false` or `--no-cache`."""
-import os, json, hashlib, functools
+import os, json, math, hashlib, functools
 
 VERSION = 1
 INDEX = "_cache.json"
@@ -65,6 +66,14 @@ def _listing(*dirs):
     return out
 
 
+def _user_dirs():
+    """template / motion-piece folders outside the repo and the project (they are code too)"""
+    d = [os.path.expanduser("~/.cves/templates"), os.path.expanduser("~/.cves/motion")]
+    for k in ("CVES_TEMPLATES", "CVES_MOTION"):
+        if os.environ.get(k): d.append(os.environ[k])
+    return [x for x in d if os.path.isdir(x)]
+
+
 def _fsig(p):
     try: st = os.stat(p); return [st.st_size, st.st_mtime_ns]
     except OSError: return None
@@ -89,7 +98,8 @@ def frame_keys(TL, mode="final"):
              "fps": TL.FPS, "N": TL.N, "A": TL.A_FRAMES, "end": [TL.T_END, TL.END, E.get("end_card")], "cap": TL.cap_cfg if hasattr(TL, "cap_cfg") else None,
              "roto": E.get("roto"), "behind": behind, "snap": TL.snap, "creep": TL.creep, "lift": sorted(TL.lift), "spine": TL.spine,
              "broll": E.get("broll"), "assets": E.get("assets"), "assets_json": _fsig(pr.e("assets.json")),
-             "media": _listing(pr.p("Raw"), pr.p("Assets"), pr.p("Brand"), pr.e("conform"))}
+             "media": _listing(pr.p("Raw"), pr.p("Assets"), pr.p("Brand"), pr.e("conform")),
+             "user": _listing(*_user_dirs())}
     gh = _h(glob_)
     seg_h = {}
     for s in TL.segs:
@@ -99,15 +109,24 @@ def frame_keys(TL, mode="final"):
                          "faces": (TL.faces or {}).get(sid), "zoom": TL.zoom.get(sid), "match": (TL.match or {}).get(sid),
                          "gain": (TL.gain or {}).get(sid), "roto": TL.roto.get(sid), "chest": TL.chest.get(sid),
                          "matte_ok": TL.matte_ok.get(sid), "lift": sid in TL.lift})
-    caps = getattr(TL, "caps", []) or []; hide = getattr(TL, "cap_hide", []) or []
+    def by_frame(spans):
+        """{frame: [span]} for spans (a, b, ...) with a <= frame / fps < b (the test compose uses), in span order"""
+        out = {}
+        for sp in spans:
+            for i in range(max(0, int(math.floor(sp[0] * TL.FPS)) - 1), min(TL.N, int(math.ceil(sp[1] * TL.FPS)) + 1)):
+                if sp[0] <= i / TL.FPS < sp[1]: out.setdefault(i, []).append(sp)
+        return out
+    caps = by_frame(getattr(TL, "caps", []) or []); hide = by_frame(getattr(TL, "cap_hide", []) or [])
+    segs = sorted(TL.segs, key=lambda s: s["f0"]); j = 0
     keys = []
     for i in range(TL.N):
-        t = i / TL.FPS; c = TL.in_cut(t); s = TL.seg_at(i)
+        t = i / TL.FPS; c = TL.in_cut(t)
+        while j < len(segs) and i >= segs[j]["f0"] + segs[j]["n"]: j += 1
+        s = segs[j] if j < len(segs) and segs[j]["f0"] <= i else None
         uses_seg = s is not None and (c is None or c.get("template") in R.NEEDS_AROLL or mode == "aroll" or s.get("kind") in ("broll", "gap"))
         kind, e, after = R.trans_strength(TL, t)
         tr = [kind, round(e, 9), after, round(CR.boundary(TL, t), 6)] if kind else None
-        keys.append(_h([gh, i, seg_h.get(s["id"]) if uses_seg else None, c, tr,
-                        [ev for ev in caps if ev[0] <= t < ev[1]], [w for w in hide if w[0] <= t < w[1]]])[:32])
+        keys.append(_h([gh, i, seg_h.get(s["id"]) if uses_seg else None, c, tr, caps.get(i, []), hide.get(i, [])])[:32])
     return keys
 
 

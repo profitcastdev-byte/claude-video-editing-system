@@ -63,6 +63,7 @@ def test_one_cutaway_rerenders_its_range_and_equals_a_full_render(warm, demo_bui
     assert render.LAST["frames"] == render.LAST["of"]
     assert _hashes(warm) == _hashes(ref)
     for f in ("elements.jsonl", "timeline.json"): assert _read(warm, f) == _read(ref, f), f
+    render.render(pf); assert render.LAST["frames"] == 0                     # --no-cache re-rendered everything and refreshed the index
     for p in (pr, pf): mix.mix(p)
     assert _read(warm, "mix.wav") == _read(ref, "mix.wav")                   # the reused cue-sync scan places every cue the same
     assert _video_md5(encode.encode(pr)) == _video_md5(encode.encode(pf))     # one master, the same as a full render's

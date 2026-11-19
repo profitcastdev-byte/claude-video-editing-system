@@ -713,13 +713,17 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None, 
     used, allowed = CR.budget(TL.E, TL.S, TL.N / TL.FPS)
     if used > allowed: print(f"craft: {used} craft moves (ramps, camera moves, match cuts, text behind) > creative.craft_per_30s budget {allowed}: restraint")
     full = only is None and mode == "final"
-    use_cache = full and (RC.enabled(TL.S) if cache is None else bool(cache))
+    index = full and (cache is True or RC.enabled(TL.S))          # keep a frame cache index for this frames folder
+    use_cache = index and cache is not False                       # ... and reuse the frames it vouches for (--no-cache: refresh only)
     log_path = pr.e("elements.jsonl"); keys = kept = None
+    if index: keys = RC.frame_keys(TL, mode)
     if use_cache:
-        keys = RC.frame_keys(TL, mode); have = RC.load(out_dir, log_path)
+        have = RC.load(out_dir, log_path)
         kept = {i for i in range(TL.N) if have.get(i) == keys[i]}
         only = [i for i in range(TL.N) if i not in kept]
         RC.save(out_dir, {i: keys[i] for i in kept}, log_path)      # invalidate first: a crash mid-render never leaves a stale key
+    elif full:
+        RC.save(out_dir, None, log_path)                             # every frame is rendered again: no key may outlive it
     elif os.path.abspath(out_dir) == os.path.abspath(pr.e("frames")) and only is not None:
         RC.drop(out_dir, only)                                       # --only rewrote these PNGs but not the element log
     elif os.path.abspath(out_dir) == os.path.abspath(pr.e("frames")) and mode != "final":
@@ -739,9 +743,9 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None, 
     logs = sorted(glob.glob(os.path.join(out_dir, "_log_*.jsonl")))     # named by first frame: concatenation is in frame order
     LAST.clear(); LAST.update(frames=n, of=TL.N, cached=len(kept or ()))
     if full:
+        for f in os.listdir(out_dir):                        # a shorter timeline: no stale frames past the end for the encoder
+            if f.endswith(".png") and f[:-4].isdigit() and int(f[:-4]) >= TL.N: os.remove(os.path.join(out_dir, f))
         if use_cache:
-            for f in os.listdir(out_dir):                    # a shorter timeline: no stale frames past the end for the encoder
-                if f.endswith(".png") and f[:-4].isdigit() and int(f[:-4]) >= TL.N: os.remove(os.path.join(out_dir, f))
             old = RC.old_records(log_path, kept)
             new = {}
             for f in logs:
@@ -761,7 +765,7 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None, 
               **({"draft": True} if draft else {}),
               "segments": [{k: s.get(k) for k in ("id", "in", "out", "f0", "n", "t0", "t1", "kind")} for s in TL.segs]}
         _write_if_changed(pr.e("timeline.json"), json.dumps(tl, indent=1), force=n > 0 or not use_cache)
-        if use_cache: RC.save(out_dir, {i: keys[i] for i in range(TL.N)}, log_path)
+        if index: RC.save(out_dir, {i: keys[i] for i in range(TL.N)}, log_path)
     for f in logs: os.remove(f)
     return n, TL.N
 
