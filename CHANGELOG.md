@@ -5,6 +5,32 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
 
 ## [Unreleased]
 
+### Changed (QC + tests speed, no check weakened)
+- **`cves qc` is several times faster with byte-identical results** (docs/QC.md, DECISIONS.md "QC speed"): the gate families
+  run side by side (extra gates in a worker process, ffmpeg / whisper on threads, the OpenCV picture pass streamed), one
+  ffmpeg split-graph decode serves blackdetect + COL-02 + the retention frames, plates decode per GOP while the master
+  decodes, hot loops are vectorised and whisper calls run 3 at a time. Report and `qc.json` are identical gate by gate.
+- **`Edit/qc_cache/`**: per-master (sha256) measurement cache shared by QC re-runs and `cves review` (picture / media
+  passes, the extra gates' frame measurements keyed by every input, review grey frames, earshot) plus whisper transcripts
+  keyed by the audio bytes. `cves build` then `cves qc` re-measures almost nothing. `CVES_QC_CACHE=off` turns it off.
+- `cves review build` runs earshot while the frames decode.
+- **Tests run in parallel**: `python -m pytest -n auto tests` (pytest-xdist 3.8.0, pinned in requirements.txt,
+  `engine[test]`, TOOLS-REGISTRY.md, checked by the doctor). The session demo builds are made once per run for all
+  workers under a file lock; heavy tests carry the `e2e` marker; CI runs `unit` and `e2e` jobs on macOS, Windows and Linux.
+
+### Added
+- **`cves qc --draft`** / `qc.run(pr, video, tier="draft")`: the cheap gates for iteration (no frame decode, faces,
+  whisper or retention pass). Writes `Edit/QC-DRAFT.txt` + `Edit/qc_draft.json` (`deliverable: false`), says DRAFT, and
+  can never stamp a master: delivery still needs the full QC. `fast=` keeps working. Full stamps record `tier`.
+- `tools/qc_parity.py`: compare two QC stamps gate by gate (status + every number in the summary).
+
+### Fixed (QC definitions from the first real job, thresholds unchanged)
+- **GFX-08** counts an element as static only within 1 px of its own settled position (the end of its slow run): an
+  outExpo tail creeping < 1 px/frame while 2-8 px from rest is no near miss (`m_list_build` rows on the real job).
+- **FRAME-03** compares the output's ring - wall step with the same step in the plate as the global grade shows it
+  (wall shot-match / exposure gain + `look.grade` without a matte, warped like the render): the tone curve cancels,
+  every matte operation still shows. The halo is min(absolute step, added step).
+
 ### Fixed (first real job, integration)
 - Prep no longer reuses a stale plate / matte after a re-cut that keeps segment ids (render ran out of frames); legacy plates are adopted when their length matches.
 - FRAME-03 judges the halo the pipeline added (output vs the source plate at the same edge), not the room's own edges.

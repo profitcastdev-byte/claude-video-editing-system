@@ -203,3 +203,55 @@ The owner asked for the causes to be fixed in the engine; these are the builder'
 - **Motion part splitting** gives stray anti-aliased pixels just outside a part's padded box to the nearest part, so a 1 px "rest" element never logs a jumping box (MOT-01).
 - **`text_behind` harmonised size** takes the layout decision the harmonising fit took (wrap or not) before setting the shared size (GFX-20: 169 vs 104 px).
 - **`captions.fixes`** keys match whatever their case and punctuation; the fix's spelling wins, the spoken word keeps its punctuation.
+
+## QC speed, draft tier, parallel tests (2026-11-20, builder's call for WS6 qcs; no gate threshold changed)
+- **Rule: a speed-up may change how a value is computed, never the value.** Every shortcut was checked byte for byte:
+  the ffmpeg split graph (blackdetect + COL-02 luma + retention grey frames) against the three separate commands; the
+  per-GOP FFV1 plate / matte decode against a front-to-back decode (frame-identical, every plate and matte of the
+  benchmark); `-vn` on the master's LUFS (same ebur128 numbers); the vectorised FRAME-02 longest run against the row
+  loop; the streamed OpenCV picture pass does the same float32 arithmetic per frame as the old frame list. The parallel
+  families join their rows in the serial order, so even the report text is unchanged. Gate code reading cached values
+  gets exactly what it computed (npz arrays; JSON floats round-trip exactly; tuples restored).
+- **Parity proof, benchmark** (40 s 1080x1920 60 fps ad, Edit/qc_cache cleared, `CVES_QC_CACHE=off` for the cold run):
+  old engine (ab34891) vs the speed commit 192bb6b: **89 of 89 gates identical in status and every summary number, and
+  QC-REPORT.txt identical line for line** (cold, and again warm from the cache; `tools/qc_parity.py`). Serial
+  (`CVES_QC_PROCS=0 CVES_QC_JOBS=1`) == parallel == cached on the rendered demo is a test
+  (`test_parallel_and_cached_qc_equal_the_serial_run`); the review pack of the benchmark (findings.json, audio.json,
+  cuts.json and every contact image) is byte-identical old vs new, cold and warm.
+- **Parity proof, demo projects** (full QC, cache off; old engine vs speed commit 192bb6b vs HEAD):
+  aroll demo 89/89, broll spine demo 88/88, voiceover spine demo 89/89 gates identical old vs 192bb6b, report text
+  identical line for line. Old vs HEAD differs only in GFX-08's static-frame count on the aroll (265 -> 159) and
+  voiceover (336 -> 315) demos (status unchanged, 0 pairs either way): the definition change below.
+- **Timings** (Mac, 10 cores, shared with two other builders: load average 20-90 throughout, so absolute numbers are
+  noisy; each pair ran back to back on the same master):
+
+  | | before | after |
+  |---|---|---|
+  | `cves qc` (full), benchmark, cold | 165 s | 43 s (3.8x) |
+  | `cves qc` re-run on the same master (cache warm, e.g. after `cves build`) | 165 s | 6 s |
+  | `cves qc --draft` | n/a | 4 s |
+  | `cves review build`, cold / warm | 48 s | 40 s / 6 s |
+  | test suite (220 tests before, 230 after) | 45 min 06 s serial | 14 min 26 s with `-n auto` (3.1x) |
+
+  The first QC measurement of the day (old engine, load ~30) was 207 s; the old serial suite overlapped a 28-minute
+  benchmark rebuild, so 45 min is pessimistic (the earlier ~15 min figure was on a quiet machine). The new suite's
+  floor is the demo build + render chain (~11 min under this load), which now runs once for all workers.
+- **Draft tier = the gates that need no frame decode** (qc/tiers.py `DRAFT`, 50 gates on the benchmark): no faces,
+  mattes, halos, skin, caption pixels, text contrast, black frames, luma range, whisper re-checks or retention. It
+  writes Edit/qc_draft.json (`deliverable: false`), never Edit/qc.json (write_stamp refuses), so delivery and the
+  qc_guard hook cannot accept it. A test holds every draft gate equal to the full run's gate.
+- **The review grey frames are not decoded by QC** (measured: +23 s of CPU per QC run for a full-size area resize per
+  frame); review caches its own decode instead, and a second review of the same master only grabs frames.
+- **GFX-08 static = settled** (coordinator's report from the real job): an element counts as static only within 1 px
+  of its own settled position, the last bbox of its slow run (consecutive frames moving <= 1 px). The `m_list_build`
+  rows (row1 creeping 142 -> 134 while row0 sat at 134) no longer report "left edges 4 px apart"; two rows at rest
+  4 px apart still FAIL (test). Benchmark: GFX-08 FAIL -> PASS, static frames 1268 -> 816. Threshold unchanged.
+- **FRAME-03 reference = the plate through the global grade**: the wall's shot-match / exposure gain, then `look.grade`
+  with no matte (no relight / edge work), warped with the render's cubic warp; the halo is min(absolute ring - wall,
+  output step - reference step). Synthetic 30 Y ring injected 3-7 px outside the matte FAILs; a scene ring present in
+  the reference and a ring darker than its wall PASS (tests). Benchmark: worst +15.7 Y -> +3.0 Y, **still FAIL at the
+  unchanged 1-code-value threshold**. Measured cause: the reference equals the rendered A-roll frame
+  (`render.aroll_frame`) in ring - wall step (m_target_0 f804: render 3.0, reference 3.0; h_month_0 f24: render 2.0,
+  reference 1.0), while the delivered master reads 6.0 and 4.0: the remaining +2-3 Y appears in the x264 encode (CRF 16,
+  dark shoulder / shirt edges), not in the pipeline. Left for the owner: an encode allowance or judging against the
+  rendered frames is a threshold / definition decision, not a speed one.
