@@ -57,6 +57,8 @@ def _assert_distinct(ms):
 
 
 def test_plans_differ_on_the_aroll_demo(demo_copy):
+    pr = PRJ.Project(demo_copy)
+    E = pr.edit; (E.get("aroll") or {}).pop("snap", None); pr.save_edit(E)    # the stock demo punches in already; start from a plan without one
     pr = PRJ.Project(demo_copy); base = TR.metrics(pr)
     rows = TR.make(pr)
     assert [r["name"] for r in rows] == NAMES

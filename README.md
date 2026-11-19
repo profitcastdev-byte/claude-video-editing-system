@@ -21,7 +21,8 @@ The craft comes from a 73-video curriculum covering motion, editing, graphic des
 4. **Story:** Claude picks the takes and tags the story beats. **You approve the cut list.**
 5. **Plan:** Claude fills `edit.yaml` from templates and media (graphics, images, B-roll, screen recordings, picture-in-picture, generated assets), then runs `cves validate`.
 6. **Edit plan:** a multi-track timeline plus every shot with frames from the final renderer, its words, framing, transitions and sound. **You approve.**
-7. Render → beat-synced mix → encode → `cves qc`. Claude fixes until there are 0 FAILs.
+6b. Open or creative brief: `cves treatments` builds 2-3 takes (punchy / cinematic / minimal) as fast half-size proxies and a side-by-side sheet; you pick one (docs/TREATMENTS.md).
+7. Render → beat-synced mix (music sections on the story beats, risers and impacts, voice-following ducking; docs/SOUND.md) → encode → `cves qc`. Then **Claude watches its own cut** (`cves review`: frame strips at every cut, the hook, payoff and end card, audio checks; docs/REVIEW.md) and fixes and re-renders, up to 3 rounds, until there are 0 FAILs and no high findings, before you see it.
 8. `cves deliver`: a versioned `Export/vNNN/` with the master, captions, cover, 4:5 / 1:1 / 16:9 reframes, hook, end-card and music variants, and 15 / 30 s cut-downs. Every variant passes QC itself, and delivery refuses a file QC hasn't approved.
 
 Your notes become rules or gates, so they never come back (`LESSONS.md`). CVES also journals every edit, note, rating and result, mines them for repeated patterns, and proposes them as taste you approve (`cves learn`, `docs/LEARNING.md`): nothing changes the look until a person promotes it.

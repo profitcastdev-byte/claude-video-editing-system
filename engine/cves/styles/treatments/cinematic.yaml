@@ -34,7 +34,7 @@ structure:
   max_shot_s: null
   min_shot_s: 2.4             # merged holds never exceed grammar.max_shot_s (no QC gate is loosened)
   cutaways_per_30s: null
-  punch_ins: keep
+  punch_ins: gentle           # filmic: no snap punch-in (a slow push carries the hook instead)
   transitions: fade
   roto: drop                  # a loud accent word behind the speaker is not this film's voice
   music: {bed_lu_offset: -2}
