@@ -105,7 +105,18 @@ grammar:                      # pacing rules the QC gates enforce; null = not en
   roto_max: 4
   face_on_first_frame: false
   topic_by_s: 2.0
-  beats: [H, P, A, PR, O, C]   # story beat order the story gates expect (hook problem agitate proof offer cta)
+  structure: problem          # problem (H P A PR O C) | offer (H M PR R C) | story (H S T PR C) | custom (= grammar.beats); cves.structure
+  beats: null                 # explicit beat order; overrides the structure's (e.g. [H, M, PR, R, C]); null = from grammar.structure
+story:                        # the story step: take alignment in `cves select` (cves.align, docs/INGEST.md)
+  align: true                 # re-time every selects.yaml clip that has text: from a local word-level transcript (per clip: align: false)
+  align_window_s: 1.5         # transcribe in - this .. out + this around each clip (widened / narrowed per pass)
+  align_passes: 3             # windows per clip; their edge estimates are pooled (median, or the one nearest the hand time)
+  align_min_score: 0.8        # fuzzy match of text: to the heard words below this keeps the hand times (and warns)
+  align_pad_s: [0.04, 0.08]   # pad before the first word / after the last word, kept inside the pause
+  align_search_s: 0.5         # how far an edge looks for a pause beyond the word estimate, s
+  align_quiet_db: 12          # a pause is quieter than the window's noise floor (p10) + this, dB
+qc:                           # story-stage thresholds (edit.yaml qc: keys win per video)
+  words_recall_min: 0.85      # STORY-17: share of each clip's text: words heard in its span of voice_final.wav
 sound:
   bed_lu: -10                 # music+SFX bed vs voice while speaking
   duck_voice_band_db: -8
@@ -145,7 +156,7 @@ music:                        # beat sync + music fit (docs/MUSIC.md); edit.yaml
   beats_per_bar: 4
   tempo_range: [60, 150]      # BPM range the detected tempo is folded into (double/half-time fix); e.g. [120, 190] for drum & bass
   snap_tolerance_s: 0.12      # cuts mode: a cut point / graphic entry moves only to a beat this close
-  drop_beats: [PR, O]         # default drop moment: first clip tagged with one of these story beats (music.drop_cut > 0 wins)
+  drop_beats: null            # drop moment: first clip tagged with one of these beats (music.drop_cut > 0 wins); null = from grammar.structure (problem [PR, O], offer / story [PR])
   drop_pick: auto             # auto (strongest drop candidate that needs no silent lead-in) | an index into beats.json drops
   drop_min_rise_db: 3.0       # a drop candidate's next 2 bars are this much louder than the 4 before
   loop_xfade_s: 0.08          # equal-power crossfade on a loop seam (seams sit on downbeats)
@@ -161,8 +172,8 @@ music:                        # beat sync + music fit (docs/MUSIC.md); edit.yaml
   build_min_rise_db: 2.0      # a build rises at least this much into its drop
   build_step_db: 1.0          # ... and each of its bars at least this much over the bar before
   phrase_turn_weight: 1.0     # drop pick: score points lost per bar between the build start and the turn
-  hook_beats: [H]             # story beats of the hook (riser into / out of it)
-  turn_beats: [P, A]          # story beats of the turn (the build should start here); default: the end of the hook
+  hook_beats: null            # story beats of the hook (riser into / out of it); null = from grammar.structure ([H])
+  turn_beats: null            # story beats of the turn (the build should start here); null = from grammar.structure (problem [P, A], offer [M], story [T]); none tagged: the end of the hook
   hook_cut: 0                 # cut s of the hook when > 0 (else from hook_beats)
   turn_cut: 0                 # cut s of the turn when > 0 (else from turn_beats)
 rhythm:                       # how the edit moves. `cves inspire` measures these from the references (Edit/inspire/REPORT.md); RET-26/27/32 check them
