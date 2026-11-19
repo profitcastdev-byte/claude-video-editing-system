@@ -93,6 +93,11 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `treatments/compare/` | `cves treatments compare` | `sheet.jpg` (rows = treatments, columns = the same timecodes, labelled), `compare.mp4`, `compare.json` |
 | `critique/` | `cves critique` | `contact_sheet.jpg`, `timeline.png`, `critique.json`, `CRITIQUE.md` (rubric Claude fills) |
 | `review/` | `cves review` | `state.json` (rounds of the current loop, closed loops, capped at style `review.max_rounds`); one never-overwritten `rNNN/` per round: `cuts/cut_NN.jpg`, `index.jpg`, `hook.jpg`, `payoff.jpg`, `endcard.jpg`, `cuts.json`, `audio.json`, `findings.json` (`[{id, severity: high\|med\|low, t, kind, message, patch?}]`, `patch = {set: {edit.yaml path: value}, append: {...}, safe}`), `REVIEW.md` (rubric Claude answers), `applied.json`, `signoff.json` ([REVIEW.md](REVIEW.md)) |
+| `plan_notes.json` | the plan review page (Send, `cves review-plan`) | the editor's plan notes: per shot its `edit.yaml` refs, approve / unlock, quick actions, note; overall note, `approve_all`; `applied_at` once applied ([PLAN-REVIEW.md](PLAN-REVIEW.md)) |
+| `plan_notes.pending.md` | `cves plan apply-notes` | the free-text notes and the actions left for Claude, per shot (the only plan-review file Claude reads) |
+| `plan_lock.json` | `cves plan apply-notes` | approved shots: `{shots: {key: {entries: {"slot:id": entry hash}, approved_at, n}}}`; a locked entry is never changed without an unlock note |
+
+`Moodboard/plan_state.json` (`cves moodboard`): the plan round, its global signature and per shot hash + keyframes, so the next round re-renders only changed shots ([PLAN-REVIEW.md](PLAN-REVIEW.md)).
 
 Client folders live outside the repo. Their root is `$CVES_CLIENTS`, else the `clients_root` config key, else `~/CVES Projects`.
 

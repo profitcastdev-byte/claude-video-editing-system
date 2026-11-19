@@ -103,6 +103,15 @@ def main(argv=None):
     # ---- WS H (senior sound, docs/SOUND.md): the SFX bank ----
     sfx_ = sp.add_parser("sfx", help="list | fetch | add | check: the SFX bank (manifest, CC0 only; docs/SOUND.md)", add_help=False); sfx_.add_argument("rest", nargs=argparse.REMAINDER)
     # ---- end WS H ----
+    # ---- WS6 plan review (docs/PLAN-REVIEW.md): review-plan serves EDIT-PLAN.html; plan apply-notes; moodboard --full ----
+    rpl = sp.add_parser("review-plan", help="[--port N] [--no-open] [--keep]: serve Moodboard/EDIT-PLAN.html on 127.0.0.1; Send saves Edit/plan_notes.json")
+    rpl.add_argument("--port", type=int, default=8765); rpl.add_argument("--no-open", action="store_true", help="do not open the browser")
+    rpl.add_argument("--keep", action="store_true", help="keep serving after Send (default: stop after the first Send)")
+    sp.choices["plan"].add_argument("action", nargs="?", choices=["apply-notes"], help="apply-notes: Edit/plan_notes.json -> edit.yaml + plan_notes.pending.md")
+    sp.choices["plan"].add_argument("--force", action="store_true", help="apply-notes: apply notes that were already applied")
+    sp.choices["plan"].add_argument("--dry-run", action="store_true", help="apply-notes: report only")
+    sp.choices["moodboard"].add_argument("--full", action="store_true", help="re-render every keyframe (default: only shots changed since the last round)")
+    # ---- end WS6 plan review ----
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
         if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion", "sfx", "treatments"): a.rest = list(getattr(a, "rest", [])) + extra
@@ -137,6 +146,14 @@ def main(argv=None):
     if a.cmd in ("validate", "inspire", "autocut") and a.dir: a.project = a.dir
     if a.cmd == "import-edits" and len(a.paths) > 1: a.project = a.paths[0]
     pr = _project(a)
+    # ---- WS6 plan review (docs/PLAN-REVIEW.md) ----
+    if a.cmd == "review-plan":
+        from . import planreview as PRV; sys.exit(PRV.serve(pr, a.port, open_browser=not a.no_open, keep=a.keep))
+    if a.cmd == "plan" and a.action == "apply-notes":
+        from . import planreview as PRV; r = PRV.apply_notes(pr, force=a.force, dry_run=a.dry_run); PRV.print_apply(r); return
+    if a.cmd == "moodboard" and a.full:     # plain `cves moodboard` (incremental) runs in its usual branch below
+        from .moodboard import moodboard; s, k = moodboard(pr, full=True); print(f"edit plan: {s} shots, {k} keyframes -> {pr.p('Moodboard', 'EDIT-PLAN.html')}"); return
+    # ---- end WS6 plan review ----
     if a.cmd == "control":       # control mode: re-render named layers in Export/control + refresh layers.json
         from .layered import update
         for line in update(pr, a.only): print(line)

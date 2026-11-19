@@ -34,5 +34,12 @@ The moodboard is the **complete edit plan**, not a handful of frames. Every fram
 - The path to **`EDIT-PLAN.html`**, plus a 5–8 line summary: the beat flow, the cutaways and what each shows, the roto and chest moments, the music drop, and anything that departs from the client's inspirations.
 - The user replies with shot numbers to change, e.g. "#7 make the counter bigger", "#12 swap the cutaway for a card list".
 
+## Review round: the plan review page (docs/PLAN-REVIEW.md)
+1. Run `cves review-plan` in the background (`--no-open` on a remote machine). It serves the plan on 127.0.0.1 and stops when the editor presses **Send**.
+2. Wait for the editor's Send (or pasted Copy notes text: save it as `Edit/plan_notes.json`).
+3. Run `cves plan apply-notes`: quick actions become exact `edit.yaml` edits; approved shots are locked.
+4. Read **`Edit/plan_notes.pending.md` only**, not the page or the images. Never change a locked shot.
+5. Open a shot's frames only if its note is visual. Then `cves moodboard` (only changed shots re-render) and the next round.
+
 ## Stop: approval 2
-**End your turn and wait.** Continue only on a clear yes. Notes mean revise and show the updated plan again. Record the approval with its date in `Edit/NOTES.md`. Next: `/cves:render`.
+**End your turn and wait.** Continue only on a clear yes. Notes mean revise and show the updated plan again. Record the approval with its date in `Edit/NOTES.md` (the page's **Approve all** does this). Next: `/cves:render`.
