@@ -3,13 +3,16 @@
 `music.slot: platform` (organic posts, cves.guide): no music in the mix at all; the guide the edit is cut to is written as
 Edit/stems/guide.wav instead (never mixed in).
 Levels come from the style (`sound.*`); music placement / fit / beat sync from `music.*` (docs/MUSIC.md).
-Cue post-pass (all_cues): transition whooshes are placed by their measured PEAK on the cut (SND-08), identical back-to-back
+Cue post-pass (all_cues): the automatic accents (cves.sound: risers into the hook / payoff, impacts on reveals, within the
+`creative.sound_accents_per_30s` budget) join the template cues, `@category[:intensity]` names are resolved from the SFX
+bank manifest (cves.sfx), transition whooshes are placed by their measured PEAK on the cut (SND-08), identical back-to-back
 repeats get a deterministic pitch / gain variation (SND-09), and in `music.sync: full` transition-type cues are nudged so
-their peak lands on the beat (never more than `music.sfx_snap_max_f` frames, so they stay on their picture event)."""
+their peak lands on the beat (never more than `music.sfx_snap_max_f` frames, so they stay on their picture event).
+Ducking follows the voice envelope (`mix.duck_mode: envelope`, the default) or the v0.3 fixed dips (`gate`); cves.sound."""
 import os, re, json, subprocess, tempfile, shutil
 import numpy as np, soundfile as sf, librosa
 from scipy.signal import butter, sosfiltfilt
-from . import config as C, templates as TPL, beats as BT
+from . import config as C, templates as TPL, beats as BT, sound as SO, sfx as SFX
 from .render import Timeline
 
 SR = 48000
@@ -19,7 +22,7 @@ def lufs(path):
     return float(re.findall(r"I:\s+(-?[\d.]+) LUFS", r)[-1])
 
 def sfx_bank(TL):
-    roots = [TL.pr.p("Music", "sfx"), os.path.join(TL.root, "assets", "sfx")]
+    roots = [TL.pr.p("Music", "sfx"), SFX.user_bank(), os.path.join(TL.root, "assets", "sfx")]      # project, user (~/.cves/sfx), repo
     def find(name):
         if name.startswith("asset:"):         # media templates' own audio (video_broll audio: true): an asset id
             from . import assets
@@ -77,7 +80,7 @@ def _trans_cue(TL, t_cut, kind, side):
     if name == "whoosh": return [(t_cut - .30, "whoosh", -15, {"trim": (0, .45), "peak_at": t_cut})]     # placed by peak below
     return [(t_cut - .04, name, -19, {"trim": (0, .18)})]
 
-def all_cues(TL, plan=None, log=None, finalize=True):
+def all_cues(TL, plan=None, log=None, finalize=True, accent_log=None):
     cues = []
     din, dout = TL.S.get("transitions.in", "cut"), TL.S.get("transitions.out", "cut")
     for c in TL.cuts:
@@ -95,7 +98,9 @@ def all_cues(TL, plan=None, log=None, finalize=True):
         e = TL.E["end_card"]; cues += _trans_cue(TL, TL.T_END, e.get("in", din), "in")
         cues += TPL.get(e["template"])[1](e.get("params", {}), TL.ctx(TL.T_END, TL.T_END + TL.END))
     if TL.snap: cues += [(TL.snap[0] - .01, "lowhit", -9, {"reveal": True}), (TL.snap[0] - .01, "boom", -16, {"trim": (0, 1.2), "reveal": True})]
-    for x in (TL.E.get("sfx", {}) or {}).get("extra", []): cues.append((x["t"], x["name"], x.get("gain", -18), {k: v for k, v in x.items() if k in ("trim", "pitch", "beat_snap", "speed", "raw")}))
+    for x in (TL.E.get("sfx", {}) or {}).get("extra", []): cues.append((x["t"], x["name"], x.get("gain", -18), {k: v for k, v in x.items() if k in ("trim", "pitch", "beat_snap", "speed", "raw", "reveal")}))
+    if any(SFX.parse_name(n)[0] for _, n, _, _ in cues): cues = SFX.resolve_cues(cues, SFX.entries(TL.pr))     # @impact:hard -> a bank id
+    cues += SO.accents(TL, cues, accent_log)          # risers into the hook / payoff, impacts on reveals (restraint budget)
     return _finalize(TL, cues, plan, log) if finalize else cues
 
 def _finalize(TL, cues, plan=None, log=None):
@@ -146,7 +151,7 @@ def mix(pr):
     if has_vo:
         vo, _ = librosa.load(pr.e("voice_final.wav"), sr=SR, mono=True); vo = np.pad(vo, (0, max(0, N - len(vo))))[:N]
     else: vo = np.zeros(N, np.float32)
-    M = TL.E.get("music") or {}; mus = np.zeros((N, 2), np.float32); SND = TL.S.get("sound") or {}
+    M = TL.E.get("music") or {}; mus = np.zeros((N, 2), np.float32); SND = TL.S.get("sound") or {}; duck_info = None
     bed_lu = M.get("bed_lu", SND.get("bed_lu", -10)); tmp = tempfile.mkdtemp(prefix="cves_mix_")
     TV, TM, TB = (os.path.join(tmp, f"{k}.wav") for k in "vmb")
     from . import guide as GD
@@ -158,18 +163,11 @@ def mix(pr):
         sf.write(TV, vo, SR); sf.write(TM, y, SR)
         if has_vo: y *= db(lufs(TV) - lufs(TM) + bed_lu + 3)   # +3: ducking takes ~3 LU back off
         else: y *= db(SND.get("master_lufs", -14) - 6 - lufs(TM))    # no voice: the music leads, 6 LU under the master target (headroom; the master stage sets the level)
-        env = np.convolve(np.abs(vo), np.ones(int(.1 * SR)) / int(.1 * SR), "same"); env /= env.max() + 1e-9
-        speech = np.clip((env - .04) / .1, 0, 1); duck = np.zeros(N); lv = 0.
-        aa, ar = 1 - np.exp(-48 / (.03 * SR)), 1 - np.exp(-48 / (.4 * SR))
-        for k in range(0, N, 48):
-            tg = speech[k]; lv += (tg - lv) * (aa if tg > lv else ar); duck[k:k + 48] = lv
-        la = int(SND.get("duck_lookahead_s", .12) * SR); duck = np.concatenate([duck[la:], np.full(la, duck[-1])])         # look-ahead
-        lo = sosfiltfilt(butter(4, 250, "low", fs=SR, output="sos"), y, axis=0); hi = sosfiltfilt(butter(4, 5000, "high", fs=SR, output="sos"), y, axis=0)
-        if not has_vo: duck[:] = 0
-        y = (lo + hi) * (db(SND.get("duck_other_db", -3)) ** duck)[:, None] + (y - lo - hi) * (db(SND.get("duck_voice_band_db", -8)) ** duck)[:, None]
+        duck, duck_info = SO.duck_control(vo, SR, TL.S) if has_vo else (np.zeros(N), {"mode": "none (no voice)"})
+        y = SO.apply_duck(y, duck, TL.S, SR)
         if legacy_fade: fo = int(.9 * SR); y[N - fo:] *= (np.linspace(1, 0, fo) ** 1.5)[:, None]
         mus = y.astype(np.float32); music_target = bed_lu
-    sfx = np.zeros(N, np.float32); cache = {}; snaps = []; cues = all_cues(TL, plan=P, log=snaps)
+    sfx = np.zeros(N, np.float32); cache = {}; snaps = []; acc = []; cues = all_cues(TL, plan=P, log=snaps, accent_log=acc)
     for t, name, gain, kw in cues:
         sp = float(kw.get("speed", 1) or 1); key = (name, str(kw.get("trim")), kw.get("pitch", 0), sp, bool(kw.get("raw")))
         if key not in cache:
@@ -213,11 +211,14 @@ def mix(pr):
         if abs(err) < .2: break
         g += err
     info = {"master_gain_db": round(g, 2), "cues": len(cues), "peak_placed": sum(1 for c in cues if c[3].get("peak_at") is not None),
-            "beat_nudged": len(snaps)}
+            "beat_nudged": len(snaps), "accents": acc}
+    if duck_info: info["duck"] = duck_info
     if gi: info["guide"] = gi
     if P:
         lay = P.get("lay") or {}
         info["music"] = {"sync": P["mode"], "fit": P["fit"], "offset_s": round(P["offset"], 3), "drop": P["drop"],
-                         "loops": lay.get("loops", 0), "end": lay.get("end"), "notes": P["notes"]}
+                         "loops": lay.get("loops", 0), "end": lay.get("end"), "notes": P["notes"],
+                         "sections": [{k: p[k] for k in ("label", "start", "end")} for p in P.get("phrases") or [] if p["starts_here"]],
+                         "story": P.get("story")}
     pr.save_json("mix.json", info)
     return T

@@ -166,29 +166,131 @@ def analyse(path, bpb=4, min_rise_db=3.0, tempo_range=(60, 150)):
             "sections": sections, "energy": {"step_s": step, "db": curve}, "bars": bars, "drops": drops}
 
 def load(pr, file=None, refresh=False, S=None):
-    """Edit/beats.json for the project's music (re-analysed when the file, its size/mtime or the bar length changed)."""
+    """Edit/beats.json for the project's music (re-analysed when the file, its size/mtime or the bar length changed).
+    `phrases` (intro / build / drop / break / body / outro) are derived from the cached bars on every load (cheap)."""
     path = music_file(pr, file)
     if path is None: raise SystemExit("no music: set music.file in edit.yaml or pass --file")
     c = cfg(pr, S); B = pr.json("beats.json"); st = os.stat(path); a = _args(c)
     if (refresh or not B or B.get("version") != VERSION or B.get("file") != os.path.abspath(path) or B.get("size") != st.st_size
             or B.get("mtime") != int(st.st_mtime) or B.get("args") != a):
-        B = analyse(path, *a); B["args"] = a; pr.save_json("beats.json", B)
+        B = analyse(path, *a); B["args"] = a; B["phrases"] = phrases(B, c); pr.save_json("beats.json", B)
+    else: B["phrases"] = phrases(B, c)
     return B
+
+
+# ------------------------------------------------------------------ phrases (music sections a story can sit on)
+PHRASE_LABELS = ("intro", "build", "drop", "body", "break", "outro")
+
+def _novelty(B):
+    """per-bar novelty: energy step (dB / 6) + harmonic change (1 - chroma cosine) x 2, bar j vs bar j-1"""
+    bars = B["bars"]; n = len(bars); nov = np.zeros(n)
+    for j in range(1, n):
+        a, b = np.array(bars[j - 1]["chroma"]), np.array(bars[j]["chroma"])
+        cos = float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+        nov[j] = abs(bars[j]["db"] - bars[j - 1]["db"]) / 6 + 2 * (1 - cos)
+    return nov
+
+def phrases(B, c=None):
+    """music sections in TRACK seconds, on bar lines: [{start, end, bar0, bar1, label, energy_db}].
+    Boundaries: bar 0, every drop candidate (B['drops']) and novelty peaks (energy step + chroma change, z >= 1.5,
+    >= music.phrase_min_bars apart). Labels: a section that starts on a drop candidate is a `drop`; the bars rising into
+    a drop (each >= 0.3 dB over the one before, >= 2 bars and >= music.build_min_rise_db in all) are its `build`; the
+    first section is the `intro`, a last section that falls >= 1.5 dB under the one before (or sits under the median)
+    is the `outro`; other sections are `body` (within 3 dB of the loudest) or `break` (under the median)."""
+    c = c or {}; bars = B.get("bars") or []; n = len(bars)
+    if n == 0: return []
+    min_bars = max(1, int(c.get("phrase_min_bars", 2))); build_rise = float(c.get("build_min_rise_db", 2.0))
+    E = np.array([b["db"] for b in bars]); med = float(np.median(E)); dur = float(B["duration"])
+    drop_bars = sorted({int(d["bar"]) for d in B.get("drops") or [] if 0 < int(d["bar"]) < n})
+    nov = _novelty(B); z = _z(nov)
+    peaks = [j for j in range(1, n) if z[j] >= 1.5 and nov[j] >= nov[j - 1] and (j == n - 1 or nov[j] >= nov[j + 1])]
+    bnd = sorted(set([0] + drop_bars))
+    for j in sorted(peaks, key=lambda j: -nov[j]):     # strongest novelty first; never closer than min_bars to a boundary
+        if all(abs(j - b) >= min_bars for b in bnd): bnd = sorted(bnd + [j])
+    bnd.append(n)
+    segs = [[a, b] for a, b in zip(bnd[:-1], bnd[1:]) if b > a]
+    # builds: walk back from each drop while the bars keep rising
+    builds = {}
+    for j in drop_bars:
+        k = j - 1
+        while k - 1 >= 0 and E[k] >= E[k - 1] + .3 and (j - k) < 16: k -= 1
+        if j - k >= 2 and E[j - 1] - E[k] >= build_rise: builds[j] = k
+    out = []
+    for a, b in segs:
+        k = builds.get(b)
+        if k is not None and a < k < b: out += [[a, k, None], [k, b, "build"]]
+        elif k is not None and k <= a: out.append([a, b, "build"])
+        else: out.append([a, b, None])
+    lv = [float(E[a:b].mean()) - med for a, b, _ in out]; hi = max(lv)
+    res = []
+    for i, (a, b, lab) in enumerate(out):
+        if lab is None:
+            if a in drop_bars: lab = "drop"
+            elif i == 0: lab = "intro"
+            elif i == len(out) - 1 and len(out) > 1 and (lv[i] <= lv[i - 1] - 1.5 or lv[i] < 0): lab = "outro"
+            elif lv[i] >= hi - 3: lab = "body"
+            elif lv[i] < 0: lab = "break"
+            else: lab = "body"
+        t1 = float(bars[b]["t"]) if b < n else dur
+        res.append({"start": round(float(bars[a]["t"]), 4), "end": round(t1, 4), "bar0": a, "bar1": b, "label": lab, "energy_db": round(lv[i], 2)})
+    return res
+
+def phrases_cut(lay, ph):
+    """phrases mapped through a layout (loops) into CUT seconds: [{label, start, end, track_start, piece}]"""
+    out = []
+    for k, (o, s0, s1) in enumerate(lay["pieces"]):
+        for p in ph:
+            a, b = max(p["start"], s0), min(p["end"], s1)
+            if b - a > 1e-3:
+                out.append({"label": p["label"], "start": round(o + a - s0, 4), "end": round(o + b - s0, 4),
+                            "track_start": p["start"], "starts_here": abs(a - p["start"]) < 1e-3, "piece": k})
+    return out
 
 def _args(c):
     return [int(c.get("beats_per_bar", 4)), float(c.get("drop_min_rise_db", 3.0)), [float(x) for x in (c.get("tempo_range") or [60, 150])]]
 
 
 # ------------------------------------------------------------------ placement (track -> cut time)
+def _first_tagged(TL, beats_):
+    edl = TL.pr.json("edl.json", {}) or {}; beat_of = {k["id"]: k.get("beat") for k in edl.get("clips", [])}
+    want = [str(b) for b in (beats_ or [])]
+    for i, s in enumerate(TL.segs):
+        if beat_of.get(s.get("clip")) in want: return i, s, beat_of[s["clip"]]
+    return None, None, None
+
 def story_moment(TL, c):
-    """cut time of the default drop moment: music.drop_cut if > 0, else the first clip tagged with a drop beat."""
+    """cut time of the default drop moment (the payoff): music.drop_cut if > 0, else the first clip tagged with a drop
+    beat, else the reveal (the extreme punch-in, aroll.snap)."""
     dc = c.get("drop_cut")
     if isinstance(dc, (int, float)) and dc > 0: return float(dc), "music.drop_cut"
-    edl = TL.pr.json("edl.json", {}); beat_of = {k["id"]: k.get("beat") for k in edl.get("clips", [])}
-    want = [str(b) for b in (c.get("drop_beats") or [])]
-    for s in TL.segs:
-        if beat_of.get(s.get("clip")) in want: return float(s["t0"]), f"first {beat_of[s['clip']]} beat ({s['clip']})"
+    _, s, b = _first_tagged(TL, c.get("drop_beats"))
+    if s is not None: return float(s["t0"]), f"first {b} beat ({s['clip']})"
+    if getattr(TL, "snap", None): return float(TL.snap[0]), "the reveal (aroll.snap punch-in)"
     return None, "no drop moment (set music.drop_cut or tag clips with beat: in selects.yaml)"
+
+def story_moments(TL, c):
+    """{hook, turn, payoff}: (cut s, why) or (None, why). hook = music.hook_cut if > 0, else the first clip tagged with a
+    music.hook_beats beat; turn = music.turn_cut if > 0, else the first music.turn_beats clip, else the end of the hook;
+    payoff = story_moment() (the drop moment). `hook_end` is where the hook's last tagged segment ends."""
+    out = {}
+    hc = c.get("hook_cut"); i, s, b = _first_tagged(TL, c.get("hook_beats"))
+    if isinstance(hc, (int, float)) and hc > 0: out["hook"] = (float(hc), "music.hook_cut")
+    elif s is not None: out["hook"] = (float(s["t0"]), f"first {b} beat ({s['clip']})")
+    else: out["hook"] = (None, "no hook (tag a clip beat: H or set music.hook_cut)")
+    he = None
+    if s is not None:
+        edl = TL.pr.json("edl.json", {}) or {}; beat_of = {k["id"]: k.get("beat") for k in edl.get("clips", [])}
+        j = i
+        while j + 1 < len(TL.segs) and beat_of.get(TL.segs[j + 1].get("clip")) == b: j += 1
+        he = float(TL.segs[j]["t1"]) if j + 1 < len(TL.segs) else None
+    out["hook_end"] = (he, "end of the hook" if he is not None else "no hook end")
+    tc = c.get("turn_cut"); _, s2, b2 = _first_tagged(TL, c.get("turn_beats"))
+    if isinstance(tc, (int, float)) and tc > 0: out["turn"] = (float(tc), "music.turn_cut")
+    elif s2 is not None: out["turn"] = (float(s2["t0"]), f"first {b2} beat ({s2['clip']})")
+    elif he is not None: out["turn"] = (he, "end of the hook")
+    else: out["turn"] = (None, "no turn (tag a clip beat: P / A or set music.turn_cut)")
+    out["payoff"] = story_moment(TL, c)
+    return out
 
 def plan(pr, TL=None, S=None, need_beats=False, mode=None):
     """where the music sits. Returns {file, mode, fit, offset, drop, B, lay, beats, downbeats, notes} in cut seconds."""
@@ -218,6 +320,17 @@ def plan(pr, TL=None, S=None, need_beats=False, mode=None):
             ok = [d for d in cands if d["t"] - t_cut >= 0]
             ch = (ok or cands)[0]
             if not ok: notes.append(f"every drop candidate is earlier in the track than the moment ({t_cut:.2f} s); the music enters late")
+            elif _phrase_on(c):        # phrase alignment: among the usable drops, prefer the one whose build starts on the turn
+                turn = story_moments(TL, c)["turn"][0]
+                if turn is not None and turn < t_cut:
+                    bar = float(B.get("bar_s") or 2.0); best = None
+                    for k, d in enumerate(ok):
+                        b0 = next((p["start"] for p in B.get("phrases") or [] if p["label"] == "build" and abs(p["end"] - d["t"]) < 1e-3), None)
+                        miss = min(abs((b0 - (d["t"] - t_cut)) - turn) / bar, 4.0) if b0 is not None else 4.0
+                        sc = float(d.get("score") or 0) - float(c.get("phrase_turn_weight", 1.0)) * miss - .01 * k
+                        if best is None or sc > best[0]: best = (sc, d, miss)
+                    if best[1] is not ch: notes.append(f"phrase alignment: drop candidate {cands.index(best[1])} (its build starts {best[2]:.2f} bar(s) from the turn) over {cands.index(ch)}")
+                    ch = best[1]
         drop = {"track": float(ch["t"]), "cut": float(t_cut), "source": why, "candidate": cands.index(ch), "score": ch.get("score")}
     offset = drop["track"] - drop["cut"]
     if fit != "bars": offset = max(0.0, offset)
@@ -226,8 +339,33 @@ def plan(pr, TL=None, S=None, need_beats=False, mode=None):
     if B is not None:
         lay = layout(B, offset, T, c, t_end_card=TL.T_END if TL.END else None)
         out.update(lay=lay, beats=lay["beats"], downbeats=lay["downbeats"])
+        out["phrases"] = phrases_cut(lay, B.get("phrases") or phrases(B, c))
+        out["story"] = story_alignment(TL, c, out)
     else:
-        bt = []; out.update(lay=None, beats=bt, downbeats=bt)
+        bt = []; out.update(lay=None, beats=bt, downbeats=bt, phrases=[], story={})
+    return out
+
+def _phrase_on(c):
+    v = c.get("phrase_align", True)
+    return v is True or str(v).strip().lower() in ("true", "on", "yes", "1")
+
+def story_alignment(TL, c, P):
+    """story beats vs music sections, in cut seconds: payoff vs the drop section start, turn vs the build start, hook vs
+    the intro. Each entry: {at, why, section, section_at, error_s, error_bars, on_downbeat}."""
+    ms = story_moments(TL, c); ph = P.get("phrases") or []; bar = float((P.get("lay") or {}).get("bar_s") or 2.0)
+    downs = np.asarray(P.get("downbeats") or []); out = {}
+    want = {"payoff": ("drop",), "turn": ("build", "drop"), "hook": ("intro", "build", "body", "drop")}
+    for k in ("hook", "turn", "payoff"):
+        t, why = ms[k]
+        if t is None: out[k] = {"at": None, "why": why}; continue
+        starts = [p for p in ph if p["starts_here"] and p["label"] in want[k]]
+        if k == "hook":            # the hook sits IN a section (usually the intro); report the one under it
+            cur = next((p for p in ph if p["start"] - 1e-6 <= t < p["end"]), None)
+            out[k] = {"at": t, "why": why, "section": cur["label"] if cur else None, "section_at": cur["start"] if cur else None}; continue
+        if not starts: out[k] = {"at": t, "why": why, "section": None}; continue
+        p = min(starts, key=lambda p: abs(p["start"] - t)); e = p["start"] - t
+        out[k] = {"at": t, "why": why, "section": p["label"], "section_at": p["start"], "error_s": round(e, 4), "error_bars": round(e / bar, 3),
+                  "on_downbeat": bool(len(downs) and float(np.min(np.abs(downs - p["start"]))) < 2e-3)}
     return out
 
 
@@ -525,6 +663,13 @@ def report(pr, mode=None, apply_=False, file=None, as_json=False, refresh=False)
                      + (f"natural at {e['at']:.2f} s" if e["kind"] == "natural" else f"on the downbeat at {e['downbeat']:.3f} s, one-bar tail to {e['fade_end']:.3f} s")
                      + f" (video {P['T']:.3f} s)")
     lines += [f"note: {n}" for n in P["notes"]]
+    if P.get("phrases"):
+        lines.append("sections (cut s): " + "  ".join(f"{p['start']:.2f} {p['label']}" for p in P["phrases"] if p["starts_here"] or p["piece"] == 0 and p["start"] < 1e-3))
+        for k in ("hook", "turn", "payoff"):
+            s = P["story"].get(k) or {}
+            if s.get("at") is None: lines.append(f"  {k:6s} -: {s.get('why', '')}"); continue
+            if "error_s" in s: lines.append(f"  {k:6s} {s['at']:7.3f} s ({s['why']}): {s['section']} starts {s['error_s'] * 1000:+.0f} ms away ({s['error_bars']:+.2f} bar){'' if s['on_downbeat'] else ', NOT on a downbeat'}")
+            else: lines.append(f"  {k:6s} {s['at']:7.3f} s ({s['why']}): " + (f"inside the {s['section']}" if s.get("section") else "no matching section"))
     moves = []
     if P["mode"] in ("cuts", "full"):
         moves, rep = suggest(pr, TL, P)
@@ -550,6 +695,7 @@ def _summary(B):
     L = [f"{os.path.basename(B['file'])}: {B['duration']:.1f} s, {B['tempo']:.1f} BPM, {len(B['beats'])} beats, "
          f"{len(B['downbeats'])} bars of {B['beats_per_bar']} ({B['bar_s']:.3f} s), downbeat phase {B['downbeat_phase']} (confidence {B['downbeat_confidence']})",
          "sections: " + "  ".join(f"{s['start']:.1f}-{s['end']:.1f} {s['level']}({s['energy_db']:+.1f})" for s in B["sections"]),
+         "phrases: " + "  ".join(f"{p['start']:.1f}-{p['end']:.1f} {p['label']}({p['energy_db']:+.1f})" for p in B.get("phrases") or []),
          "drop candidates (track s, score, rise dB):"]
     L += [f"  [{i}] {d['t']:7.3f}  score {d['score']:5.2f}  rise {d['rise_db']:+.1f} dB (low {d['low_rise_db']:+.1f}){'  after a low stretch' if d['after_low'] else ''}"
           for i, d in enumerate(B["drops"])] or ["  none (no rise above music.drop_min_rise_db)"]
