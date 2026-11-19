@@ -254,6 +254,11 @@ def draw_text(d, xy, s, f, fill, tracking=0, anchor="ls", stroke=0, stroke_fill=
     x, y = xy; runs, _ = _runs(s, f, tracking)
     if anchor[0] != "l" or anchor == "li":
         l, r, _, _ = ink(s, f, tracking)
+        if tracking == 0 and len(runs) == 1 and runs[0][2] == "t" and not runs[0][1] and hasattr(d, "_f"):
+            # a supersampled layer draws with a k-times font whose advances round differently from the 1x font: measure the
+            # ink of the font that really draws, or a centred line lands up to ~3 px off the axis of its box (GFX-08)
+            bb = _inkbox(runs[0][0], d._f(f))
+            if bb: l, r = bb[0] / d.k, bb[1] / d.k
         x -= {"m": (l + r) / 2, "r": r, "l": l}[anchor[0]]
     kw = {"stroke_width": stroke, "stroke_fill": stroke_fill} if stroke else {}
     op = (fill[3] / 255) if isinstance(fill, tuple) and len(fill) > 3 else 1.
