@@ -958,7 +958,8 @@ def run_extra(pr, video, gate):
     for i in cx.inst:       # text contrast: static, opaque, transition-free frames, every 6th, <= 8 per element
         if not i.is_text: continue
         fr = [int(i.f[j]) for j in range(len(i.f)) if i.al[j] >= .95 and not cx.in_trans(int(i.f[j]))
-              and (i.role == "caption" or (0 < j < len(i.f) - 1 and np.abs(i.bb[j] - i.bb[j - 1]).max() <= 1))]
+              and (i.role == "caption" or (0 < j < len(i.f) - 1 and np.abs(i.bb[j] - i.bb[j - 1]).max() <= 1
+                                           and np.abs(i.bb[j + 1] - i.bb[j]).max() <= 1))]     # static on both sides (as GFX-08): not mid-entry
         text_fr[i.key] = (fr[::6] or fr[:1])[:8]
     roto_fr = sorted(set(f for i in cx.inst if i.role == "roto" and i.is_text for f in text_fr.get(i.key, [])))
     mattes = {}             # plate-space mattes for sampled A-roll frames and for roto text frames (person mask)

@@ -290,7 +290,7 @@ def quote(t, p, ctx):
     if name or has_av:
         na = p.get("name_at", la + len(lines) * ls + .35); pn = ease_out(k.e(na))
         if pn > 0:
-            av = _avatar(asset(ctx, p["avatar"]), 192) if has_av else None; fnm = G.font("b", 36); frl = G.font("m", 28)
+            av = _avatar(asset(ctx, p["avatar"]), max(8, int(round(G.px(192))))) if has_av else None; fnm = G.font("b", 36); frl = G.font("m", 28)
             tw = max(G.text_w(name, fnm), G.text_w(role, frl) if role else 0); gw = (96 + 24 if av else 0) + tw
             gx = k.cx - gw / 2 if k.align == "center" else tx
             def foot_(d):
@@ -379,11 +379,11 @@ def logo_reveal(t, p, ctx):
         w = wpx * sc; d.paste(lg, k.cx - w / 2, cy - hpx * sc / 2, w, opacity=op * (1 - out))
     im = G.layer(mark)
     if mode == "wipe":
-        a = np.asarray(im).copy(); xs = np.arange(G.W)[None, :]; x0 = k.cx - wpx / 2; edge = x0 + e * (wpx + 80)
-        a[..., 3] = (a[..., 3] * np.clip((edge - xs) / 80, 0, 1)).astype(np.uint8); im = Image.fromarray(a)
+        a = np.asarray(im).copy(); xs = np.arange(a.shape[1])[None, :]; x0 = G.px(k.cx - wpx / 2); edge = x0 + e * G.px(wpx + 80)
+        a[..., 3] = (a[..., 3] * np.clip((edge - xs) / G.px(80), 0, 1)).astype(np.uint8); im = Image.fromarray(a)
     if p.get("glow", True):
-        gl = Image.fromarray(np.asarray(im)[..., 3]).filter(ImageFilter.GaussianBlur(40))
-        g = Image.new("RGBA", (G.W, G.H), G.col(p.get("glow_color"), G.MINT) + (0,)); g.putalpha(gl.point(lambda v: int(v * .5 * e))); res.append(El(g, "logo.glow", "cutaway"))
+        gl = Image.fromarray(np.asarray(im)[..., 3]).filter(ImageFilter.GaussianBlur(G.px(40)))
+        g = Image.new("RGBA", im.size, G.col(p.get("glow_color"), G.MINT) + (0,)); g.putalpha(gl.point(lambda v: int(v * .5 * e))); res.append(El(g, "logo.glow", "cutaway"))
     res.append(El(im, "logo.mark", "cutaway", text="logo", t_key=k.q(at), asset=p["logo"]))
     tg = _txt(p.get("tagline")); ta = p.get("tagline_at", at + .45); pt = ease_out(k.e(ta))
     if tg and pt > 0:

@@ -18,6 +18,7 @@ from . import El
 KIND = "cutaway"                                  # full-screen pictures; render passes the A-roll only to NEEDS_AROLL templates
 KINDS = {"pip": "media", "split": "media", "overlay_render": "overlay"}
 NEEDS_AROLL = {"pip", "split"}                    # render.refresh_needs_aroll(): these get ctx["aroll"]
+RASTER = False                                    # pictures are composed at the layout size and scaled (see templates._canvas_render)
 NATIVE = {"broll_shot"}                          # drawn on the canvas itself (templates._canvas_render); px scale by G.U
 STILL_EXT = (".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp", ".gif")
 
@@ -131,6 +132,13 @@ class Clip:
         while len(self.cache) > 6: self.cache.popitem(last=False)
         return a
 
+def sdr(path, ctx=None):
+    """the path to decode: an HDR (PQ / HLG) clip is tonemapped to SDR BT.709 once, through the A-roll ingest chain
+    (ingest.sdr_source; cached in the project's Edit/conform), so B-roll matches the graded A-roll"""
+    from .. import ingest as ING
+    pr = _proj(ctx or {})
+    return ING.sdr_source(path, _S(ctx or {}), pr.e("conform") if pr is not None and hasattr(pr, "e") else None)
+
 _CLIPS = {}
 def clip(path, fps=None):
     k = (path, fps)
@@ -153,7 +161,7 @@ def media_frame(t, spec, ctx, at, default_end="hold"):
     path, name = _asset(spec.get("asset"), ctx)
     if _is_still(path):
         a = _still(path); return a, name, bool((a[..., 3] < 255).any())
-    c = clip(path, spec.get("fps") or (None if not os.path.isdir(path) else _fps(ctx)))
+    c = clip(sdr(path, ctx), spec.get("fps") or (None if not os.path.isdir(path) else _fps(ctx)))
     fps = _fps(ctx); local = (round(t * fps) - round(at * fps)) / fps
     if local < 0: local = 0.0
     st = _src_time(local, spec, c, default_end)

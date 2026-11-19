@@ -15,6 +15,9 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 W, H = 1080, 1920      # the canvas of this process: set_canvas() changes it (read G.W / G.H at call time)
 DESIGN = (1080, 1920)  # the reference design space of fixed-layout templates (module-level DESIGN = True)
 U = 1.0                # layout unit: min(W, H) / 1080
+PW, PH = W, H          # pixel size of the layers drawn (= the canvas, except inside a raster-scaled template call)
+R = 1.0                # raster scale: layer px per layout px (PW / W). Relative templates lay out on a 1080-short-side
+                       # canvas and are rasterised at the real canvas (set_raster), so 4K graphics are drawn at 4K
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))   # repo root
 FONTS = os.path.join(ROOT, "assets", "fonts")
 ICONS = os.path.join(ROOT, "assets", "icons")
@@ -101,7 +104,7 @@ def _stage(W, H):
     return base.astype(np.float32)
 
 # ---------- layers (RGBA float, premultiplied composite helpers)
-def new(): return Image.new("RGBA", (W, H), (0, 0, 0, 0))
+def new(): return Image.new("RGBA", (PW, PH), (0, 0, 0, 0))
 def to_np(im): a = np.asarray(im, np.float32) / 255; return a
 def over(dst, im, opacity=1.0):
     """dst float HxWx3, im PIL RGBA or float HxWx4"""
@@ -159,12 +162,12 @@ def legible_bed(im, fg, size_px, bg=None, force=0.0, reach=2):
     if a <= .02: return None
     import cv2
     al = np.asarray(im)[..., 3]
-    r = max(3, int(size_px * sget("legibility.bed_spread", .18)))
+    r = max(3, int(size_px * sget("legibility.bed_spread", .18) * R))   # size_px is layout px; the layer is R x larger
     m = cv2.dilate(al, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1)))
     m = cv2.GaussianBlur(m, (0, 0), max(1., r * .6))                  # soft: a hard-edged bed reads as a second "ink" class
-    k = 2 * max(2, int(reach)) + 1                                     # full strength right at the glyph edge (the 3-7 px ring GFX-15 reads);
+    k = 2 * max(2, int(round(reach * R))) + 1                          # full strength right at the glyph edge (the 3-7 px ring GFX-15 reads);
     m = np.maximum(m, cv2.dilate(al, np.ones((k, k), np.uint8)))        # outlined text: al includes the stroke, so reach past it
-    out = np.zeros((H, W, 4), np.uint8); out[..., :3] = shade; out[..., 3] = (m.astype(np.float32) * a).astype(np.uint8)
+    out = np.zeros(al.shape + (4,), np.uint8); out[..., :3] = shade; out[..., 3] = (m.astype(np.float32) * a).astype(np.uint8)
     return Image.fromarray(out)
 
 # ---------- type
@@ -385,24 +388,25 @@ def brackets(d, box, L=46, col=None, w=3):
     for (x, y, sx, sy) in ((x0, y0, 1, 1), (x1, y0, -1, 1), (x0, y1, 1, -1), (x1, y1, -1, -1)):
         d.line((x, y, x + sx * L, y), fill=col, width=w); d.line((x, y, x, y + sy * L), fill=col, width=w)
 
-def card_row(d, x, y, w, h, icon_kind, title, sub, st, p_in, p_state, label_font=None):
-    """One UI row card. p_in: entry progress (handled by caller via offset/alpha); p_state: check/cross pop"""
-    rrect(d, (x, y, x + w, y + h), 22, fill=CARD + (240,), outline=CARD_B, width=3)
-    s = h - 34; tx = x + 34
+def card_row(d, x, y, w, h, icon_kind, title, sub, st, p_in, p_state, label_font=None, sc=1.0):
+    """One UI row card. p_in: entry progress (handled by caller via offset/alpha); p_state: check/cross pop.
+    sc scales the inner px (padding, type, radius, mark) with the row: h is usually 124 * sc"""
+    rrect(d, (x, y, x + w, y + h), 22 * sc, fill=CARD + (240,), outline=CARD_B, width=3 * sc)
+    p = 17 * sc; s = h - 2 * p; tx = x + 34 * sc
     if icon_kind:
-        rrect(d, (x + 17, y + 17, x + 17 + s, y + 17 + s), 14, fill=WELL)
-        icon(d, icon_kind, x + 17 + s / 2, y + 17 + s / 2, s * .52)
-        tx = x + 17 + s + 28
-    f1 = label_font or font("b", 34); f2 = font("b", 34)
-    room = (x + w - (100 if st else 34)) - tx
+        rrect(d, (x + p, y + p, x + p + s, y + p + s), 14 * sc, fill=WELL)
+        icon(d, icon_kind, x + p + s / 2, y + p + s / 2, s * .52)
+        tx = x + p + s + 28 * sc
+    f1 = label_font or font("b", 34 * sc); f2 = font("b", 34 * sc)
+    room = (x + w - (100 if st else 34) * sc) - tx
     if text_w(title, f1, 1) > room: f1 = fit_font("b", f1.size, title, room, 1)
     if sub and text_w(sub, f2, 1) > room: f2 = fit_font("b", f2.size, sub, room, 1)
     if sub:
-        draw_text(d, (tx, y + h / 2 - 6), title, f1, WHITE, tracking=1)
-        draw_text(d, (tx, y + h / 2 + 34), sub, f2, MINT, tracking=1)
+        draw_text(d, (tx, y + h / 2 - 6 * sc), title, f1, WHITE, tracking=1)
+        draw_text(d, (tx, y + h / 2 + 34 * sc), sub, f2, MINT, tracking=1)
     else:
-        draw_text(d, (tx, y + h / 2 + 12), title, f1, WHITE, tracking=1)
-    if st: state(d, st, x + w - 46, y + h / 2, 24, p_state)
+        draw_text(d, (tx, y + h / 2 + 12 * sc), title, f1, WHITE, tracking=1)
+    if st: state(d, st, x + w - 46 * sc, y + h / 2, 24 * sc, p_state)
 
 def label(d, cx, y, s, size=26, col=None, tracking=7):
     draw_text(d, (cx, y), s, font("sb", size), col or MUTED, tracking=tracking, anchor="ms")
@@ -419,23 +423,24 @@ def pill(d, cx, cy, s, f, filled=True, pad=(30, 16), col=None, sc=1.0, text_p=1.
     return box
 
 def ss_layer(fn, scale=2):
-    """draw at 2x then downsample for clean anti-aliasing. fn(draw, k) where k = scale"""
-    im = Image.new("RGBA", (W * scale, H * scale), (0, 0, 0, 0))
-    fn(ImageDraw.Draw(im), scale)
-    return im.resize((W, H), Image.LANCZOS)
+    """draw at 2x then downsample for clean anti-aliasing. fn(draw, k) where k = scale (layer px per layout px)"""
+    im = Image.new("RGBA", (PW * scale, PH * scale), (0, 0, 0, 0))
+    fn(ImageDraw.Draw(im), scale * R)
+    return im.resize((PW, PH), Image.LANCZOS)
 
 def shadow(im, r=18, alpha=.55, dy=10):
+    """r and dy in layout px (scaled by the raster scale R)"""
     a = np.asarray(im)[..., 3]
-    sh = Image.fromarray(a).filter(ImageFilter.GaussianBlur(r))
-    out = Image.new("RGBA", (W, H), (0, 0, 0, 0)); blk = Image.new("RGBA", (W, H), (0, 0, 0, 255))
-    out.paste(blk, (0, dy), sh.point(lambda v: int(v * alpha)))
+    sh = Image.fromarray(a).filter(ImageFilter.GaussianBlur(r * R))
+    out = Image.new("RGBA", im.size, (0, 0, 0, 0)); blk = Image.new("RGBA", im.size, (0, 0, 0, 255))
+    out.paste(blk, (0, int(round(dy * R))), sh.point(lambda v: int(v * alpha)))
     out.alpha_composite(im); return out
 
 def shadow_only(im, r=18, alpha=.55, dy=10):
     """just the drop shadow of a layer (log it as its own decor element, id ending '.bed', so the text bbox stays the ink)"""
     a = np.asarray(im)[..., 3]
-    sh = Image.fromarray(a).filter(ImageFilter.GaussianBlur(r))
-    out = Image.new("RGBA", (W, H), (0, 0, 0, 0)); out.paste(Image.new("RGBA", (W, H), (0, 0, 0, 255)), (0, dy), sh.point(lambda v: int(v * alpha)))
+    sh = Image.fromarray(a).filter(ImageFilter.GaussianBlur(r * R))
+    out = Image.new("RGBA", im.size, (0, 0, 0, 0)); out.paste(Image.new("RGBA", im.size, (0, 0, 0, 255)), (0, int(round(dy * R))), sh.point(lambda v: int(v * alpha)))
     return out
 
 def alpha(im, a):
@@ -500,8 +505,10 @@ def _icon_img(name, px, col=(25, 230, 160)):
     im = Image.new("RGBA", (px, px), col + (255,)); im.putalpha(a); return im
 
 def layer(fn, k=2):
-    """fn(d) draws with 1x coordinates on a supersampled canvas; returns 1x RGBA"""
-    im = Image.new("RGBA", (W * k, H * k), (0, 0, 0, 0)); fn(SD(im, k))
+    """fn(d) draws with 1x layout coordinates on a supersampled canvas; returns RGBA at the layer pixel size (PW x PH:
+    the canvas, or the real canvas when a relative template is rasterised at R != 1: coordinates, type and strokes scale)"""
+    W, H = PW, PH
+    im = Image.new("RGBA", (W * k, H * k), (0, 0, 0, 0)); fn(SD(im, k * R))
     bb = im.getbbox()
     if not bb: return Image.new("RGBA", (W, H), (0, 0, 0, 0))
     m = 4 * k                                                       # resize only the drawn region (+ the filter support): same pixels, far faster
@@ -685,12 +692,24 @@ def canvas_of(S=None, pr=None):
     return w, h
 
 def set_canvas(w, h):
-    """set the canvas of this process (G.W, G.H, G.U). Spawned render workers call it again in their initializer."""
-    global W, H, U
+    """set the canvas of this process (G.W, G.H, G.U). Spawned render workers call it again in their initializer.
+    Resets the raster scale: layers are drawn at the canvas size (set_raster changes that)."""
+    global W, H, U, PW, PH, R
     w, h = int(w), int(h)
+    PW, PH, R = w, h, 1.0
     if (w, h) == (W, H): return
     W, H, U = w, h, min(w, h) / 1080.0
     _stage.cache_clear()
+
+def set_raster(pw, ph):
+    """draw layers at pw x ph pixels while laying out on the current canvas (W x H): every layout px is R = ph / H layer px.
+    templates._canvas_render uses it to rasterise a relative template (laid out at a 1080 short side) at the real canvas."""
+    global PW, PH, R
+    PW, PH = int(pw), int(ph); R = PH / H if H else 1.0
+
+def px(v):
+    """layout px -> layer px (for templates that touch layer pixels directly: blur radii, np.arange over a layer, ...)"""
+    return v * R
 
 def is_design(): return (W, H) == DESIGN
 

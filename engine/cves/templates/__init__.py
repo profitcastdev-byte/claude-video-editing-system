@@ -21,7 +21,7 @@ def faded(fn, alpha):
 # `KIND = "cutaway" | "roto" | "chest" | "end" | "media" | "overlay"`, else from the module name. No list to edit by hand.
 import os, sys, pkgutil, importlib, importlib.util   # noqa: E402
 
-REGISTRY, KIND, SOURCE, LAYOUT = {}, {}, {}, {}
+REGISTRY, KIND, SOURCE, LAYOUT, RASTER = {}, {}, {}, {}, {}
 LOAD_HOOKS = []      # fn(folder, origin) called by load_dir (motion.py: a `templates` folder's sibling `motion` pieces)
 
 def _register(mod, origin):
@@ -32,6 +32,8 @@ def _register(mod, origin):
     for name, fns in T.items():
         lay = "native" if (nat is True or (isinstance(nat, (set, list, tuple, dict)) and name in nat)) else ("fixed" if getattr(mod, "DESIGN", False) else "relative")
         REGISTRY[name] = fns; KIND[name] = (getattr(mod, "KINDS", {}) or {}).get(name, kind); SOURCE[name] = origin; LAYOUT[name] = lay
+        rs = getattr(mod, "RASTER", True)              # False / {names}: lay out AND rasterise at a 1080 short side, then scale
+        RASTER[name] = not (rs is False or (isinstance(rs, (set, list, tuple, dict)) and name not in rs))
 
 for _m in pkgutil.iter_modules(__path__):
     if not _m.name.startswith("_"): _register(importlib.import_module(f"{__name__}.{_m.name}"), "builtin")
@@ -61,7 +63,10 @@ def get(name):
 #  * native templates (module-level NATIVE = True or {names}) draw on the canvas itself and scale their own px by G.U
 #    (resolution-independent pictures such as broll_shot): no adapter;
 #  * relative templates (the default) lay out from G.W / G.H / G.safe(): on a canvas whose short side is not 1080 they
-#    draw in a "design canvas" of the same aspect with a 1080 short side, and the layers are scaled by G.U onto the canvas;
+#    lay out in a "design canvas" of the same aspect with a 1080 short side and are RASTERISED at the real canvas
+#    (G.set_raster: coordinates, type, strokes and icons scale by G.U inside G.layer), so 4K graphics are drawn at 4K.
+#    A module that touches layer pixels in ways the raster scale does not cover sets RASTER = False (or {names that are
+#    raster-safe}): it is drawn at the design canvas and the layers are scaled by G.U (softer at 4K);
 #  * fixed templates (module-level DESIGN = True: hard-coded 1080x1920 coordinates) draw in 1080x1920 and are fitted, per
 #    instance, into the canvas safe zone: the union of what they draw over their span (sampled) is scaled (never up) and
 #    centred. Kind chest / overlay / media are never fitted (they anchor to the presenter).
@@ -82,9 +87,10 @@ def _scaled_ctx(ctx, a, ox, oy, dsize):
         c["aroll"] = (cv2.resize(rgb, dsize, interpolation=cv2.INTER_AREA), cv2.resize(m, dsize, interpolation=cv2.INTER_AREA))
     return c
 
-def _call_in(size, fn, t, p, ctx):
+def _call_in(size, fn, t, p, ctx, raster=None):
     W0, H0 = G.W, G.H
     G.set_canvas(*size)
+    if raster: G.set_raster(*raster)
     try: return fn(t, p, ctx)
     finally: G.set_canvas(W0, H0)
 
@@ -118,6 +124,13 @@ def _canvas_render(name, fn, t, p, ctx):
         a, ox, oy = _fit_for(name, fn, p, ctx); size = G.DESIGN
     else:
         a, ox, oy = G.U, 0., 0.; size = _design_size()
+        if RASTER.get(name, True):                     # lay out at a 1080 short side, draw at the canvas's real resolution
+            W, H = G.W, G.H
+            els = _call_in(size, fn, t, p, _scaled_ctx(ctx, a, ox, oy, size), raster=(W, H)) or []
+            for el in els:
+                sz = el.im.size if isinstance(el.im, Image.Image) else (el.im.shape[1], el.im.shape[0])
+                if sz != (W, H): el.im = G.place(el.im, W / sz[0], 0., 0.)        # a layer drawn at the layout size (raw pixels)
+            return els
     els = _call_in(size, fn, t, p, _scaled_ctx(ctx, a, ox, oy, size)) or []
     for el in els: el.im = G.place(el.im, a, ox, oy)
     return els
