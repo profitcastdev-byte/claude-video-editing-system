@@ -9,7 +9,8 @@ Accents (`accents()`, called by mix.all_cues, so `cves mix` and the SND gates se
   * rate-limited by the restraint budget `creative.sound_accents_per_30s` (payoff riser, payoff impact, hook riser,
     then reveals in time order), never on a moment that already has a riser / impact of its own, and only on a target
     within one frame of a picture event (a cut, a cutaway edge, the end card, the punch-in), so SND-07 holds;
-  * sounds are chosen from the SFX bank by category + intensity (cves.sfx), the riser by the room before its target.
+  * sounds are chosen from the SFX bank by category + intensity (cves.sfx), the riser by the room before its target and
+    only among risers that resolve (peak within `sound.accents.riser_tail_max_s` of their end).
   Every accent is an ordinary cue (t, id, gain, kw) with kw {accent, target, why}: SND-32 checks the riser peaks.
 
 Ducking (`duck_control()` + `apply_duck()`, `mix.duck_mode`):
@@ -54,6 +55,10 @@ def accents(TL, cues, log=None):
         log.append({"status": "off", "why": "sound.accents.enabled: false" if not _on(A.get("enabled", True)) else "edit.yaml sfx.auto: false"}); return []
     c = BT.cfg(TL.pr, S); ms = BT.story_moments(TL, c); fr = 1.0 / TL.FPS; T = TL.N / TL.FPS
     ev = picture_events(TL); cands = SFX.entries(TL.pr)
+    tail_max = float(A.get("riser_tail_max_s", 0.1))
+    for s_ in cands:      # a riser resolves only if its peak is its end: older manifests without peak_at_s are measured once
+        if s_.get("category") == "riser" and s_.get("peak_at_s") is None: s_["peak_at_s"] = SFX.measure(s_["path"])["peak_at_s"]
+    risers = [s_ for s_ in cands if s_.get("category") != "riser" or float(s_["duration_s"]) - float(s_["peak_at_s"]) <= tail_max]
     budget = int(np.floor(float(S.get("creative.sound_accents_per_30s", 3)) * max(1.0, T / 30.0) + 1e-9))
     r_gain, i_gain = float(A.get("riser_gain_db", -14)), float(A.get("impact_gain_db", -11))
     r_min, r_max = float(A.get("riser_min_s", 0.8)), float(A.get("riser_max_s", 2.2))
@@ -84,9 +89,9 @@ def accents(TL, cues, log=None):
             prev = max([u for u in used if u < tgt - 1e-6] + [0.0])       # a riser starts after the accent before it
             room = tgt - prev - (gap if prev > 0 else 0.0)
             if room < r_min: rec["status"] = f"skipped: {room:.2f} s of room before the target (< sound.accents.riser_min_s {r_min})"; continue
-            s = SFX.pick(cands, "riser", inten, exclude=[taken.get("riser")] if taken.get("riser") else (), max_s=min(r_max, room), min_s=r_min)
-            if s is None or float(s["duration_s"]) > room + 1e-6: rec["status"] = "skipped: no riser in the bank fits the room"; continue
-            out.append((tgt - float(s["duration_s"]), s["id"], r_gain, {"peak_at": tgt, "accent": "riser", "target": tgt, "beat_snap": False, "why": why}))
+            s = SFX.pick(risers, "riser", inten, exclude=[taken.get("riser")] if taken.get("riser") else (), max_s=min(r_max, room), min_s=r_min)
+            if s is None or float(s["duration_s"]) > room + 1e-6: rec["status"] = "skipped: no resolving riser in the bank fits the room"; continue
+            out.append((tgt - float(s["peak_at_s"]), s["id"], r_gain, {"peak_at": tgt, "accent": "riser", "target": tgt, "beat_snap": False, "why": why}))
         else:
             s = SFX.pick(cands, "impact", inten, exclude=[taken.get("impact")] if taken.get("impact") else (), max_s=float(A.get("impact_max_s", 2.0)))
             if s is None: rec["status"] = "skipped: no impact in the bank"; continue
@@ -102,7 +107,7 @@ def _band(y, sr, lo=250, hi=5000):
 
 def syllable_hz(env_db, hop_s, floor_db):
     """dominant 2-9 Hz modulation of a dB envelope while speaking (the syllable rate); None if too little speech"""
-    on = env_db > floor_db
+    on = np.convolve((env_db > floor_db).astype(float), np.ones(max(1, int(.3 / hop_s))), "same") > 0     # speaking spans (gaps < 0.3 s bridged)
     if on.sum() * hop_s < 1.0: return None
     x = np.where(on, env_db - np.median(env_db[on]), 0.0); x = x - x.mean()
     F = np.abs(np.fft.rfft(x * np.hanning(len(x)))); f = np.fft.rfftfreq(len(x), hop_s)

@@ -118,6 +118,7 @@ sound:
     impact_gain_db: -11       # impact level (a tagged hero: no offset)
     riser_min_s: 0.8          # shortest riser; a target with less room before it gets none
     riser_max_s: 2.2          # longest riser picked from the bank
+    riser_tail_max_s: 0.1     # only risers that resolve: their peak is at most this far from their end
     impact_max_s: 2.0         # longest impact picked from the bank
     min_gap_s: 0.3            # a riser starts at least this long after the accent before it
     payoff_riser: medium      # intensity (soft | medium | hard) of the riser into the payoff
@@ -150,6 +151,7 @@ music:                        # beat sync + music fit (docs/MUSIC.md); edit.yaml
   phrase_align: true          # drop / cuts / full: prefer the drop whose build starts on the story turn (sections: intro / build / drop / body / break / outro)
   phrase_min_bars: 2          # a music section is at least this many bars
   build_min_rise_db: 2.0      # a build rises at least this much into its drop
+  build_step_db: 1.0          # ... and each of its bars at least this much over the bar before
   phrase_turn_weight: 1.0     # drop pick: score points lost per bar between the build start and the turn
   hook_beats: [H]             # story beats of the hook (riser into / out of it)
   turn_beats: [P, A]          # story beats of the turn (the build should start here); default: the end of the hook

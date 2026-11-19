@@ -5,8 +5,8 @@ Banks (later wins on the same id):
   2. the user's   ~/.cves/sfx/manifest.yaml     (`$CVES_SFX` overrides the folder) grown with `cves sfx fetch` / `add`;
   3. the project's Music/sfx/manifest.yaml.
 
-A manifest is `{version: 1, sounds: [{id, file, category, intensity, duration_s, peak_db, loudness_lufs, licence,
-source, title, creator}]}`. Categories: whoosh, impact, riser, ui, pop, transition, ambience. Intensity: soft | medium |
+A manifest is `{version: 1, sounds: [{id, file, category, intensity, duration_s, peak_db, loudness_lufs, peak_at_s,
+licence, source, title, creator}]}` (peak_at_s: where the 10 ms RMS envelope peaks; a riser that resolves peaks at its end). Categories: whoosh, impact, riser, ui, pop, transition, ambience. Intensity: soft | medium |
 hard. A cue name `@impact` / `@riser:soft` (template cues, edit.yaml sfx.extra, the auto accents in cves.sound) is
 resolved to a manifest id by `pick()`, deterministically; ids carry their category word (riser_air, impact_sub), so the
 SND gates that judge whooshes / risers by name keep working.
@@ -191,7 +191,7 @@ def add(path, category, intensity="medium", sid=None, source=None, licence="cc0"
     m = read_manifest(d)
     if any(s["id"] == sid for s in m["sounds"]): raise SystemExit(f"{sid} is already in {d}/manifest.yaml (pass --id)")
     dst = os.path.join(d, sid + ".wav"); convert(path, dst, max_s)
-    s = {"id": sid, "file": sid + ".wav", "category": category, "intensity": intensity, **{k: v for k, v in measure(dst).items() if k != "peak_at_s"},
+    s = {"id": sid, "file": sid + ".wav", "category": category, "intensity": intensity, **measure(dst),
          "licence": lic, "source": source or ("own recording" if lic == "own recording" else "unknown"), "title": title or sid}
     if creator: s["creator"] = creator
     m["sounds"].append(s); write_manifest(d, m); _credit(d, s)
@@ -256,7 +256,8 @@ def fetch(query, category, n=3, to="user", intensity="medium", pr=None, max_s=6.
         tmp = tempfile.mkdtemp(prefix="cves_sfx_dl_")         # untrusted download: its own empty folder, decoded as audio only
         try:
             raw = _download(r["url"], os.path.join(tmp, "download.bin"))
-            sid = _slug(f"{category}_{r['title']}", 40) + "_" + _slug(r["key"].split(":")[-1], 8)
+            ttl = re.sub(rf"^{category}[\s_-]*", "", _slug(r["title"]), flags=re.I) or "sound"
+            sid = _slug(f"{category}_{ttl}", 40) + "_" + _slug(r["key"].split(":")[-1], 8)
             s = add(raw, category, intensity, sid=sid, source=r["source"], licence="cc0", title=r["title"], creator=r["creator"], to=to, pr=pr, max_s=max(max_s or 0, 1) + 1)
             s["provider"] = r["provider"]; added.append(s); have.add(r["source"])
         except SystemExit as e:

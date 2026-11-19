@@ -173,13 +173,13 @@ def main():
         f = sid + ".mp3"
         if not os.path.exists(os.path.join(a.out, f)): continue
         m = SFX.measure(os.path.join(a.out, f))
-        snd.append({"id": sid, "file": f, "category": cat, "intensity": inten, **{k: v for k, v in m.items() if k != "peak_at_s"},
+        snd.append({"id": sid, "file": f, "category": cat, "intensity": inten, **m,
                     "licence": "CC0 1.0", "source": src, "title": title, "creator": "Freesound (via Openverse)"})
     for sid, (cat, inten, title, fn, pk) in SOUNDS.items():
         f = sid + ".wav"
         if not os.path.exists(os.path.join(a.out, f)): continue
         m = SFX.measure(os.path.join(a.out, f))
-        snd.append({"id": sid, "file": f, "category": cat, "intensity": inten, **{k: v for k, v in m.items() if k != "peak_at_s"},
+        snd.append({"id": sid, "file": f, "category": cat, "intensity": inten, **m,
                     "licence": "CC0, synthesized by CVES", "source": "tools/make_sfx.py (procedural, numpy)", "title": title, "creator": "CVES"})
     SFX.write_manifest(a.out, {"sounds": snd}); print(f"manifest: {len(snd)} sounds -> {os.path.join(a.out, 'manifest.yaml')}")
     return 0

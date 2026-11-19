@@ -193,46 +193,52 @@ def _novelty(B):
 def phrases(B, c=None):
     """music sections in TRACK seconds, on bar lines: [{start, end, bar0, bar1, label, energy_db}].
     Boundaries: bar 0, every drop candidate (B['drops']) and novelty peaks (energy step + chroma change, z >= 1.5,
-    >= music.phrase_min_bars apart). Labels: a section that starts on a drop candidate is a `drop`; the bars rising into
-    a drop (each >= 0.3 dB over the one before, >= 2 bars and >= music.build_min_rise_db in all) are its `build`; the
-    first section is the `intro`, a last section that falls >= 1.5 dB under the one before (or sits under the median)
-    is the `outro`; other sections are `body` (within 3 dB of the loudest) or `break` (under the median)."""
+    >= music.phrase_min_bars apart). Labels: a section that starts on a loud drop candidate (its next bars at or over the
+    median bar) is a `drop`; the bars rising into it (each >= music.build_step_db over the bar before, >= 2 bars and
+    >= music.build_min_rise_db in all) are its `build`; the first section is the `intro`, a last section that falls
+    >= 1.5 dB under the one before (or sits under the median) is the `outro`; other sections are `body` (within 3 dB of
+    the loudest) or `break` (under the median). The first section starts at 0 and the last ends at the track's end."""
     c = c or {}; bars = B.get("bars") or []; n = len(bars)
     if n == 0: return []
-    min_bars = max(1, int(c.get("phrase_min_bars", 2))); build_rise = float(c.get("build_min_rise_db", 2.0))
+    min_bars = max(1, int(c.get("phrase_min_bars", 2))); build_rise = float(c.get("build_min_rise_db", 2.0)); step = float(c.get("build_step_db", 1.0))
     E = np.array([b["db"] for b in bars]); med = float(np.median(E)); dur = float(B["duration"])
-    drop_bars = sorted({int(d["bar"]) for d in B.get("drops") or [] if 0 < int(d["bar"]) < n})
+    cand = {int(d["bar"]): d for d in B.get("drops") or [] if 0 < int(d["bar"]) < n}
+    loud = sorted(j for j, d in cand.items() if float(d.get("post_db", 0)) >= 0)          # a real drop lands at or over the median
     nov = _novelty(B); z = _z(nov)
     peaks = [j for j in range(1, n) if z[j] >= 1.5 and nov[j] >= nov[j - 1] and (j == n - 1 or nov[j] >= nov[j + 1])]
-    bnd = sorted(set([0] + drop_bars))
+    bnd = sorted(set([0] + sorted(cand)))
     for j in sorted(peaks, key=lambda j: -nov[j]):     # strongest novelty first; never closer than min_bars to a boundary
         if all(abs(j - b) >= min_bars for b in bnd): bnd = sorted(bnd + [j])
     bnd.append(n)
-    segs = [[a, b] for a, b in zip(bnd[:-1], bnd[1:]) if b > a]
-    # builds: walk back from each drop while the bars keep rising
+    # builds: walk back from each drop while every bar rose by `step` over the one before; the build starts on the first
+    # bar that rose (the bar it rose from belongs to the section before)
     builds = {}
-    for j in drop_bars:
+    for j in loud:
         k = j - 1
-        while k - 1 >= 0 and E[k] >= E[k - 1] + .3 and (j - k) < 16: k -= 1
-        if j - k >= 2 and E[j - 1] - E[k] >= build_rise: builds[j] = k
+        while k - 1 >= 0 and E[k] >= E[k - 1] + step and (j - k) < 16: k -= 1
+        if j - 1 - k >= 2 and E[j - 1] - E[k] >= build_rise: builds[j] = k + 1
+    cuts = sorted(set(bnd) | set(builds.values()))
+    segs = [[a, b] for a, b in zip(cuts[:-1], cuts[1:]) if b > a]
     out = []
     for a, b in segs:
-        k = builds.get(b)
-        if k is not None and a < k < b: out += [[a, k, None], [k, b, "build"]]
-        elif k is not None and k <= a: out.append([a, b, "build"])
-        else: out.append([a, b, None])
-    lv = [float(E[a:b].mean()) - med for a, b, _ in out]; hi = max(lv)
+        lab = "build" if any(builds.get(j) is not None and builds[j] <= a and b <= j for j in loud) else None
+        out.append([a, b, lab])
+    merged = []                                            # a build split by a novelty peak is one build
+    for a, b, lab in out:
+        if merged and lab == "build" and merged[-1][2] == "build" and merged[-1][1] == a: merged[-1][1] = b
+        else: merged.append([a, b, lab])
+    lv = [float(E[a:b].mean()) - med for a, b, _ in merged]; hi = max(lv)
     res = []
-    for i, (a, b, lab) in enumerate(out):
+    for i, (a, b, lab) in enumerate(merged):
         if lab is None:
-            if a in drop_bars: lab = "drop"
+            if a in loud: lab = "drop"
             elif i == 0: lab = "intro"
-            elif i == len(out) - 1 and len(out) > 1 and (lv[i] <= lv[i - 1] - 1.5 or lv[i] < 0): lab = "outro"
+            elif i == len(merged) - 1 and len(merged) > 1 and (lv[i] <= lv[i - 1] - 1.5 or lv[i] < 0): lab = "outro"
             elif lv[i] >= hi - 3: lab = "body"
             elif lv[i] < 0: lab = "break"
             else: lab = "body"
-        t1 = float(bars[b]["t"]) if b < n else dur
-        res.append({"start": round(float(bars[a]["t"]), 4), "end": round(t1, 4), "bar0": a, "bar1": b, "label": lab, "energy_db": round(lv[i], 2)})
+        t0 = 0.0 if a == 0 else float(bars[a]["t"]); t1 = float(bars[b]["t"]) if b < n else dur
+        res.append({"start": round(t0, 4), "end": round(t1, 4), "bar0": a, "bar1": b, "label": lab, "energy_db": round(lv[i], 2)})
     return res
 
 def phrases_cut(lay, ph):

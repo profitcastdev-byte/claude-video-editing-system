@@ -592,6 +592,12 @@ def _edit_specific(v, E):
     if os.path.isdir(lib):
         names = {os.path.splitext(f)[0] for f in os.listdir(lib)}
         for j, x in enumerate(sfx.get("extra") or []):
+            if isinstance(x, dict) and isinstance(x.get("name"), str) and x["name"].startswith("@"):      # @category[:intensity] (cves.sfx)
+                from . import sfx as SFX
+                cat, inten = SFX.parse_name(x["name"])
+                if cat not in SFX.CATEGORIES: v.err(f"sfx.extra[{j}].name", f"unknown SFX category '{cat}' (one of {', '.join(SFX.CATEGORIES)})")
+                elif inten and inten not in SFX.INTENSITY: v.err(f"sfx.extra[{j}].name", f"unknown intensity '{inten}' (soft | medium | hard)")
+                continue
             if isinstance(x, dict) and isinstance(x.get("name"), str) and x["name"] not in names and not _resolves(v, x["name"]):
                 v.warn(f"sfx.extra[{j}].name", f"no sound '{x['name']}' in assets/sfx{_did_you_mean(x['name'], names)}")
 
