@@ -288,6 +288,7 @@ craft:                        # motion craft (docs/MOTION.md "Craft"); every mov
     exit_s: 0.25
     no_matte: above           # no subject matte: lift the type clear above the head (above) | keep it in front with a legibility bed (front)
     sfx: lowhit               # cue on entry (null = none)
+    bed: false                # a legibility bed under the type (a soft glow reads cheap behind a head: choose a colour that reads instead)
   ramp:                       # speed ramps on broll: shots / video_broll (`ramp: {preset | keys, ease, blend, audio}`)
     default: slam             # preset used by `ramp: {}`
     presets:                  # [shot fraction, speed multiplier] keys, eased between

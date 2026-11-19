@@ -269,17 +269,18 @@ def craft_overlay(out, kind, fps, st=None, en=None):
         b_end = round(p0 + 1.6, 2)
         E["chest"] = []                                                    # the hook keeps its captions (topic keyword on screen)
         E.setdefault("aroll", {})["snap"] = {"start": 0.45, "end": 1.45, "zoom": 1.3}     # the punch-in lands with the type slam
-        E["roto"] = [{"segment": "01_hook_0", "template": "text_behind", "params": {"text": "2 *SECONDS*", "at": 0.45, "entry": "slam"}},
-                     {"segment": "05_cta_0", "template": "text_behind", "params": {"text": "*TODAY*", "at": round(c0 + .75, 2)}}]
+        dark = {"color": "card"}                                           # a light wall: charcoal type reads (GFX-15), one size for both (GFX-20)
+        E["roto"] = [{"segment": "01_hook_0", "template": "text_behind", "params": dict(dark, text="2 SECONDS", at=0.45, entry="slam", size=150)},
+                     {"segment": "05_cta_0", "template": "text_behind", "params": dict(dark, text="TODAY", at=round(c0 + .75, 2), size=140)}]
         cuts = E["cutaways"]; cuts[0]["in"] = "whip_pan"; c1p = cuts[0]["params"]
         lead = round(c1p["at"] - (st("02_problem") + .05), 2)            # the list's title lands with the whip, not after it
         c1p["at"] = round(c1p["at"] - lead, 2)
         for it in c1p.get("items") or []: it["at"] = round(it["at"] - lead, 2)
         c2 = next(c for c in cuts if c["id"] == "c2"); c2.update(start=b_end, snap=False)
         c2["params"].update(count=[round(b_end + .2, 2), 1.2], label_at=round(b_end + .3, 2))
-        cuts.append({"id": "c3", "template": "m_notification_stack", "start": round(o0, 2), "end": round(c0, 2),        # the offer, shown
-                     "params": {"position": "center", "items": [{"app": "CVES", "title": "Edit ready", "body": "Cut, captioned and graded", "at": round(o0 + .2, 2)},
-                                                                {"app": "CVES", "title": "Music on the beat", "body": "Every cut lands on a downbeat", "at": round(o0 + 1.1, 2)}]}})
+        cuts.append({"id": "c3", "template": "m_notification_stack", "start": round(o0 + .9, 2), "end": round(c0, 2), "snap": False,   # the offer, shown
+                     "params": {"position": "center", "items": [{"app": "CVES", "title": "Edit ready", "body": "Cut, captioned and graded", "at": round(o0 + 1.0, 2)},
+                                                                {"app": "CVES", "title": "Music on the beat", "body": "Every cut lands on a downbeat", "at": round(o0 + 1.7, 2)}]}})
         E["broll"] = [{"asset": "broll_city", "start": round(p0, 2), "end": b_end, "in": 0.6, "snap": False,
                        "ramp": {"preset": "slam"}, "camera": {"move": "push", "amount": 0.06}}]
         E["end_card"] = {"template": "m_follow_card_end", "duration": 2.0, "in": "light_leak",

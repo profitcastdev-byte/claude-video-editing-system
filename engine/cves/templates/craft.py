@@ -67,9 +67,9 @@ def text_behind(t, p, ctx):
     if not words: return []
     face = ctx.get("face"); fa = (ctx.get("face_at") or (lambda tt: None))(at) or face
     matte = bool(ctx.get("matte_ok", True))
-    sz = G.safe(); V = ctx.get("view")                                    # the frame's punch-in: keep the type inside the
-    if V is not None:                                                      # safe zone of the OUTPUT frame (plate px = (X - t) / s)
-        sx, tx, ty = float(V[0][0]), float(V[0][2]), float(V[1][2])
+    sz = G.safe(); V = ctx.get("seg_view", ctx.get("view"))               # the shot's own framing (not a snap punch-in, which scales the
+    if V is not None:                                                      # type with the head): the type stays in the OUTPUT safe zone
+        sx, tx, ty = float(V[0][0]), float(V[0][2]), float(V[1][2])       # (plate px = (X - t) / s) and never re-fits mid-shot
         sz = ((sz[0] - tx) / sx, (sz[1] - ty) / sx, (sz[2] - tx) / sx, (sz[3] - ty) / sx)
     safe_w = sz[2] - sz[0]
     track = float(B("tracking", -4)) * G.U; max_w = safe_w * float(B("max_width", .92))
@@ -126,8 +126,8 @@ def text_behind(t, p, ctx):
     plain = " ".join(w for w, _ in words); out = []
     # legibility (GFX-15): a soft bed under the type, sized by the weaker of its colours against the assumed video tone;
     # it sits on the plate too, so the subject occludes it with the type
-    weak = min((col, acc) if any(a for _, a in words) else (col,), key=lambda c: G.contrast(c, G._rgb(G.sget("legibility.video_bg") or (180, 180, 180))))
-    bed = G.legible_bed(im, weak, f.size)
+    weak = None if not (B("bed", False) or (not matte and pos != "clear")) else min((col, acc) if any(a for _, a in words) else (col,), key=lambda c: G.contrast(c, G._rgb(G.sget("legibility.video_bg") or (180, 180, 180))))
+    bed = G.legible_bed(im, weak, f.size) if weak is not None else None
     if bed is not None: out.append(El(bed, "behind.text.bed", "roto"))
     out.append(El(im, "behind.text", "roto", text=plain, t_key=at, font=weight))
     return out

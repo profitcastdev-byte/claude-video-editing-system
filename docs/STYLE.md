@@ -703,6 +703,7 @@ library. Every move counts against the `creative` budget; transitions are also r
 | `craft.behind.exit_s` | `0.25` | exit length (ends 0.25 s before the shot by default) |
 | `craft.behind.no_matte` | `above` | no subject matte: above (lift the type clear above the head) / front (keep it, with a legibility bed) |
 | `craft.behind.sfx` | `lowhit` | entry cue (null = none) |
+| `craft.behind.bed` | `false` | draw a legibility bed under the type (always on with no matte and `no_matte: front`); prefer a colour that reads on the wall |
 | `craft.ramp.default` | `slam` | preset used by `ramp: {}` |
 | `craft.ramp.presets` |  | `[shot fraction, speed]` keys per preset, eased between (add your own) |
 | `craft.ramp.presets.slam` | `[[0, 1], [0.35, 1], [0.5, 0.22], [0.82, 0.22], [1, 1]]` | real time, a hard slow-down through the middle, back to real time |

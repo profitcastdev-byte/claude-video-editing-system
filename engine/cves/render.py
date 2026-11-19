@@ -365,13 +365,15 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
         if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
         M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # lift: anchor at the frame bottom raises the face
+        z0 = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
+        M0 = M if z0 == z else affine(z0, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # the shot's framing without a snap
         if mode in ("overlay", "chest"): img = None
         else:
             g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
             img = grade(np.clip(P * g, 0, 1) if np.any(g != 1) else P, A, (cx, cy), TL.S.get("grade"))
             r = TL.roto.get(sid)
             if r:
-                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], view=M, **CR.roto_ctx(TL, s, k)))
+                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], view=M, seg_view=M0, **CR.roto_ctx(TL, s, k)))
                 if rels:
                     a = cv2.GaussianBlur(cv2.erode(A.astype(np.float32) / 255, np.ones((3, 3), np.uint8)), (0, 0), 1.2)[..., None]
                     person = img.copy()
