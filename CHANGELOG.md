@@ -3,6 +3,25 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Added
+- **Senior sound** (v0.4 WS H, docs/SOUND.md).
+  - **Music phrases.** `beats.phrases()` labels the music's sections on bar lines from the bar energy and a novelty curve (energy step + chroma change): `intro`, `build` (the bars rising into a drop), `drop`, `body`, `break`, `outro`. `cves beats` prints them and stores them in `beats.json`.
+  - **Phrase alignment.** `beats.story_moments()` gives the hook (`music.hook_beats` [H] / `hook_cut`), the turn (`music.turn_beats` [P, A] / `turn_cut`, else the end of the hook) and the payoff (the drop moment, now falling back to the `aroll.snap` reveal). With `music.phrase_align: true`, the auto drop pick prefers the drop whose build starts on the turn; the drop still lands exactly on the payoff, and loop seams stay on downbeats. `mix.json` records the sections and the story alignment.
+  - **Automatic risers and impacts** (`cves.sound.accents`, part of `mix.all_cues`):
+    - a riser whose peak resolves on the payoff, and one into the hook (or out of it, when the hook opens the video);
+    - a downbeat hit on the payoff, and impacts on reveals that have no low hit of their own.
+
+    Only on picture events, never doubled, and limited by the new restraint budget `creative.sound_accents_per_30s` (3). Every decision is logged in `mix.json accents`; turn them off with `edit.yaml sfx.auto: false`.
+  - **Voice-envelope ducking** (`mix.duck_mode: envelope`, the new default). The music gain follows the voice-band RMS envelope, with a 40 ms attack, a release from the syllable rate (250-400 ms) and the depth from `sound.duck_*`. `gate` keeps the v0.3 fixed dips.
+  - **SFX bank** (`cves.sfx`, `assets/sfx/manifest.yaml`). Every sound has a category (whoosh, impact, riser, ui, pop, transition, ambience), an intensity (soft / medium / hard), a measured duration, peak, loudness and peak time, a licence and a source. Cues can name a role, `@impact:hard`, instead of a file; recordings are preferred over synthesized sounds at the same intensity. There are three banks, later winning: repo, user (`~/.cves/sfx`, `$CVES_SFX`) and project (`Music/sfx`).
+  - **`cves sfx list | fetch | add | check`.** `fetch` searches Openverse, plus Freesound when `FREESOUND_API_KEY` is set, keeps CC0 only, decodes downloads as audio only (temp folder, ffmpeg to 48 kHz mono WAV) and records the source URL and licence in the bank's manifest and CREDITS.md.
+  - **15 house sounds synthesized by CVES** (CC0; `tools/make_sfx.py`, numpy, deterministic): three risers that resolve on their peak, four impacts, three whooshes, a swish, two pops, a tick and a room tone (1.5 MB). They are judged with earshot; see DECISIONS.
+  - **QC gates** SND-32 (an automatic riser peaks within 1 frame of its target) and SND-33 (the drop section starts on the payoff, on a downbeat; loop seams on downbeats), both WARN to start. Automatic risers are judged by SND-32 and SND-07 instead of SND-08. `cves qc` now measures 95 gates (QC-GATES.md: 183 rows).
+  - **New style keys:** `sound.accents.*`, `sound.phrase_tolerance_s`, `mix.duck_*`, `music.phrase_align`, `phrase_min_bars`, `build_min_rise_db`, `build_step_db`, `phrase_turn_weight`, `hook_beats`, `turn_beats`, `hook_cut`, `turn_cut`, `creative.sound_accents_per_30s` (default.yaml, docs/STYLE.md).
+  - **Docs and tests.** docs/SOUND.md; MUSIC.md, CONTRACTS.md, SFX-METHOD.md, the `video-editor` skill and `/cves:music` updated. `tests/test_sound.py` covers phrases on a synthetic song, the drop on the payoff, the phrase-aligned drop pick, envelope ducking, the riser resolving on its target, the budget, the manifest, and a mocked CC0-only fetch.
+
 ## [0.3.0] - 2026-11-19
 CVES becomes a senior editor for any video: motion design, inspirations it can hear and feel, any frame size and spine, viral mode, and a learning loop a person stays in charge of.
 
