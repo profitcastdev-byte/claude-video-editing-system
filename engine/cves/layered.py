@@ -76,7 +76,7 @@ def plan(TL):
     for c in TL.cuts:
         if c.get("broll") and not TL.aroll: continue          # B-roll shots are the V1 picture on the non-aroll spines
         out.append({"id": str(c["id"]), "track": "V2", "kind": "cutaway", "f0": round(c["start"] * F), "f1": round(c["end"] * F),
-                    "rel": os.path.join("media", "cutaways", f"{c['id']}.mov"), "edit_ref": f"cutaways.{c['id']}", "alpha": False})
+                    "rel": os.path.join("media", "cutaways", f"{c['id']}.mov"), "edit_ref": f"{'broll' if c.get('broll') else 'cutaways'}.{c['id']}", "alpha": False})
     if TL.END:
         out.append({"id": "end_card", "track": "V2", "kind": "end", "f0": TL.A_FRAMES, "f1": TL.N,
                     "rel": os.path.join("media", "cutaways", "end_card.mov"), "edit_ref": "end_card", "alpha": False})

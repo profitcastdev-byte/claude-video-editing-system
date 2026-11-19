@@ -16,6 +16,11 @@ What maps back (written to Edit/edit.yaml / Edit/selects.yaml, each with a times
   V2 cutaway deleted             removed from cutaways
   V2 end card trimmed / deleted  end_card.duration / end_card removed
   V3 chest overlay moved/deleted chest params shifted / chest entry removed
+  B-roll shot moved / trimmed /  broll[k].start/end (+ snap: false off a segment boundary), a head trim moves broll[k].in
+    deleted / speed changed      (in source seconds, at the shot's speed); deleted -> removed; an editor speed change
+                                 multiplies broll[k].speed. V2 on the A-roll spine, V1 on voiceover / music / broll spines
+  motion piece (m_*) trimmed     cutaway / chest motion pieces re-time: `at` follows a head trim past the piece's clock
+                                 start and `duration` fits the new out point, so entry and exit both play
   V1 A-roll head / tail trim     selects.yaml clip in / out when the trim is at a clip's outer edge
   V1 clips deleted / reordered   selects.yaml clips removed / reordered (whole clips only)
   V1 ripple                      roto params, captions.hide, sfx.extra, aroll.snap, music.drop_cut, transitions follow
@@ -419,6 +424,60 @@ def _sha(p):
     return h.hexdigest()
 
 
+def broll_entry(E, sid):
+    """the edit.yaml broll: entry of shot id `sid` (an explicit `id:`, else the `b<NN>` index spines.shots gives it)"""
+    track = E.get("broll") or []
+    for x in track:
+        if isinstance(x, dict) and str(x.get("id")) == sid: return x
+    m = re.fullmatch(r"b(\d+)", sid or "")
+    if m and 0 < int(m.group(1)) <= len(track):
+        x = track[int(m.group(1)) - 1]
+        if isinstance(x, dict) and not x.get("id"): return x
+    return None
+
+
+def _map_broll(E, sid, L, pl, Fr, sec, new_bounds, aroll, applied, notmapped, info):
+    """one B-roll shot layer (V2 on the A-roll spine, V1 on the others) -> edit.yaml broll[k]"""
+    x = broll_entry(E, sid)
+    if x is None: notmapped.append(f"B-roll shot {sid} is no longer in edit.yaml broll:"); return
+    if pl is None:
+        E["broll"] = [y for y in E["broll"] if y is not x]; applied.append(f"B-roll `{sid}` deleted ({x.get('asset') or x.get('src')}, {x['start']}-{x['end']}s)"); return
+    if (pl.start, pl.end, pl.src_in) == (L["f0"], L["f1"], L["si"]) and not (pl.speed and abs(pl.speed - 1) > 1e-6): return
+    if abs(float(x["start"]) - sec(pl.start)) < .5 / Fr and abs(float(x["end"]) - sec(pl.end)) < .5 / Fr and (pl.start, pl.end) != (L["f0"], L["f1"]):
+        info.append(f"B-roll `{sid}` already sits at {x['start']}-{x['end']}s in edit.yaml (imported before?): left as is"); return
+    sp = float(x.get("speed", 1) or 1); head = pl.src_in - L["si"]
+    if (pl.start, pl.end) != (L["f0"], L["f1"]):
+        ns, ne = sec(pl.start), sec(pl.end); cs = (pl.start - pl.src_in) - (L["f0"] - L["si"])
+        applied.append(f"B-roll `{sid}` {x['start']}-{x['end']}s -> {ns}-{ne}s" + (f" (moved {cs:+d} frames)" if cs else " (trim)")); x["start"], x["end"] = ns, ne
+        if aroll and not (min((abs(b - pl.start) for b in new_bounds), default=1) == 0 and min((abs(b - pl.end) for b in new_bounds), default=1) == 0):
+            if x.get("snap", True) is not False: x["snap"] = False; applied.append(f"B-roll `{sid}` snap: false (it no longer sits on a segment boundary)")
+    if head:
+        old = float(x.get("in", 0) or 0); new = round(max(0.0, old + head / Fr * sp), 3)
+        applied.append(f"B-roll `{sid}` in: {old} -> {new} (head {'trimmed' if head > 0 else 'extended'} {abs(head)} frames)"); x["in"] = new
+    if pl.speed and abs(pl.speed - 1) > 1e-6:
+        new = round(sp * pl.speed, 4); applied.append(f"B-roll `{sid}` speed: {sp:g} -> {new:g} (editor speed {pl.speed:g}x)"); x["speed"] = new
+        notmapped[:] = [n for n in notmapped if not n.startswith(f"{L['id']}: speed ")]
+
+
+def _is_motion(tpl): return isinstance(tpl, str) and tpl.startswith("m_")
+
+
+def _retime_motion(entry, label, L, pl, Fr, sec, applied, chest=False):
+    """a motion piece whose layer was trimmed: start its clock no earlier than the new in point and fit its duration to the
+    new out point (entry + exit play inside the window). chest pieces always get explicit at / duration (their slot is
+    the segment, not the layer)."""
+    p = entry.setdefault("params", {}); ns, ne = sec(pl.start), sec(pl.end); ch = []
+    if (pl.start, pl.end) == (L["f0"], L["f1"]): return
+    at = p.get("at")
+    if (at is not None and at < ns - .5 / Fr) or (at is None and (chest or pl.start != L["f0"])):
+        ch.append(f"at {at} -> {ns}"); p["at"] = at = ns
+    at = at if at is not None else ns
+    if chest or "duration" in p or pl.end != L["f1"]:
+        d = round(ne - at, 3)
+        if d > 0 and p.get("duration") != d: ch.append(f"duration {p.get('duration')} -> {d}"); p["duration"] = d
+    if ch: applied.append(f"{label} motion piece re-timed to {ns}-{ne}s: " + ", ".join(ch))
+
+
 # ------------------------------------------------------------------ the import
 def import_edits(pr, file, src=None, captions=None, dry_run=False):
     from .export.layers import seconds_to_frames
@@ -495,6 +554,9 @@ def import_edits(pr, file, src=None, captions=None, dry_run=False):
     tmap = []                                     # (old f0, old f1, content shift frames | None if deleted)
     sel_clips = {c["id"]: c for c in (SEL.get("clips") or [])}
     deleted_segs = set()
+    aroll = not any(L.get("edit_ref", "").startswith(("broll.", "gap.")) for L in v1)
+    shot_layers = [L for L in v1 if L.get("edit_ref", "").startswith("broll.")]
+    v1 = [L for L in v1 if not L.get("edit_ref", "").startswith(("broll.", "gap."))]     # non-aroll spines: shots map to broll:, not selects
     for L in v1:
         sid = L["edit_ref"].split(".", 1)[1] if L.get("edit_ref", "").startswith("edl.") else L["id"][2:]
         pl = single.get(L["id"]); s = seg_by.get(sid)
@@ -576,10 +638,20 @@ def import_edits(pr, file, src=None, captions=None, dry_run=False):
     new_bounds = sorted({p.start for p in (single.get(L["id"]) for L in v1) if isinstance(p, Placement)} |
                         {p.end for p in (single.get(L["id"]) for L in v1) if isinstance(p, Placement)})
 
+    # ---- B-roll shots on V1 (voiceover / music / broll spines)
+    for L in shot_layers:
+        pl = single.get(L["id"])
+        if pl != "split": _map_broll(E, L["edit_ref"].split(".", 1)[1], L, pl, Fr, sec, new_bounds, False, applied, notmapped, info)
+
     # ---- V2 cutaways + end card, V3 chest
     for L in [L for L in layers if L["track"] in ("V2", "V3")]:
         pl = single.get(L["id"]); ref = L.get("edit_ref", "")
         if pl == "split": continue
+        if ref.startswith("cutaways.") and not any(str(x.get("id")) == ref.split(".", 1)[1] for x in (E.get("cutaways") or [])) \
+                and broll_entry(E, ref.split(".", 1)[1]) is not None:
+            ref = "broll." + ref.split(".", 1)[1]                  # an export from before B-roll layers had their own edit_ref
+        if ref.startswith("broll."):
+            _map_broll(E, ref.split(".", 1)[1], L, pl, Fr, sec, new_bounds, aroll, applied, notmapped, info); continue
         if ref.startswith("cutaways."):
             cid = ref.split(".", 1)[1]; cuts = E.get("cutaways") or []
             c = next((x for x in cuts if str(x.get("id")) == cid), None)
@@ -598,6 +670,8 @@ def import_edits(pr, file, src=None, captions=None, dry_run=False):
             if cs:
                 c["params"], ch = shift_params(c.get("params", {}), cs / Fr, L["f0"] / Fr - .5, L["f1"] / Fr + .5)
                 if ch: applied.append(f"cutaway `{cid}` animation times shifted {cs / Fr:+.3f}s: " + ", ".join(f"{p} {o}->{n}" for p, o, n in ch))
+            if _is_motion(c.get("template")) and (pl.end - pl.start) != (L["f1"] - L["f0"]):
+                _retime_motion(c, f"cutaway `{cid}`", L, pl, Fr, sec, applied)
         elif ref == "end_card":
             if pl is None:
                 if E.get("end_card"): E.pop("end_card"); applied.append("end card deleted")
@@ -619,7 +693,10 @@ def import_edits(pr, file, src=None, captions=None, dry_run=False):
                         ch_list[k]["params"], ch = shift_params(ch_list[k].get("params", {}), cs / Fr, L["f0"] / Fr - .5, L["f1"] / Fr + .5)
                         if ch: applied.append(f"chest.{k} animation shifted {cs / Fr:+.3f}s: " + ", ".join(f"{p} {o}->{n}" for p, o, n in ch))
             if (pl.end - pl.start) != (L["f1"] - L["f0"]) or pl.src_in != L["si"]:
-                notmapped.append(f"{L['id']}: overlay trimmed to {sec(pl.start)}-{sec(pl.end)}s; a chest graphic spans its segments: change its `out_at` / segment in edit.yaml")
+                mo = [k for k in ks if k < len(ch_list) and _is_motion(ch_list[k].get("template"))]
+                for k in mo: _retime_motion(ch_list[k], f"chest.{k}", L, pl, Fr, sec, applied, chest=True)
+                if len(mo) < len(ks):
+                    notmapped.append(f"{L['id']}: overlay trimmed to {sec(pl.start)}-{sec(pl.end)}s; a chest graphic spans its segments: change its `out_at` / segment in edit.yaml")
 
     # ---- audio stems
     had_music = "music" in E

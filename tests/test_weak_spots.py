@@ -143,3 +143,109 @@ def test_sdr_broll_is_left_alone(tmp_path):
     src = str(tmp_path / "sdr.mp4")
     subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25:duration=0.4", "-pix_fmt", "yuv420p", src], check=True)
     assert ING.sdr_source(src, STY.load(), str(tmp_path / "c")) == src and not os.path.exists(tmp_path / "c")
+
+
+# ---------------------------------------------------------------- 4. import-edits: B-roll and motion tracks
+def _layers_fixture(pr, clips):
+    ctl = pr.p("Export", "control"); os.makedirs(os.path.join(ctl, "media"), exist_ok=True)
+    for c in clips:
+        p = os.path.join(ctl, c["path"]); os.makedirs(os.path.dirname(p), exist_ok=True); open(p, "wb").close()
+    man = {"schema": "cves.layers/1", "name": "t", "fps": [30, 1], "size": [1080, 1920], "duration": 20.0, "clips": clips, "captions": [],
+           "source": {"segments": [], "edit_sha256": None}}
+    json.dump(man, open(os.path.join(ctl, "layers.json"), "w", encoding="utf-8"))
+    return ctl
+
+
+def test_import_edits_maps_broll_and_motion(demo_copy, monkeypatch):
+    """B-roll moved / head-trimmed / speed-changed / deleted and motion pieces trimmed map back onto edit.yaml"""
+    from cves import project, importer as IM
+    pr = project.Project(demo_copy); E = pr.edit
+    E["broll"] = [{"src": "Assets/a.mp4", "start": 2.0, "end": 3.0, "in": 1.0, "speed": 0.5, "snap": False},
+                  {"src": "Assets/b.mp4", "start": 4.0, "end": 5.0}, {"id": "hero", "src": "Assets/c.mp4", "start": 6.0, "end": 7.0}]
+    E["cutaways"].append({"id": "m1", "template": "m_kinetic_title", "start": 8.0, "end": 10.0, "params": {"text": "Hi", "at": 8.0, "duration": 2.0}})
+    E["chest"].append({"segment": E["chest"][0]["segment"], "template": "m_lower_third", "params": {"name": "A", "at": 1.0, "duration": 2.5}})
+    pr.save_edit(E); kchest = len(E["chest"]) - 1
+    L = lambda i, tr, a, b, ref, alpha=False: {"id": i, "track": tr, "path": f"media/{i}.mov", "start": a, "end": b, "source_in": 0.0, "edit_ref": ref, "alpha": alpha}
+    _layers_fixture(pr, [L("b01", "V2", 2.0, 3.0, "broll.b01"), L("b02", "V2", 4.0, 5.0, "cutaways.b02"), L("hero", "V2", 6.0, 7.0, "broll.hero"),
+                         L("m1", "V2", 8.0, 10.0, "cutaways.m1"), L(f"chest_{kchest}", "V3", 1.0, 3.5, f"chest.{kchest}", True)])
+    ctl = pr.p("Export", "control"); P = lambda i, a, b, si=0, sp=None: IM.Placement("V2", "video", os.path.join(ctl, "media", f"{i}.mov"), a, b, si, speed=sp,
+                                                                                    effects=[f"speed {sp:g}x"] if sp else [])
+    ed = IM.Edited(fps=(30, 1), captions=None, unmapped=[], source="x", placements=[
+        P("b01", 66, 90, 6),                 # head trimmed 6 frames (start 2.0 -> 2.2) at speed 0.5: in 1.0 -> 1.1
+        P("b02", 135, 165, 0, 2.0),          # moved +15 frames and played at 2x in the editor
+        P("m1", 246, 300, 6),                # motion cutaway: head trimmed 6 frames
+        IM.Placement("V3", "video", os.path.join(ctl, "media", f"chest_{kchest}.mov"), 30, 90, 0)])   # chest motion piece: tail trimmed 0.5 s
+    monkeypatch.setattr(IM, "parse", lambda path, src=None: ed)
+    r = IM.import_edits(pr, os.path.join(ctl, "layers.json"))
+    B = {(x.get("id") or x["src"]): x for x in r["edit"]["broll"]}
+    assert (B["Assets/a.mp4"]["start"], B["Assets/a.mp4"]["end"], B["Assets/a.mp4"]["in"]) == (2.2, 3.0, 1.1)
+    assert (B["Assets/b.mp4"]["start"], B["Assets/b.mp4"]["end"], B["Assets/b.mp4"]["speed"]) == (4.5, 5.5, 2.0)
+    assert "hero" not in B                                                    # not placed any more: deleted
+    m1 = next(c for c in r["edit"]["cutaways"] if c["id"] == "m1")
+    assert (m1["start"], m1["end"], m1["params"]["at"], m1["params"]["duration"]) == (8.2, 10.0, 8.2, 1.8)
+    ch = r["edit"]["chest"][kchest]["params"]; assert (ch["at"], ch["duration"]) == (1.0, 2.0)
+    assert not [n for n in r["not_mapped"] if "b02" in n and "speed" in n], r["not_mapped"]
+    assert not [n for n in r["not_mapped"] if f"chest_{kchest}" in n], r["not_mapped"]
+
+
+# ---------------------------------------------------------------- 5. the full Kdenlive round trip (melt)
+def _mlt_clock(frames, fps):
+    s = frames * fps[1] / fps[0]; h, rem = divmod(s, 3600); m, sec = divmod(rem, 60)
+    return f"{int(h):02d}:{int(m):02d}:{sec:06.3f}"
+
+
+def test_kdenlive_round_trip(tmp_path):
+    """export -> edit project.kdenlive as a person would (move a cutaway, trim a B-roll head, shift a caption) -> melt
+    renders it -> import-edits -> edit.yaml has the changes -> the project renders again"""
+    import sys, xml.etree.ElementTree as ET, yaml
+    from cves.export import kdenlive as KD
+    from cves import project, importer as IM, render, mix
+    if not KD.find_melt(): pytest.skip("melt not installed (Kdenlive's engine; set CVES_MELT)")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); env = dict(os.environ, PYTHONPATH=os.path.join(root, "engine"))
+    d = str(tmp_path / "rt")
+    subprocess.run([sys.executable, os.path.join(root, "tools", "make_demo.py"), d, "--small", "--size", "540x960"], check=True, env=env)
+    subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=540x960:rate=30:duration=4", "-pix_fmt", "yuv420p",
+                    os.path.join(d, "Assets", "broll_rt.mp4")], check=True)
+    pr = project.Project(d); E = pr.edit; s0 = pr.json("edl.json")["segments"][0]; t1 = round(s0["out"] - s0["in"], 3)
+    E["broll"] = [{"src": "Assets/broll_rt.mp4", "start": round(t1 - .9, 3), "end": t1, "in": 0.5, "snap": False}]; pr.save_edit(E)
+    from cves import encode
+    render.render(pr); mix.mix(pr); encode.encode(pr)
+    subprocess.run([sys.executable, "-m", "cves.cli", "--project", d, "export", "kdenlive"], check=True, env=env, capture_output=True)
+    ctl = pr.p("Export", "control"); kd = os.path.join(ctl, "project.kdenlive"); man = json.load(open(os.path.join(ctl, "layers.json"), encoding="utf-8"))
+    fps = tuple(man["fps"]); F = fps[0] / fps[1]; lay = {c["id"]: c for c in man["clips"]}
+    assert lay["b01"]["edit_ref"] == "broll.b01" and lay["c2"]["edit_ref"] == "cutaways.c2"
+    # ---- the human edit, in the file Kdenlive saves
+    tree = ET.parse(kd); r = tree.getroot(); prod = {e.get("id"): e for e in r if e.tag in ("producer", "chain")}
+    res = lambda e: next((p.text for p in prod[e.get("producer")].findall("property") if p.get("name") == "resource"), "")
+    fr = lambda v: IM._mlt_time(v, fps)
+    for pl in r.findall("playlist"):
+        if pl.get("id") == "main_bin": continue                                   # the project bin, not the timeline
+        items = list(pl)
+        for k, it in enumerate(items):
+            if it.tag != "entry" or it.get("producer") not in prod: continue
+            name = os.path.basename(res(it))
+            if name == "b01.mov":         # trim the B-roll head 6 frames: the blank before it grows by 6
+                assert items[k - 1].tag == "blank"
+                items[k - 1].set("length", _mlt_clock(fr(items[k - 1].get("length")) + 6, fps)); it.set("in", _mlt_clock(6, fps))
+            if name == "c2.mov":          # move cutaway c2 6 frames later: a 6-frame blank before it, 6 frames less after
+                pl.insert(k, ET.Element("blank", {"length": _mlt_clock(6, fps)}))
+                nxt = items[k + 1]; assert nxt.tag == "blank"; nxt.set("length", _mlt_clock(fr(nxt.get("length")) - 6, fps))
+    tree.write(kd, encoding="utf-8", xml_declaration=True)
+    srt = kd + ".srt"; txt = open(srt, encoding="utf-8").read()
+    cap = man["captions"][0]; a, b = cap["start"] - .2, cap["end"] - .2          # shift the first caption 6 frames earlier
+    ts = lambda t: f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d},{int(round(t % 1 * 1000)):03d}"
+    open(srt, "w", encoding="utf-8").write(txt.replace(txt.splitlines()[1], f"{ts(a)} --> {ts(b)}", 1))
+    # ---- melt loads and renders the edited project
+    out = tmp_path / "check.mp4"; chk = KD.melt_check(__import__("pathlib").Path(kd), render_to=out)
+    assert chk["ok"], chk
+    # ---- import
+    r = IM.import_edits(pr, kd, src="kdenlive")
+    E2 = yaml.safe_load(open(pr.e("edit.yaml"), encoding="utf-8"))
+    br = E2["broll"][0]; assert abs(br["start"] - (lay["b01"]["start"] + .2)) < .5 / F and abs(br["in"] - 0.7) < 1e-6, (br, r["applied"])
+    c2 = next(c for c in E2["cutaways"] if c["id"] == "c2"); assert abs(c2["start"] - (lay["c2"]["start"] + .2)) < .5 / F and c2["snap"] is False, c2
+    ev = E2["captions"]["events"]; assert any(abs(e["start"] - round(a, 3)) < .5 / F for e in ev), ev
+    assert not [n for n in r["not_mapped"] if "b01" in n or "c2" in n], r["not_mapped"]
+    # ---- rebuild
+    render.render(project.Project(d)); TL = json.load(open(pr.e("timeline.json"), encoding="utf-8"))
+    cuts = {c["id"]: c for c in TL["cutaways"]}
+    assert abs(cuts["b01"]["start"] - br["start"]) < .5 / F and abs(cuts["c2"]["start"] - c2["start"]) < .5 / F
