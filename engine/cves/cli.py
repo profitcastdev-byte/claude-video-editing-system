@@ -266,6 +266,7 @@ def main(argv=None):
     elif a.cmd == "qc":
         from . import qc
         if a.stage in ("story", "plan"):
+            if a.stage == "plan": from . import schema; schema.require_valid(pr)    # the same validation `cves build` runs: a plan that passes here builds
             nf, rep = qc.run_stage(pr, a.stage); print(rep); sys.exit(1 if nf else 0)
         v = a.video or _latest_export(pr); nf, rep = qc.run(pr, v, fast=a.fast); print(rep)
         from . import learn; learn.on_qc(pr); sys.exit(1 if nf else 0)

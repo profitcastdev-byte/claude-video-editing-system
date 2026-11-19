@@ -134,6 +134,18 @@ def schedule(events, hidden, fps, cfg, log=None):
         k += 1
     return [(a, b, ws) for a, b, ws in ev if b > a and ws]
 
+_PUNCT = ".,?!;:\"'"
+
+def fix_word(w, fixes):
+    """captions.fixes: a mis-heard word -> its spelling. Keys match whatever their case and punctuation ("Alena",
+    "dentists,"); the fix's spelling and case win, the spoken word keeps its punctuation (first real job: "Alena" -> aligner)"""
+    if not fixes: return w
+    F = {str(k).strip(_PUNCT).lower(): str(v) for k, v in fixes.items()}
+    core = w.strip(_PUNCT); rep = F.get(core.lower())
+    if rep is None or not core: return w
+    pre, post = w[:w.index(core)], w[w.index(core) + len(core):]
+    return pre + (rep.strip(_PUNCT) or rep) + post       # the fix's own spelling and case; the spoken word's punctuation
+
 def build(words, cfg, t_end):
     """words: [[start, end, word]] (cut time) -> [(start, end, [(word, t)])] phrases.
     A phrase ends at a sentence end, before max_chars, or before it would need more than max_lines measured lines."""
@@ -142,9 +154,7 @@ def build(words, cfg, t_end):
     maxl = max(1, int(cfg.get("max_lines", 2))); maxc = 1 if cfg.get("style") == "one_word" else maxc
     L, nlines = _measure(cfg)
     toks = []
-    for s, e, w in words:
-        k = w.strip(".,?!").lower()
-        toks.append((fixes.get(w.lower(), fixes.get(k, w) if w.lower() == k else w), s))
+    for s, e, w in words: toks.append((fix_word(w, fixes), s))
     phrases, cur = [], []
     for w, s in toks:
         if cur and (L(cur + [(w, s)]) > maxc or (maxc > 1 and nlines(cur + [(w, s)]) > maxl)):
@@ -188,7 +198,23 @@ def _bounce(p):
     if p < 2.5 / d: p -= 2.25 / d; return n * p * p + .9375
     p -= 2.625 / d; return n * p * p + .984375
 
-def element(TL, t, chin, events, S):
+def _bright_under(im, frame, sz):
+    """the bright end (p90 luminance) of the picture under a text layer, as an RGB tuple, or None without a frame. The
+    bed is then sized for what is really behind the words, not only for the style's assumed mid-tone (GFX-15 on the first
+    real job: a white caption over a window-lit cheek at 2.8:1)"""
+    if frame is None or getattr(frame, "ndim", 0) != 3 or frame.shape[2] < 3: return None
+    al = np.asarray(im)[..., 3]; ys, xs = np.nonzero(al)
+    if not len(ys): return None
+    p = int(sz * .3); H_, W_ = frame.shape[:2]
+    y0, y1, x0, x1 = max(0, ys.min() - p), min(H_, ys.max() + p + 1), max(0, xs.min() - p), min(W_, xs.max() + p + 1)
+    patch = np.asarray(frame[y0:y1, x0:x1, :3], np.float32)
+    if patch.size == 0: return None
+    if patch.max() <= 1.001: patch = patch * 255
+    L = .2126 * patch[..., 0] + .7152 * patch[..., 1] + .0722 * patch[..., 2]
+    sel = patch[L >= np.percentile(L, 90)]
+    return tuple(int(round(v)) for v in sel.mean(0)) if len(sel) else None
+
+def element(TL, t, chin, events, S, frame=None):
     """the caption layer at time t (or None) as a templates.El"""
     from .templates import El
     cfg = resolve(S.get("captions") or {}); style = cfg.get("style", "word_reveal")
@@ -310,6 +336,9 @@ def element(TL, t, chin, events, S):
             layers.append(base)
             if cfg.get("legible", True):
                 bg = G.sget("legibility.video_bg_broll", "#C8C8C8") if over_broll else None   # full-bleed footage runs brighter than a presenter's wall
+                seen = _bright_under(im, frame, sz) if G.sget("legibility.measure", True) else None
+                if seen is not None and G.lum(seen) > G.lum(G.col(bg) or G._rgb(G.sget("legibility.video_bg", "#B4B4B4"))):
+                    bg = seen      # the real frame is brighter than the assumed worst case (a window-lit cheek): size the bed for it
                 # the bed keeps the main colour's polarity but is as dark as the darkest light fill needs: an accent word
                 # (emphasis / highlight) is darker than white and failed GFX-15 on a mid-tone shirt under the white's bed
                 fills = [em_col[:3] for tk, *_ in placed if tk["emph"]] + ([hi[:3]] if style in ("highlight", "one_word", "karaoke") and cfg.get("highlight_mode", "text") != "pill" else [])

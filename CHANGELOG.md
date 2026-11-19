@@ -5,6 +5,14 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
 
 ## [Unreleased]
 
+### Fixed (first real job, integration)
+- Prep no longer reuses a stale plate / matte after a re-cut that keeps segment ids (render ran out of frames); legacy plates are adopted when their length matches.
+- FRAME-03 judges the halo the pipeline added (output vs the source plate at the same edge), not the room's own edges.
+- `cves qc --stage plan` validates like `cves build`; abutting cutaways within half a frame no longer error.
+- Motion pieces: stray edge pixels join the nearest part (no 1 px element with a jumping box, MOT-01).
+- `text_behind`: harmonised instances keep the harmonising fit's line layout (GFX-20).
+- `captions.fixes`: case- and punctuation-insensitive keys (`Alena: aligner` works).
+
 ### Added
 - **Take alignment in `cves select`** (`cves.align`, docs/INGEST.md "Take alignment"). Long-form whisper word times drift
   by 1-3 s around retakes and pauses, so clip edges picked from `raw_words.json` clipped words. Every `selects.yaml` clip

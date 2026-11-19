@@ -163,8 +163,15 @@ def text_behind(t, p, ctx):
     max_w = _max_w(B, scale); track = float(B("tracking", -4)) * G.U; weight = str(B("weight", "xb"))
     max_lines = int(p.get("lines", B("max_lines", 2)))
     hs = ctx.get("behind_size")
-    size = float(p["size"]) * G.U if "size" in p else (float(hs) if hs else float(B("size", 300)) * G.U)
-    f, lines, sp = _fit(words, size, max_w, max_lines, B)
+    if "size" not in p and hs:
+        # the harmonised size came from fitted_size(): take the same layout decision it took (from the style size), then
+        # set the shared size. Fitting again FROM the shared size is path-dependent: a two-word line that wrapped there
+        # would stay on one line here and shrink below it (GFX-20 on the first real job: 169 vs 104 px)
+        f, lines, sp = _fit(words, float(B("size", 300)) * G.U, max_w, max_lines, B)
+        if f.size > float(hs): f = G.font(weight, int(hs)); lines, sp = _layout(words, f, track, max_w, len(lines))
+    else:
+        size = float(p["size"]) * G.U if "size" in p else float(B("size", 300)) * G.U
+        f, lines, sp = _fit(words, size, max_w, max_lines, B)
     cap = f.size * .72; lead = f.size * .92
     pos = str(p.get("position", B("position", "above")))
     if not matte and str(B("no_matte", "above")) == "above": pos = "clear"

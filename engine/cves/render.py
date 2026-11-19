@@ -357,10 +357,10 @@ def glitch(img, e, seed):
     lines = (np.arange(G.H) % 4 < 1)[:, None, None].astype(np.float32)
     return np.clip(out * (1 - .25 * e * lines) + np.array([.1, .9, .6], np.float32) * .12 * e * lines, 0, 1)
 
-def caption_el(TL, t, chin):
+def caption_el(TL, t, chin, frame=None):
     if any(a <= t < b for a, b in getattr(TL, "cap_hide", [])): return None
     S = STY.Style({**TL.S, "captions": TL.cap_cfg})
-    return CAP.element(TL, t, chin, TL.caps, S)
+    return CAP.element(TL, t, chin, TL.caps, S, frame=frame)
 
 # ------------------------------------------------------------------ frame composition
 def compose(TL, i, P=None, A=None, k=0, mode="final"):
@@ -426,7 +426,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
                 front += TPL.get(c["template"])[0](t, c.get("params", {}), TL.ctx(s["t0"], s["t1"], chin=chin, chin_hold=chin_hold))
             snapped = TL.snap and TL.snap[0] <= t < TL.snap[1] and sid in TL.roto   # the snap's roto type replaces the captions; a bare punch-in keeps them
             if not front and not snapped and mode != "chest":     # chest mode: graphics only, captions go to subtitles
-                ce = caption_el(TL, t, cap_chin)
+                ce = caption_el(TL, t, cap_chin, frame=img)
                 if ce: front.append(ce)
             if img is None: img = np.zeros((G.H, G.W, 4), np.float32); ov = True
             else: ov = False
@@ -451,7 +451,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
 
 def _caption_front(TL, t, img, els):
     """captions over a frame with no presenter (B-roll, gaps): low in the safe zone; img None = a transparent overlay"""
-    ce = caption_el(TL, t, None)
+    ce = caption_el(TL, t, None, frame=img)
     if ce is None: return img, els
     if img is None:
         img = np.zeros((G.H, G.W, 4), np.float32); a = np.asarray(ce.im, np.float32) / 255; al = a[..., 3:4]

@@ -264,7 +264,10 @@ def caption_measure(yuv, bbox):
         yb = Y0 + a + int(np.where(ink[a:b, x])[0][-1]); X = X0 + x
         if yb + 30 < H: near.append(np.median(yuv[0, yb + 4:yb + 9, X])); far.append(np.median(yuv[0, yb + 22:yb + 31, X]))
     shadow = float(np.median(far) - np.median(near)) if near else None
-    ys, xs = np.where(ink); margin = max(ys.min() + Y0 - y0, y1 - (ys.max() + Y0), xs.min() + X0 - x0, x1 - (xs.max() + X0))
+    # the margin is measured to ALL the type, white or accent-coloured: an accent word at a line end ("... a 100%") is not
+    # white, and counting only white ink read its width as empty layer (PLAT-10 on the first real job: 171 px)
+    allink = ink | ((np.hypot(Cb, Cr) > 30) & (Y > 50))
+    ys, xs = np.where(allink); margin = max(ys.min() + Y0 - y0, y1 - (ys.max() + Y0), xs.min() + X0 - x0, x1 - (xs.max() + X0))
     return dict(lines=len(bands), widths=widths, cap_h=int(max(caps_)), x_h=int(np.median(xs_)), fill=[float(v) for v in fill], shadow=shadow, margin=int(margin))
 
 def cheek_patches(yuv, lm, fw):
@@ -288,7 +291,7 @@ def plan_aroll(cx):
         per[s["id"]] = dict(seg=s, vis=vis, pick=sorted(pick), first=vis[0], last=vis[-1], mid=vis[len(vis) // 2])
     return per
 
-def aroll_frame(cx, f, yuv, matte, plate):
+def aroll_frame(cx, f, yuv, matte, plate, src=None):
     m = cx.aroll_M(f)
     if m is None or matte is None: return
     M, s, k, face = m; z, tx, ty = float(M[0, 0]), float(M[0, 2]), float(M[1, 2])
@@ -311,8 +314,12 @@ def aroll_frame(cx, f, yuv, matte, plate):
         r["eye_y"] = float(lm[:2, 1].mean()); r["eye_x"] = float(lm[:2, 0].mean())
     # FRAME-03 halo: luma 3-7 px outside the matte edge vs the wall 20-40 px out ALONG THE SAME NORMAL: every outside pixel is
     # binned by its nearest subject pixel (40 px cells of the edge); a cell is judged only where its wall band is uniform
-    # (std <= 10 Y), so a background object edge near the silhouette is not read as a halo
+    # (std <= 10 Y), so a background object edge near the silhouette is not read as a halo. With the source plate the halo
+    # is what the PIPELINE added: the same ring - wall step measured in the camera frame (scaled by the grade's wall gain)
+    # is subtracted. A real room (a bright wall strip between the head and a dark monitor) has a ring brighter than its
+    # 'wall' in the camera already; that is the scene, not a halo (first real job: +97 Y read as a halo on an untouched edge)
     Y = yuv[0]
+    Ys = cv2.warpAffine(src, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE).astype(float) if src is not None else None
     dist, lab = cv2.distanceTransformWithLabels((~inside).astype(np.uint8), cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
     reg = np.zeros((H, W), bool); reg[6:int(min(H - 6, chin + .6 * fb[3])), 6:W - 6] = True; reg &= ~elmask
     src = np.flatnonzero(inside.ravel())   # label i -> i-th zero pixel of the source (= subject pixel) in raster order
@@ -324,6 +331,9 @@ def aroll_frame(cx, f, yuv, matte, plate):
         m = cell == cid; a, b = yv[m & isring], yv[m & ~isring]
         if len(a) < 40 or len(b) < 80 or b.std() > 10: continue
         ex = float(np.median(a) - np.median(b))
+        if Ys is not None:
+            ys_ = Ys[by[m], bx[m]]; ap, bp = float(np.median(ys_[isring[m]])), float(np.median(ys_[~isring[m]]))
+            ex -= (float(np.median(b)) / bp if bp > 8 else 1.0) * (ap - bp)
         if worst is None or ex > worst[0]: worst = (ex, f"edge cell x{(cid % 1000) * 40} y{(cid // 1000) * 40}", float(np.median(a)), float(np.median(b)))
     r["halo"] = worst
     # colour: skin core (cheeks), wall patch, frame statistics with graphics masked
@@ -1045,14 +1055,17 @@ def run_extra(pr, video, gate):
     card_fr = {i.key: hold_frames(i) for i in roto_cards(cx)}            # GFX-27: the subject matte over each roto card's hold
     roto_fr = sorted(set(roto_fr) | {f for v in card_fr.values() for f in v})
     mattes = {}             # plate-space mattes for sampled A-roll frames and for roto text frames (person mask)
+    halo_src = {}           # plate-space source luma of the sampled A-roll frames (FRAME-03: what the edge looked like in the camera)
     for s in cx.segs:
         fs = set(per[s["id"]]["pick"] if s["id"] in per else []) | {f for f in roto_fr if s["f0"] <= f < s["f0"] + s["n"]}
         if not fs: continue
         for k, a in decode_plate_frames(cx, pr.e("matte", f"{s['id']}.mkv"), [f - s["f0"] for f in fs]).items(): mattes[s["f0"] + k] = a
         if s["id"] in per:
             p = per[s["id"]]
-            for k, a in decode_plate_frames(cx, pr.e("plate", f"{s['id']}.mkv"), [p["first"] - s["f0"]]).items(): plates[s["f0"] + k] = a
-            for f in p["pick"]: need[f].append(lambda f, yuv: aroll_frame(cx, f, yuv, mattes.get(f), plates.pop(f, None)))
+            src = decode_plate_frames(cx, pr.e("plate", f"{s['id']}.mkv"), [f - s["f0"] for f in p["pick"]])   # FRAME-03 compares with the source
+            for k, a in src.items(): halo_src[s["f0"] + k] = a
+            if p["first"] - s["f0"] in src: plates[p["first"]] = src[p["first"] - s["f0"]]                        # FRAME-10: one frame per shot
+            for f in p["pick"]: need[f].append(lambda f, yuv: aroll_frame(cx, f, yuv, mattes.get(f), plates.pop(f, None), halo_src.pop(f, None)))
     for c in cx.caps:       # caption style / lines: last transition-free frame showing every word (else the last transition-free frame)
         ws = cx.cap_words(c); ok = [int(f) for f in c.f if not cx.in_trans(int(f))]
         if not ok: cx._results["cap_unmeasured"].append(c.id); continue

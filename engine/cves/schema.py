@@ -582,7 +582,7 @@ def _edit_specific(v, E):
                 snapped.append((s0, s1, j))
             snapped.sort()
             for (a0, a1, ja), (b0, b1, jb) in zip(snapped[:-1], snapped[1:]):
-                if b0 < a1 - 1e-6 and b1 > b0 and a1 > a0:
+                if b0 < a1 - (.5 / v.fps if v.fps else 1e-3) and b1 > b0 and a1 > a0:   # abutting within half a frame is a clean hand-off, not an overlap
                     v.err(f"cutaways[{jb}]", f"after snapping to segment boundaries it overlaps cutaways[{ja}] ({a0:.2f}-{a1:.2f} s); set snap: false on one")
     # ---- roto / chest
     seen = {}

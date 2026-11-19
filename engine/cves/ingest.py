@@ -542,18 +542,35 @@ def _edl_rate(edl):
     fr = edl.get("fps_rational")
     return Fraction(*fr) if fr else Fraction(edl["fps"]).limit_denominator(1001)
 
+def _frames(path):
+    """packet (frame) count of the first video stream, without decoding"""
+    r = subprocess.run([C.get("ffprobe"), "-v", "error", "-count_packets", "-select_streams", "v:0", "-show_entries", "stream=nb_read_packets",
+                        "-of", "csv=p=0", path], capture_output=True, text=True)
+    try: return int(r.stdout.strip())
+    except ValueError: return -1
+
 def plate(pr):
     edl = pr.json("edl.json"); F = edl["fps"]; fr = _edl_rate(edl); S = _S(pr); os.makedirs(pr.e("plate"), exist_ok=True)
     size = tuple(edl.get("size") or canvas(pr, S))
     srcs = sorted({s.get("src") or primary(pr) for s in edl["segments"]}, key=lambda s: (s != primary(pr), s))
     _, plans = conform_sources(pr, [norm_src(pr, s) for s in srcs], S)
     def job(s):
-        out = pr.e("plate", f"{s['id']}.mkv")
-        if os.path.exists(out): return
-        src = norm_src(pr, s.get("src")); plan = plans[src]; P = plan["probe"]
+        out = pr.e("plate", f"{s['id']}.mkv"); src = norm_src(pr, s.get("src")); plan = plans[src]; P = plan["probe"]
+        # a plate is reused only when it was cut from the same source span with the same conform: segment ids survive a
+        # re-cut (cves select, take alignment), so file existence alone would reuse a stale plate of the wrong length
+        key = json.dumps({"src": src, "in": round(s["in"], 5), "out": round(s["out"], 5), "fps": str(fr), "size": list(size),
+                          "vf": plate_vf(plan, s, size, fr)}, sort_keys=True)
+        kf = out[:-4] + ".key"
+        if os.path.exists(out) and os.path.exists(kf) and open(kf, encoding="utf-8").read() == key: return
+        if os.path.exists(out) and not os.path.exists(kf) and _frames(out) == round((s["out"] - s["in"]) * F):   # a plate from before keys: adopt it
+            with open(kf, "w", encoding="utf-8") as fh: fh.write(key)
+            return
+        for stale in (out, pr.e("matte", f"{s['id']}.mkv")):
+            if os.path.exists(stale): os.remove(stale)
         tags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"] if plan.get("tonemap") else []
         sh([C.get("ffmpeg"), "-v", "error", "-y", "-ss", f"{s['in']:.5f}", "-i", _abs(pr, src), "-map", f"0:v:{P['stream']}", "-frames:v", str(round((s["out"] - s["in"]) * F)),
             "-vf", plate_vf(plan, s, size, fr), "-c:v", "ffv1", "-level", "3", "-pix_fmt", "yuv420p10le", *tags, out])
+        with open(kf, "w", encoding="utf-8") as fh: fh.write(key)
     with ThreadPoolExecutor(4) as ex: list(ex.map(job, edl["segments"]))
 
 # ------------------------------------------------------------------ 5. matte (RVM)
@@ -565,7 +582,7 @@ def matte(pr, variant="resnet50", ds=0.4):
     os.makedirs(pr.e("matte"), exist_ok=True); edl = pr.json("edl.json"); rate = _edl_rate(edl)
     for s in edl["segments"]:
         out = pr.e("matte", f"{s['id']}.mkv")
-        if os.path.exists(out): continue
+        if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(pr.e("plate", f"{s['id']}.mkv")): continue   # never older than its plate
         cin = av.open(pr.e("plate", f"{s['id']}.mkv")); vs = cin.streams.video[0]
         o = av.open(out, "w"); st = o.add_stream("ffv1", rate=rate); st.pix_fmt = "gray"; st.width, st.height = vs.width, vs.height
         rec = [None] * 4

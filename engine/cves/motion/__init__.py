@@ -386,17 +386,28 @@ def part_pad(size):
 
 def split_alpha(a, parts, pad):
     """partition a frame (alpha HxW, or RGBA HxWx4) into the layers of its parts + the rest ('' id), without overlap:
-    each pixel goes to the smallest visible part whose padded box holds it, the rest to ''. Compositing the
-    layers in any order gives the frame back exactly. Yields (part id, masked array)."""
+    each pixel goes to the smallest visible part whose padded box holds it; stray pixels just outside a padded box (the
+    anti-aliased row between two stacked blocks) go to the nearest part within another `pad`, so they never become a
+    1 px 'rest' element whose box jumps as the blocks move (MOT-01 on the first real job); the true rest goes to ''.
+    Compositing the layers in any order gives the frame back exactly. Yields (part id, masked array)."""
     import numpy as np
-    H, W = a.shape[:2]; claimed = np.zeros((H, W), bool)
+    H, W = a.shape[:2]; claimed = np.zeros((H, W), bool); masks = []
     for p in sorted(parts or [], key=lambda p: (p[4] - p[2]) * (p[5] - p[3])):     # smallest first: nested parts claim their box
         pid, x0, y0, x1, y1, o = p[0], p[2], p[3], p[4], p[5], p[6]
         if o < .02: continue
         x0, y0, x1, y1 = max(0, x0 - pad), max(0, y0 - pad), min(W, x1 + pad), min(H, y1 + pad)
         if x1 <= x0 or y1 <= y0: continue
         m = np.zeros((H, W), bool); m[y0:y1, x0:x1] = True; m &= ~claimed; claimed |= m
-        if not m.any(): continue
+        if m.any(): masks.append((pid, m, (x0, y0, x1, y1)))
+    alpha = a[..., 3] if a.ndim == 3 else a
+    stray = (alpha > 0) & ~claimed
+    if masks and stray.any():
+        r = max(1, int(pad))
+        for pid, m, (x0, y0, x1, y1) in masks:                                       # same order: smallest part first
+            g = np.zeros((H, W), bool); g[max(0, y0 - r):min(H, y1 + r), max(0, x0 - r):min(W, x1 + r)] = True
+            take = stray & g
+            if take.any(): m |= take; claimed |= take; stray &= ~take
+    for pid, m, _ in masks:
         out = a.copy()
         if out.ndim == 3: out[..., 3] = np.where(m, out[..., 3], 0)
         else: out = np.where(m, out, 0)

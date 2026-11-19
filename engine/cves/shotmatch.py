@@ -231,6 +231,10 @@ def apply(M, sid, k, P, A=None):
         g = (gs + gb) / 2 if A is None else gs
         return P if np.allclose(g, 1, atol=1e-4) else _lut(P, g)
     a = A.astype(np.float32) / (255 if A.dtype == np.uint8 else 1)
-    a = cv2.GaussianBlur(cv2.resize(a, (a.shape[1] // 2, a.shape[0] // 2), interpolation=cv2.INTER_AREA), (0, 0), 1.5)   # ~3 px: no step, no ring
+    a = cv2.resize(a, (a.shape[1] // 2, a.shape[0] // 2), interpolation=cv2.INTER_AREA)
+    # erode before softening: the gain blend happens INSIDE the silhouette, so no subject gain spills onto the wall next to
+    # it (a lifted 3-7 px band outside the shoulder, FRAME-03 on the first real job). Semi-transparent hair and edge pixels
+    # take the wall gain, which is what shows through them anyway
+    a = cv2.GaussianBlur(cv2.erode(a, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))), (0, 0), 1.5)   # ~3 px soft, ~7 px inside
     a = cv2.resize(a, (P.shape[1], P.shape[0]), interpolation=cv2.INTER_LINEAR)[..., None]
     return _lut(P, gs) * a + _lut(P, gb) * (1 - a)
