@@ -43,6 +43,11 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
   - `edit.yaml` validation knows the new transition kinds and the `broll:` keys `ramp`, `camera`, `match`, `out`, `depth`.
   - `tests/test_craft.py`: occlusion order (type hidden where the matte is 1), the no-matte fallback, ramp monotonicity and endpoints, frame blending, varispeed, deterministic transitions, the rate limit, camera moves, parallax layers, match-cut alignment, the restraint count, schema, and all 30 pieces rendering a frame at 1080x1920 and 1920x1080.
 
+### Fixed (v0.4 integration)
+- Captions no longer vanish during a snap punch-in that has no roto type; QC RET-12 only counts caption keywords on frames where the caption is drawn.
+- The stock demo (`tools/make_demo.py`) passes QC with 0 FAIL (it failed FRAME-03, GFX-15, RET-09 and RET-12 since v0.2); golden frames regenerated.
+- `lower_third` card: accent bar aligned to the card edge (GFX-08). `kinetic_caption_emphasis`: long words stay inside the safe zone.
+
 ### Changed
 - QC's transition windows (MOT-12, the A-roll pass, GFX-08) read `transitions.<kind>_s` from the style, the same window the renderer draws (they were fixed, so `fade` was exempted for 0.12 s while it is drawn for 0.2 s).
 ### Changed (v0.4 workstream J: weak spots)

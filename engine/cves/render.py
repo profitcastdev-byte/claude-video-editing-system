@@ -409,7 +409,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
             front = []
             for c in TL.chest.get(sid, []):
                 front += TPL.get(c["template"])[0](t, c.get("params", {}), TL.ctx(s["t0"], s["t1"], chin=chin, chin_hold=chin_hold))
-            snapped = TL.snap and TL.snap[0] <= t < TL.snap[1]
+            snapped = TL.snap and TL.snap[0] <= t < TL.snap[1] and sid in TL.roto   # the snap's roto type replaces the captions; a bare punch-in keeps them
             if not front and not snapped and mode != "chest":     # chest mode: graphics only, captions go to subtitles
                 ce = caption_el(TL, t, cap_chin)
                 if ce: front.append(ce)

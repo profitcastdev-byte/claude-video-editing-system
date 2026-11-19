@@ -141,3 +141,8 @@ synthetic references (tests/test_inspire_v2.py) and on four real reference reels
 ## v0.4 weak spots (2026-11-19, builder's call for WS J)
 - **PLAT-10 plate margin** is 26 px **at a 1080 short side** (`26 * max(1, U)`), like the cap-height line next to it. The caption shadow (blur and offset) already scales by `U`, so on a 3840x2160 master the unscaled 26 px flagged every caption (29 px) with no plate. Identical at 1080 and below.
 - **GFX-15 sampling**: text contrast is measured on frames whose bbox is static on both sides (as GFX-08), not just against the previous frame. Thresholds unchanged.
+
+## v0.4 integration (2026-11-19, builder's call)
+- **Captions during a snap punch-in.** The renderer hid captions for the whole snap window even when nothing replaced them, so a bare punch-in dropped spoken words off screen. Captions now hide in the snap only where the segment has roto type (which takes their place). QC's `cap_allowed` mirrors this, and RET-12 only counts a caption keyword on a frame where the caption is really drawn (before, a keyword hidden by the snap or a chest graphic could pass it).
+- **The stock demo passes its own QC** (it failed FRAME-03, GFX-15, RET-09 and RET-12 since v0.2): relight on (dehalo, wall unchanged), a 1.25x punch-in at 0.45 s, and the lower third moved after the topic word as a card on the sweater. Golden frames `roto_word` and `aroll_lower_third` were regenerated for it. No gate threshold changed.
+- **`lower_third` card style**: the accent bar sits on the card's left edge (it was 8 px inside, a GFX-08 near-alignment). **`kinetic_caption_emphasis`** fits its word at rest with room for the hold, then scales the entry from there, so a long word no longer ends past the safe zone.

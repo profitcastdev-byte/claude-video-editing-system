@@ -198,7 +198,9 @@ def main():
     en = lambda cid: bounds[[c[0] for c in script].index(cid) + 1]
     edit = {
         "project": {"client": "Demo", "title": "CVES demo", "raw": "Raw/demo.mp4", "language": "en"},
-        "style": {} if (W, H) == (1080, 1920) else {"canvas": {"size": [W, H]}},
+        "style": dict({} if (W, H) == (1080, 1920) else {"canvas": {"size": [W, H]}},
+                      grade={"relight": True, "background_stops": 0.0}),   # edge decontamination + dehalo, wall level unchanged (FRAME-03)
+        "aroll": {"snap": {"start": 0.45, "end": 1.45, "zoom": 1.25}},        # a punch-in inside the first second (RET-09 / RET-24)
         "captions": {"auto": True},
         "music": {"file": "Music/demo_bed.wav", "drop_track": 9.6, "drop_cut": round(st(script[2][0]), 2)},
         "qc": {"topic_keywords": ["videos"], "brand_tail": [], "duration": [5, 60]},

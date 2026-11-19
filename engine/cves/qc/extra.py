@@ -123,6 +123,11 @@ class Ctx:
             if d and abs(t - tb) < d + pad: return (tb, kind)
         return None
     def in_snap(self, f): return bool(self.snap) and self.snap[0] <= f / self.FPS < self.snap[1]
+    def snap_hides_captions(self, f):
+        """render.compose: the snap hides captions only where its segment has roto type (which replaces them)"""
+        if not self.in_snap(f): return False
+        s = self.seg_of(f); roto = {r.get("segment") for r in (self.E.get("roto") or [])}
+        return bool(s) and s["id"] in roto
     def seg_of(self, f): j = self.seg_idx[f] if 0 <= f < len(self.seg_idx) else -1; return self.segs[j] if j >= 0 else None
 
     def aroll_M(self, f):
@@ -143,7 +148,7 @@ class Ctx:
     def cap_allowed(self, f):
         """frames where the renderer may draw a caption: A-roll, no chest element, not the snap, not a hide window"""
         t = f / self.FPS                 # A-roll, B-roll shots and uncovered frames take captions; drawn cutaways do not
-        if not 0 <= f < self.A or self.in_card(t) or self.in_snap(f): return False
+        if not 0 <= f < self.A or self.in_card(t) or self.snap_hides_captions(f): return False
         if any(a <= t < b for a, b in self.cap_hide): return False
         return not any(e["role"] == "chest" for e in self.by_f.get(f, []))
 
@@ -809,9 +814,9 @@ def gates_timeline(cx, gate):
         if not i.text: continue
         if i.role == "caption":
             for (s, e, w) in cx.cap_words(i):
-                if any(k in w.lower() for k in kws):
-                    f = max(i.f0, int(math.ceil((s - .03) * FPS)))
-                    if f <= i.f1 and (first is None or f < first[0]): first = (f, i.key, w)
+                if any(k in w.lower() for k in kws):     # the first frame the word is really drawn (not hidden by a chest / snap / card)
+                    f = next((g for g in range(max(i.f0, int(math.ceil((s - .03) * FPS))), min(i.f1, int(e * FPS)) + 1) if cx.cap_allowed(g)), None)
+                    if f is not None and (first is None or f < first[0]): first = (f, i.key, w)
         elif any(k in i.text.lower() for k in kws) and (first is None or i.f0 < first[0]): first = (i.f0, i.key, i.text)
     if not kws: gate("RET-12", False, "no qc.topic_keywords in edit.yaml", status="WARN")
     else: gate("RET-12", first is not None and first[0] / FPS <= 2.0, f"topic keyword on screen at {first[0] / FPS:.2f} s ({first[1]} '{first[2]}')" if first else "no text layer shows a topic keyword")
