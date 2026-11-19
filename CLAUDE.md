@@ -17,7 +17,7 @@ Load `knowledge-base/RULEBOOK.md` and `knowledge-base/EDIT-STANDARD.md` before y
 | `engine/cves/` | Python package and the `cves` CLI: ingest, story, plan, moodboard, render, beats, mix, music, encode, deliver, assets, `qc/`, `export/`, `templates/`, `style.py` + `styles/` (default profile and optional presets) |
 | `plugin/` | Claude Code plugin `cves`: `skills/video-editor/SKILL.md` plus `commands/*.md` (one per workflow step) |
 | `.claude-plugin/marketplace.json` | Marketplace `cves`, so the plugin can be installed from this repo |
-| `knowledge-base/` | `RULEBOOK.md` (load every session), `CHECKLISTS.md`, `QA-REVIEW.md`, `QC-GATES.md` (183 rules; 95 measured automatically by `cves qc`), `DECISIONS.md`, `modules/`, `transcripts/`, `tools/` |
+| `knowledge-base/` | `RULEBOOK.md` (load every session), `CHECKLISTS.md`, `QA-REVIEW.md`, `QC-GATES.md` (185 rules; 96 measured automatically by `cves qc`), `DECISIONS.md`, `modules/`, `transcripts/`, `tools/` |
 | `assets/` | Fonts (OFL), Material icons (Apache-2.0), SFX (CC0), logos |
 | `setup/` | `install_mac.sh`, `install_windows.ps1`, `requirements*.txt`, `doctor.py` |
 | `examples/` | A demo project (`edit.yaml`, `edl.json`, notes; no client footage) |
