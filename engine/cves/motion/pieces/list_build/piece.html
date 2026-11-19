@@ -4,7 +4,7 @@
   </div>
 </div>
 <style>
-  .list { width: min(100%, calc(var(--u) * 84)); display: flex; flex-direction: column; gap: calc(var(--u) * 1.8); font-size: var(--t-4); text-align: left; }
+  .list { width: min(calc(100% - var(--u) * 18), calc(var(--u) * 84));   /* room for the 9u slide-in on both sides (PLAT-01) */ display: flex; flex-direction: column; gap: calc(var(--u) * 1.8); font-size: var(--t-4); text-align: left; }
   #tt { font-size: var(--t-5); margin-bottom: var(--s-2); text-align: left; }
   .row { display: flex; align-items: center; gap: calc(var(--u) * 2.6); padding: calc(var(--u) * 2.4) calc(var(--u) * 3);
          border-radius: var(--r); }
