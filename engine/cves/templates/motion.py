@@ -65,10 +65,18 @@ def _make(name, piece):
         texts = {p[0]: (p[1] if p[6] >= .95 else None) for p in (man.get("parts") or [[]] * job.n)[k]}
         # one element per part (text block / marked element), the rest of the frame as <name>: disjoint alpha, so the
         # composite is the frame exactly, and QC sees each block with its own bbox, text and entry frame
-        for pid, layer in MO.split_alpha(a, (man.get("parts") or [[]] * job.n)[k], MO.part_pad(job.size)):
+        parts = (man.get("parts") or [[]] * job.n)[k]
+        if a.shape[1] == G.W and a.shape[0] == G.H and a.ndim == 3:     # each part as a crop placed on a clear canvas:
+            split = ((pid, crop, xy) for pid, crop, xy in MO.split_boxes(a, parts, MO.part_pad(job.size)))   # same pixels, per-box work
+        else:
+            split = ((pid, layer, None) for pid, layer in MO.split_alpha(a, parts, MO.part_pad(job.size)))
+        for pid, layer, xy in split:
             if layer[..., 3].max() <= MO.LOG_ALPHA and pid: continue
-            im = Image.fromarray(layer)
-            if im.size != (G.W, G.H): im = im.resize((G.W, G.H), Image.LANCZOS)
+            if xy is not None:
+                im = Image.new("RGBA", (G.W, G.H), (0, 0, 0, 0)); im.paste(Image.fromarray(layer), xy)
+            else:
+                im = Image.fromarray(layer)
+                if im.size != (G.W, G.H): im = im.resize((G.W, G.H), Image.LANCZOS)
             t_key = G.q(job.start + ev.get(pid, 0) / job.fps, F)
             out.append(El(im, f"{name}.{pid}" if pid else name, role, text=texts.get(pid) if pid else None, t_key=t_key))
         return out

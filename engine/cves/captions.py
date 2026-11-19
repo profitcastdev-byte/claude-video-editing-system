@@ -198,15 +198,31 @@ def _bounce(p):
     if p < 2.5 / d: p -= 2.25 / d; return n * p * p + .9375
     p -= 2.625 / d; return n * p * p + .984375
 
+def _shadow(im, cfg):
+    """the caption's drop shadow: its alpha blurred (style captions.shadow_blur), at shadow_alpha, shadow_dy lower, as a
+    canvas layer. Worked on the text's box plus the blur's reach and its edge replication (twice the box blur's support),
+    so every pixel equals the full-frame blur + paste and the rest of the canvas stays clear."""
+    import math
+    rad = cfg.get("shadow_blur", 7) * G.U; dy = int(round(cfg.get("shadow_dy", 3) * G.U)); k = cfg.get("shadow_alpha", .7)
+    base = Image.new("RGBA", (G.W, G.H), (0, 0, 0, 0))
+    bb = im.getbbox()
+    if bb is None: return base
+    pad = 2 * 3 * (math.ceil(rad) + 2) + 4
+    x0, y0, x1, y1 = max(0, bb[0] - pad), max(0, bb[1] - pad), min(G.W, bb[2] + pad), min(G.H, bb[3] + pad)
+    al = Image.fromarray(np.asarray(im.crop((x0, y0, x1, y1)))[..., 3])
+    sh = al.filter(ImageFilter.GaussianBlur(rad)).point(lambda v: int(v * k))
+    base.paste(Image.new("RGBA", sh.size, (0, 0, 0, 255)), (x0, y0 + dy), sh)
+    return base
+
 def _bright_under(im, frame, sz):
     """the bright end (p90 luminance) of the picture under a text layer, as an RGB tuple, or None without a frame. The
     bed is then sized for what is really behind the words, not only for the style's assumed mid-tone (GFX-15 on the first
     real job: a white caption over a window-lit cheek at 2.8:1)"""
     if frame is None or getattr(frame, "ndim", 0) != 3 or frame.shape[2] < 3: return None
-    al = np.asarray(im)[..., 3]; ys, xs = np.nonzero(al)
-    if not len(ys): return None
+    bb = im.getbbox()                                            # alpha != 0
+    if bb is None: return None
     p = int(sz * .3); H_, W_ = frame.shape[:2]
-    y0, y1, x0, x1 = max(0, ys.min() - p), min(H_, ys.max() + p + 1), max(0, xs.min() - p), min(W_, xs.max() + p + 1)
+    y0, y1, x0, x1 = max(0, bb[1] - p), min(H_, bb[3] - 1 + p + 1), max(0, bb[0] - p), min(W_, bb[2] - 1 + p + 1)
     patch = np.asarray(frame[y0:y1, x0:x1, :3], np.float32)
     if patch.size == 0: return None
     if patch.max() <= 1.001: patch = patch * 255
@@ -329,11 +345,7 @@ def element(TL, t, chin, events, S, frame=None):
         im = G.layer(draw)
         layers = []
         if cfg.get("shadow", True) and style != "box":
-            al = np.asarray(im)[..., 3]
-            sh = Image.fromarray(al).filter(ImageFilter.GaussianBlur(cfg.get("shadow_blur", 7) * G.U))
-            base = Image.new("RGBA", (G.W, G.H), (0, 0, 0, 0))
-            base.paste(Image.new("RGBA", (G.W, G.H), (0, 0, 0, 255)), (0, int(round(cfg.get("shadow_dy", 3) * G.U))), sh.point(lambda v: int(v * cfg.get("shadow_alpha", .7))))
-            layers.append(base)
+            layers.append(_shadow(im, cfg))
             if cfg.get("legible", True):
                 bg = G.sget("legibility.video_bg_broll", "#C8C8C8") if over_broll else None   # full-bleed footage runs brighter than a presenter's wall
                 seen = _bright_under(im, frame, sz) if G.sget("legibility.measure", True) else None
@@ -347,7 +359,9 @@ def element(TL, t, chin, events, S, frame=None):
                 bed = G.legible_bed(im, col[:3], sz, bg=bg, force=force, reach=2 + 2 * math.ceil(outline * G.U))   # an outline pushes the glyph edge out
                 if bed is not None: layers.insert(0, bed)
         out = Image.new("RGBA", (G.W, G.H), (0, 0, 0, 0))
-        for L in layers: out.alpha_composite(L)
-        out.alpha_composite(im)
+        boxes = [b for b in (L.getbbox() for L in layers + [im]) if b]      # a clear source pixel leaves the clear canvas as it is:
+        if boxes:                                                          # composite only the union of the visible boxes
+            u = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+            for L in layers + [im]: out.alpha_composite(L, dest=u[:2], source=u)
         return El(out, f"caption@{a:.2f}", "caption", text=" ".join(w for w, _ in words), t_key=words[0][1], font=fname)
     return None

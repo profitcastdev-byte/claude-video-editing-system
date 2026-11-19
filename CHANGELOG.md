@@ -5,6 +5,31 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
 
 ## [Unreleased]
 
+### Speed (same pixels)
+- **Incremental render by default** (`cves.rcache`, ARCHITECTURE §6b). Every frame of a final render is keyed by a hash
+  of what decides it (engine code, visual style, canvas, its segment's plate / matte / faces / framing / colour match, the
+  cutaway over it, its transition state and caption events, roto / end-card entries, the media files); `cves build` and
+  `cves render` re-render only the frames whose key changed and rebuild `Edit/elements.jsonl` from the kept frames'
+  records. Frames, element log, timeline and the encoded master equal a full render's (tests/test_render_cache.py). A
+  sound / delivery-only change re-renders nothing and leaves the element log untouched (the mix's cue-sync cache stays
+  valid). `--no-cache` / style `render.cache: false` render everything. Index: `Edit/frames/_cache.json`.
+- **`cves build --draft`**: a half-size (`render.draft_scale`) render through the proxy path into `Edit/draft/` (own
+  frames, cache, mix, QC stamp), proxy encode tagged `comment=cves-draft`, fast QC. The final build is untouched;
+  `cves deliver` refuses a draft even with `--force-unchecked` (`deliver.is_draft`).
+- **Render hot paths, bit-identical output** (tests/test_render_speed.py checks each against the code it replaced):
+  `gfx.over` blends only the box of a layer's visible pixels (and in place where render owns the frame); the element log
+  finds boxes with PIL in C instead of `np.where` on full frames; motion pieces split into per-part crops
+  (`motion.split_boxes`) instead of one full-frame copy per part; the colour match shares one contiguous LUT index per
+  channel between the subject and wall passes and blends without temporaries; `look.grade` skips an identity tint and a
+  redundant copy; the legibility bed, caption shadow, caption composite, `faded()` and the `text_behind` push work on the
+  type's box (with the filters' full reach) instead of the whole frame.
+- **Mix**: the cue-sync pixel scan reads frames on a few threads and keeps the scan of every frame whose frame-cache keys
+  (and the timeline) did not change, so a tweak re-scans only round the re-rendered frames (benchmark mix 48 s -> 17 s
+  cold, 8 s cached); the voice loudness is measured once while the bed is levelled. `mix.wav` is byte-identical.
+- **Worker pool**: segments are split into chunks (`render.chunk_min`) so the pool no longer waits on the longest shot;
+  plates / mattes seek to a chunk's keyframe instead of decoding the shot from its start; frames under a cutaway skip the
+  plate's RGB conversion; PNGs are quantised, encoded and written on a background thread while the next frame composes.
+
 ### Fixed (first real job, integration)
 - Prep no longer reuses a stale plate / matte after a re-cut that keeps segment ids (render ran out of frames); legacy plates are adopted when their length matches.
 - FRAME-03 judges the halo the pipeline added (output vs the source plate at the same edge), not the room's own edges.

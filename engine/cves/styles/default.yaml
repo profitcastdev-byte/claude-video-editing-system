@@ -378,6 +378,10 @@ review:                       # `cves review` (docs/REVIEW.md): the render revie
   end_tail_db: -30            # master level in its last 50 ms above this (dBFS) = audio cut off, not faded or ended on a hit
   earshot: auto               # auto (run `earshot measure` on the master when installed) | off
   earshot_timeout_s: 180      # give up on earshot after this long (the pack is written without it), s
+render:                       # how frames are rendered (docs/ARCHITECTURE.md §6b); never changes a pixel of the final build
+  cache: true                 # incremental render: re-render only frames whose inputs changed (cves.rcache); false = every frame, every time
+  chunk_min: 24               # frames per worker job at least (segments are split into chunks so the pool stays busy)
+  draft_scale: 0.5            # `cves build --draft`: fraction of the canvas (even-rounded); encoded with treatments.proxy_preset / proxy_crf
 treatments:                   # `cves treatments` (docs/TREATMENTS.md): creative alternatives of one plan, compared as fast proxies
   offer: [punchy, cinematic, minimal]   # treatments `make` builds when none are named (PROJECT/treatments/*.yaml are added)
   prefer: null                # the treatment offered first; `cves learn mine` proposes it per goal / client from past picks

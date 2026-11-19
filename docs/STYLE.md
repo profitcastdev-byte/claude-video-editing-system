@@ -824,6 +824,17 @@ no gate covers, and the loop cap.
 | `review.earshot` | `auto` | `auto` runs `earshot measure --json --light` on the master when earshot is installed (`audio.json` `earshot`); `off` skips it |
 | `review.earshot_timeout_s` | `180` | give up on earshot after this long; the pack is written without it |
 
+#### `render`
+
+How frames are rendered ([ARCHITECTURE.md](ARCHITECTURE.md) §6b). None of these change a pixel of the final build; they
+are left out of the frame cache key.
+
+| key | default | meaning |
+|---|---|---|
+| `render.cache` | `true` | incremental render (`cves.rcache`): a full final render re-renders only the frames whose inputs changed and rebuilds the element log from the rest; the result equals a full render. `false` (or `--no-cache`) renders every frame |
+| `render.chunk_min` | `24` | the smallest worker job, in frames: segments are split into chunks of about a quarter of a worker's share, so the pool is not left waiting on the longest shot |
+| `render.draft_scale` | `0.5` | `cves build --draft`: fraction of the canvas (even-rounded), the proxy path; encoded with `treatments.proxy_preset` / `proxy_crf`, QC'd with the fast set, never deliverable |
+
 #### `treatments`
 
 `cves treatments` ([TREATMENTS.md](TREATMENTS.md)): 2-3 creative takes on one plan, rendered as fast proxies and compared.

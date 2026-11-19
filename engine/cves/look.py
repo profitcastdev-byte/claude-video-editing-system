@@ -91,7 +91,7 @@ def grade(rgb, alpha, face=None, g=None):
     tint = np.array(g.get("subject_tint", [1, 1, 1]), np.float32)
     def sub_grade(x):
         x = np.clip(gain * x ** gamma, 0, 1) if (gamma != 1.0 or gain != 1.0) else x
-        return x * tint
+        return x if np.all(tint == 1) else x * tint          # x * 1.0 == x exactly: skip the full-frame multiply
     if g.get("relight") and alpha is not None:
         a = edge_alpha(alpha, *g.get("edge_alpha_range", [0.2, 0.8]))
         if g.get("edge_decontaminate", True):
@@ -115,4 +115,4 @@ def grade(rgb, alpha, face=None, g=None):
         out = out / (1 + sh * out) * (1 + sh) * g.get("shoulder_gain", 1.0)
     lift = np.array(g.get("black_lift", [0, 0, 0]), np.float32)
     if lift.any(): out = out + lift * (1 - out)
-    return np.clip(out, 0, 1).astype(np.float32)
+    return np.clip(out, 0, 1).astype(np.float32, copy=False)

@@ -216,9 +216,22 @@ def params_at(M, sid, k):
     ks = np.array(m["k"], float); GS = np.array(m["gs"]); GB = np.array(m["gb"])
     return (np.array([np.interp(k, ks, GS[:, c]) for c in range(3)]), np.array([np.interp(k, ks, GB[:, c]) for c in range(3)]))
 
-def _lut(P, g):
-    idx = np.clip(P * (_LUT_N - 1) + .5, 0, _LUT_N - 1).astype(np.int32); out = np.empty_like(P)
-    for c in range(3): out[..., c] = oetf(_LIN * g[c]).astype(P.dtype)[idx[..., c]]
+def _idx(P):
+    """LUT index of every value (intp: the gathers below then use it without converting it again)"""
+    return np.clip(P * (_LUT_N - 1) + .5, 0, _LUT_N - 1).astype(np.intp)
+
+def _table(g, c, dtype):
+    return oetf(_LIN * g[c]).astype(dtype)
+
+def _chan_idx(P):
+    """per-channel contiguous intp index arrays (a gather from a contiguous intp index is numpy's fast path; one set is
+    shared by the subject and wall passes of a frame)"""
+    return [_idx(P[..., c]) for c in range(3)]
+
+def _lut(P, g, idx=None):
+    """per-channel LUT lookup; idx = _chan_idx(P) (shared by the subject and wall passes of one frame)"""
+    ix = _chan_idx(P) if idx is None else idx; out = np.empty_like(P)
+    for c in range(3): out[..., c] = _table(g, c, P.dtype)[ix[c]]
     return out
 
 def apply(M, sid, k, P, A=None):
@@ -237,4 +250,7 @@ def apply(M, sid, k, P, A=None):
     # take the wall gain, which is what shows through them anyway
     a = cv2.GaussianBlur(cv2.erode(a, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))), (0, 0), 1.5)   # ~3 px soft, ~7 px inside
     a = cv2.resize(a, (P.shape[1], P.shape[0]), interpolation=cv2.INTER_LINEAR)[..., None]
-    return _lut(P, gs) * a + _lut(P, gb) * (1 - a)
+    idx = _chan_idx(P)
+    out = _lut(P, gs, idx); out *= a                       # = lut(gs) * a + lut(gb) * (1 - a), without temporaries
+    wall = _lut(P, gb, idx); wall *= (1 - a); out += wall
+    return out

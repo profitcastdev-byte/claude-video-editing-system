@@ -73,7 +73,7 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `ingest.json` | ingest | per source: probe (w, h, fps, rotation, hdr, sar), conform applied, plate_scale; top level: canvas, fps_rational, plate_scale (max), language_detected. See [INGEST.md](INGEST.md) |
 | `voice_chain.json` | ingest | `{"steps": [{"name", "generative": bool, "params"}]}` (SND-30 reads it); the last step is `adaptive_gate` with each take's measured floor / speech / threshold / depth |
 | `shot_match.json` | render (Timeline) | per-shot colour match (`grade.shot_match`): `reference`, per-shot skin / wall stats, the measured samples, and per shot `k` (plate frames), `gs` / `gb` (linear subject / wall gains); `_sig` = what it was solved for |
-| `cue_sync.json` | mix (`sound.sync_cues`) | pixel-change onsets measured on the rendered frames near each cue, with the render signature (element log + timeline) they belong to: `cves qc` rebuilds the same synced cue list |
+| `cue_sync.json` | mix (`sound.sync_cues`) | pixel-change onsets measured on the rendered frames near each cue, with the render signature (element log + timeline) they belong to: `cves qc` rebuilds the same synced cue list. Also `tl` (sha256 of `timeline.json`) and `keys` (the frame-cache key of every frame a scan read): after an incremental render only the windows round re-rendered frames are scanned again |
 | `words.json` | ingest | `[[t0, t1, word]]` in cut time; language from `edit.yaml project.language` > `captions.language` (`auto` = detect) |
 | `style.yaml` | `cves inspire` | measured style profile + `_evidence` |
 | `inspire/` | `cves inspire` | `REPORT.md` (see / hear / feel per reference + the per-dimension mix), `<ref>-sheet.jpg` contact sheets, `aesthetic-review.md` (Claude fills it), `cache/` (per-reference measurements) |
@@ -85,6 +85,8 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `timeline.json` | render | resolved timeline (spine, zoom, cutaways incl. `broll` shots, transitions, fps_rational, size, segments with `kind`) |
 | `IMPORT-REPORT.md` | `cves import-edits` | editor changes mapped onto edit.yaml / selects.yaml (backups `*.bak-<time>`), and what could not be mapped. `Export/control/layers.json` (schema in CONTROL-MODE.md §3) is the reference it compares against |
 | `elements.jsonl` | render | one record per drawn element per frame (id, role, bbox, text, t_key, asset, font, size when the template logs it) |
+| `frames/` + `frames/_cache.json` | render | the rendered frames (`NNNNN.png`) and the frame cache index: `{v, log_sha, keys: {frame: key}}`, the input key of every frame whose PNG and element records are current, and the sha256 of the `elements.jsonl` they pair with (`cves.rcache`, ARCHITECTURE §6b). A final render re-renders only frames whose key changed; `--only` renders drop their frames from it |
+| `draft/` | `cves build --draft` | the draft Variant (ARCHITECTURE §6b): a copy of `edit.yaml` (+ `treatment.yaml`), its own `frames/`, `elements.jsonl`, `timeline.json` (`draft: true`, `proxy`), `mix.wav`, `stems/`, `qc.json` (`draft: true`), `QC-REPORT.txt` and `<title>_draft.mp4` (tagged `comment=cves-draft`). Never delivered |
 | `QC-REPORT.txt` / `qc.json` | `cves qc` | gate results; `qc.json` is machine-readable and carries the hash of the file it judged |
 | `journal.jsonl` | `cves` (build, encode, qc, deliver, import-edits, critique, review, treatments make / render / compare / pick) + `cves learn` | append-only events `{t, event, cves, style_hash, ...}` for self-learning ([LEARNING.md](LEARNING.md)); `journal.last_edit.yaml` is the edit.yaml of the last build |
 | `DIRECTION.md` | Claude | creative direction: concept, arc, the one signature moment, motif, what we will not do (knowledge-base/CREATIVE.md) |
@@ -114,6 +116,7 @@ Templates are auto-discovered.
   scale px themselves; `DESIGN = True` modules (hard-coded 1080×1920, third-party only) are fitted per instance into the
   safe zone. Identity at 1080×1920.
 - `render(t, params, ctx) -> list[El]`. `ctx` has `start`, `end`, `resolve` (asset id or path resolver: `edit.yaml assets:` / `Edit/assets.json` first, then project- and repo-relative paths), `fps` (quantise animation starts: `round(t * fps) / fps`) and `S` (the style profile). On A-roll it also has `chin`, the smoothed chin y on the canvas. Templates listed in `render.NEEDS_AROLL` (kind `media`, or a module-level `NEEDS_AROLL = {names}` / `True`) also get `aroll = (graded RGB float HxWx3, matte float HxW)`: the A-roll frame under the cutaway, framed as the A-roll shot; no other template pays for it.
+- **Frame cache.** Anything a template reads must reach it through `params`, `ctx`, the style or a file under `Raw/`, `Assets/`, `Brand/` or `Edit/conform/` (or the engine code): those are what `cves.rcache` keys a frame on. A template that reads other project state per frame must add it to `rcache.frame_keys`, or a build may keep a stale frame.
 - `cves render --only` / `Timeline.frames_for(spec)` accept cutaway, segment, `roto.N`, `chest.N`, `end_card` ids, `12.5-14.0` (seconds), `300-420` (frames, inclusive) and comma lists.
 - `cues(params, ctx) -> list[(t, sfx_name, gain_db, kw)]`. `sfx_name` is a bank id / file name, or `@category[:intensity]` (resolved from the SFX bank manifest, [SOUND.md](SOUND.md) §4).
 - **Kind.** Set it per module with `KIND = "cutaway"|"roto"|"chest"|"end"|"media"|"overlay"`, or per template with `KINDS = {name: kind}`.
@@ -141,6 +144,7 @@ Templates are auto-discovered.
   Status `N/A` = the gate cannot apply to this spine (presenter / voice / caption gates; `qc.NA_NO_AROLL`, `NA_NO_VOICE`,
   `NA_NO_CAPTIONS`); it never blocks delivery.
 - `cves deliver` refuses unless `qc.json` exists, has `fail == 0`, and its `sha256` matches the master being delivered.
+- `cves deliver` refuses a draft render (`deliver.is_draft`: a file inside `Edit/draft/` or tagged `comment=cves-draft` by `encode(..., draft=True)`), even with `--force-unchecked`.
 - `cves deliver` writes a never-overwritten `Export/vNNN/` with `manifest.json` (`qc_verified`, `master_sha256`, files with sha256, variants with status); `--force-unchecked` is recorded as `forced_unchecked` + `WARNING`.
 - Encoder settings come from the style `delivery:` section through `encode.video_args(S)` / `audio_args(S)`; fps and size from `encode.stream_params(pr)`.
 - The plugin hook (`plugin/hooks/qc_guard.py`, PreToolUse) denies copying / moving / uploading out of `Export/` unless the QC stamp (or the `vNNN` manifest) is clean, and denies `--force-unchecked` while QC is not clean. Details: [DELIVERY.md](DELIVERY.md).
