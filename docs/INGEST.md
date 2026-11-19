@@ -119,8 +119,18 @@ Filter order per segment: `[SAR fix] [HDR→SDR] [fps] [crop] scale=W:H:lanczos 
 ## Voice chain
 
 `select` runs, in order: ffmpeg extract (48 kHz mono) → DeepFilterNet (per clip, ±0.5 s pad) → pause tightening →
-8 ms crossfades → ffmpeg polish (`ingest.VOICE_CHAIN`: high-pass, 3-band EQ, high shelf, de-esser, compressor, gate).
-None is generative. `Edit/voice_chain.json` records exactly these steps and their parameters from the same list the
+8 ms crossfades → ffmpeg polish (`ingest.VOICE_CHAIN`: high-pass, 3-band EQ, high shelf, de-esser, compressor) → the
+adaptive gate (`cves.voicegate`, style `voice.gate`; `ingest.polish_voice`, shared with the voiceover spine).
+None is generative.
+
+The gate is measured per take, not fixed: a fixed `agate` threshold left a real room at -50 dBFS between words (SND-19
+wants the voice floor's p5 at -60 or lower). For each take it reads a 10 ms voice-band envelope of the tightened voice (the
+room the viewer actually hears between words; DeepFilterNet pulls long pauses far lower), takes the floor (10th
+percentile) and the speech level (90th), puts the threshold between them (floor + 0.3 x the gap, 6-14 dB over the floor)
+and sets the depth that takes the room to -72 dBFS (10-40 dB). It is a downward expander (ratio 6) with an 8 ms
+look-ahead, a 15 ms hold and 2 / 40 ms ramps in dB, so consonants are never clipped and word tails fade instead of
+switching off. `voice_chain.json` records the step `adaptive_gate` with every take's floor, speech level, threshold
+and depth. `Edit/voice_chain.json` records exactly these steps and their parameters from the same list the
 filter string is built from (`{"steps": [{"name", "generative": false, "params"}], "output": "voice_final.wav"}`).
 QC SND-30 fails if any step is generative.
 

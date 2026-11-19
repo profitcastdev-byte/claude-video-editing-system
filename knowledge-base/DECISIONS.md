@@ -146,3 +146,39 @@ synthetic references (tests/test_inspire_v2.py) and on four real reference reels
 - **Captions during a snap punch-in.** The renderer hid captions for the whole snap window even when nothing replaced them, so a bare punch-in dropped spoken words off screen. Captions now hide in the snap only where the segment has roto type (which takes their place). QC's `cap_allowed` mirrors this, and RET-12 only counts a caption keyword on a frame where the caption is really drawn (before, a keyword hidden by the snap or a chest graphic could pass it).
 - **The stock demo passes its own QC** (it failed FRAME-03, GFX-15, RET-09 and RET-12 since v0.2): relight on (dehalo, wall unchanged), a 1.25x punch-in at 0.45 s, and the lower third moved after the topic word as a card on the sweater. Golden frames `roto_word` and `aroll_lower_third` were regenerated for it. No gate threshold changed.
 - **`lower_third` card style**: the accent bar sits on the card's left edge (it was 8 px inside, a GFX-08 near-alignment). **`kinetic_caption_emphasis`** fits its word at rest with room for the hold, then scales the entry from there, so a long word no longer ends past the safe zone.
+
+## AV fixes from the first 60 fps job (2026-11-19, builder's call; no gate threshold changed)
+The first real client job (40 s, 1080x1920, 60 fps, 12 takes over ~2.5 min while the room light drifted) failed SND-07,
+SND-19, COL-06, COL-07, flashed two captions for 1-4 frames (PLAT-06 / 07) and the review found the music masking the voice.
+The owner asked for the causes to be fixed in the engine; these are the builder's calls.
+- **Cue sync is post-render and event-based, not a tuned offset.** A cue's audible anchor (onset at 10 % of the 10 ms RMS
+  peak, the SND-07 measure; a riser's peak) is moved onto the nearest picture event within 6 frames of the template's time.
+  Logged elements and cuts win over pixel onsets; a pixel onset counts only at >= 40 quarter-res px (weak 12-20 px onsets
+  differ between the rendered PNG and the encoded master, which is what the gate decodes). Templates whose sound belongs
+  to an unlogged drawn state should log it as a part (done for `m_list_build`'s mark).
+- **Caption fragments: merge, hold or skip, never lose readable words.** `captions.min_on_s` is 0.83 s, PLAT-07's own
+  line. Only fragments made by a cover (cutaway, snap with roto, hide window, end card) are resolved; a naturally short
+  event that touches no cover is left alone (shortening speech is not the scheduler's job). A merge must fit the style's
+  max_chars / measured lines and cross no sentence end; otherwise the fragment is kept (short beats lost words), unless
+  every word of it was spoken under the cover (then it is skipped: it was never readable in time).
+- **Voice gate: expander, measured on the tightened voice.** The take's long pauses are useless for the floor:
+  DeepFilterNet pulls them to -80 dB while the short gaps between words keep the room and reverb tail at -40..-50 dB; that
+  residual is what SND-19 hears. Timing (15 ms hold, 40 ms release) is short because the tightened gaps are 20-60 ms; a
+  ratio-6 expander instead of a switch keeps word tails continuous. earshot A/B on the test ad: "neither closer to
+  'speech with word endings cut off abruptly'", B "cleaner (noise floor -59 vs -49 dBFS)"; AudioSet's "speech
+  synthesizer" score rises with any deep gate (0.66 -> 0.77), the price of a -60 dB floor between words.
+- **Colour match: per-channel gain, subject and wall separately, no offset.** A gain + offset fit on (skin, wall) was tried
+  first: with a pale wall at the skin's level the two anchors are nearly equal, the fit is ill-conditioned, and its offset
+  lifts or crushes the blacks (muddy). Skin and wall also drift apart between takes (the presenter moves in the window light,
+  the wall does not), so one gain per frame cannot match both. The subject's gain comes from the skin, the wall's from the
+  wall, blended through the matte and limited to 0.18 log apart. Reference default `hook` (the first impression; on the
+  test ad it also needed the least residual), drift followed at 0.5 with 0.8 s smoothing: the light drift is followed, a
+  head turn is not (chasing it pumps the whole frame).
+- **What the colour match cannot fix: a head turn on a cut frame.** On the test ad COL-06 still sees the first frames of
+  `c_cta_0` (head turned into the window light) and the last of `m_target_0`. That is pose, not colour: correcting it would
+  pump the exposure for a third of a second. The fix is editorial (start / end those takes a few frames later), so the
+  gate keeps failing until the cut moves.
+- **Masking guard targets the review's own measure** (1-4 kHz, 0.4 s Hann windows over words, ffmpeg's `-ac 1` downmix,
+  which reads a centred stereo bed 3 dB hotter than an L/R average) with a 2 dB margin, trimming only the bed's speech
+  band, at most 12 dB, and only while a word needs it.
+
