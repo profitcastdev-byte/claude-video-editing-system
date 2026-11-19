@@ -18,6 +18,7 @@ journal (per project)  ->  cves learn mine  ->  candidates  ->  promote (a perso
 | `PROJECT/Edit/journal.jsonl` | client project | **no** (client folder) | append-only events: time, cves version, style hash + the event |
 | `PROJECT/Edit/journal.last_edit.yaml` | client project | no | edit.yaml as of the last build (for revision diffs) |
 | `PROJECT/Edit/critique/` | client project | no | contact sheet, energy timeline, `critique.json`, `CRITIQUE.md` |
+| `PROJECT/Edit/review/` | client project | no | review packs per round, `findings.json`, `REVIEW.md`, sign-offs ([REVIEW.md](REVIEW.md)) |
 | `~/.cves/taste/candidates.jsonl` | your machine | **no** | proposed patterns with evidence (project / version refs, quoted notes) |
 | `~/.cves/taste/learned.yaml` | your machine | no | your personal learned layer; may hold `client:<name>` sections |
 | `~/.cves/taste/rules.md` | your machine | no | personal learned rules |

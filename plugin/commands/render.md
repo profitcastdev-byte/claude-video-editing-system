@@ -20,6 +20,7 @@ cves render && cves mix && cves encode
 1. `cves qc` → `Edit/QC-REPORT.txt`.
 2. For every FAIL: fix the cause in `edit.yaml` or the selects, re-render only what changed, re-encode, re-run QC. Loop until there are **0 FAILs**.
 3. Do the one contact-sheet QA pass (`knowledge-base/QA-REVIEW.md`): one image only.
+4. `cves critique`, then the review loop (`/cves:review`): render → qc → critique → review → fix → re-render until 0 FAIL and no high findings (max 3 rounds), then `cves review signoff`.
 
 ## You decide
 Only how to fix FAILs. Don't change approved story or design choices unless a gate forces it. If it does, say so.

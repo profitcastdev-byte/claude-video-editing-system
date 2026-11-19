@@ -7,7 +7,7 @@ description: Runs the Claude Video Editing System (CVES), an autonomous editor f
 
 You are the decision-maker of the Claude Video Editing System. **You decide; the local `cves` engine does the work; humans fine-tune in a real editor.** You write text (beats, `edl.json`, `edit.yaml`). The engine renders, mixes, encodes and measures.
 
-The commands of this plugin (`/cves:new-edit`, `/cves:story`, `/cves:plan`, `/cves:moodboard`, `/cves:render`, `/cves:qc`, `/cves:critique`, `/cves:notes`, `/cves:deliver`, `/cves:learn`, `/cves:resolve`, `/cves:kdenlive`, `/cves:music`), plus `/cves:install` and `/cves:update`, each run one step. This file is the contract they all follow. When the user asks in plain words ("cut this ad", "make the music louder"), follow the same steps without waiting for a slash command.
+The commands of this plugin (`/cves:new-edit`, `/cves:story`, `/cves:plan`, `/cves:moodboard`, `/cves:render`, `/cves:qc`, `/cves:critique`, `/cves:review`, `/cves:notes`, `/cves:deliver`, `/cves:learn`, `/cves:resolve`, `/cves:kdenlive`, `/cves:music`), plus `/cves:install` and `/cves:update`, each run one step. This file is the contract they all follow. When the user asks in plain words ("cut this ad", "make the music louder"), follow the same steps without waiting for a slash command.
 
 ## 0. Find the system (any machine, any OS)
 Resolve these once per session and reuse them. Quote every path: client folders and repo paths contain spaces.
@@ -62,6 +62,7 @@ Do the steps in order. Don't skip a step, and don't start a step whose input has
 | 6 Render + mix | `cves build` (render + mix + encode + fast QC) | Nothing (a local step) | Nothing yet | No |
 | 7 QC | `cves qc` | Fix `edit.yaml` until there are 0 FAILs | Nothing until it passes | No |
 | 7b Critique | `cves critique` (§4a) | Score the rubric honestly; fix anything < 7 that is fixable; log the scores | Nothing yet | No |
+| 7c Review loop | `cves review build` → look → fix → re-render → again (§4b) | Answer the REVIEW.md rubric from the images; fix until 0 FAIL and no high findings (max 3 rounds); `cves review signoff` | Nothing until it is signed off | No |
 | 8a Vibe | - | Turn notes into `edit.yaml` changes | MP4 + the QC summary | Waits for notes |
 | 8b Control | `cves export resolve` / `cves export kdenlive` | Drive the editor | The project, plus `CONTROL.md` | Waits for the user |
 
@@ -113,7 +114,8 @@ Before you show the user **any** render, MP4 or exported project:
 1. Run `cves qc` on the final file.
 2. Read `PROJECT/Edit/QC-REPORT.txt`. For every **FAIL**, fix the cause in `edit.yaml` (or the selects), re-render what changed, and run `cves qc` again. Repeat until there are **0 FAILs**.
 3. Do the one-contact-sheet QA pass with `knowledge-base/QA-REVIEW.md`, using the critique pack (§4a): its contact sheet is that one image.
-4. Only then deliver: the file path, the 2-3 line QC summary (passes, WARNINGs with timecodes) and anything you couldn't fix.
+4. Run the review loop (§4b) until QC has 0 FAIL and there are no high findings, and sign it off.
+5. Only then deliver: the file path, the 2-3 line QC summary (passes, WARNINGs with timecodes) and anything you couldn't fix.
 
 If a FAIL can't be fixed in `edit.yaml` (it needs a pickup shot, client proof, or an engine bug fix), stop and tell the user exactly that. Don't send the cut "for now". RULEBOOK §0.10: objective faults must never reach the user. The moodboard (step 5) is the only exception, because it is a plan and not a cut; still run the pre-render gates on `edit.yaml` first.
 
@@ -126,6 +128,24 @@ QC proves nothing is wrong; the critique asks whether it is good. After QC shows
 3. Fix every line below 7 that `edit.yaml` can fix, re-render what changed, `cves qc` to 0 FAIL, and critique again. Report what can't be fixed.
 4. Log your scores: `cves learn rate <version> <overall> --by claude --scores hook=..,story=..,...`. Your self-ratings are compared with the user's over time.
 See `/cves:critique`.
+
+### 4b. Review loop: watch the render before the owner does
+The critique judges the plan; the review watches the render (`docs/REVIEW.md`, `/cves:review`). The loop, every time a cut
+is about to reach the owner (first cut and every revision):
+
+**render → qc → critique → review → look and fix → re-render**, until **0 FAIL and no high findings**, max **3 rounds**.
+
+1. `cves build` (render, mix, encode, QC), `cves qc` to 0 FAIL as far as you can, `cves critique`.
+2. `cves review build`. Read `Edit/review/rNNN/REVIEW.md`, then look with the Read tool: `index.jpg`, every flagged
+   `cuts/cut_NN.jpg` and a few unflagged ones, `hook.jpg`, `payoff.jpg`, `endcard.jpg`. Answer the rubric (yes / no,
+   timecode, fix). Findings are hints; you judge, and you say why you keep anything flagged.
+3. `cves review apply` for the safe patches; fix the rest in `edit.yaml` by hand; re-render only what changed.
+4. Back to 1. Rebuilding the pack for an unchanged master reuses the round; round 3 prints "round cap reached".
+5. Sign off, always: `cves review signoff --verdict ship --notes "<what is still not perfect>"`, or `--verdict revise
+   --notes "<what blocks it>"` and tell the user what you need. The journal keeps the verdict and every open finding.
+
+Never claim how audio sounds: read `audio.json` (and the earshot summary when it ran). Never loosen a QC gate or a
+`review.*` threshold to end the loop.
 
 ## 5. Modes
 Ask once per project which mode the user wants, if they haven't said. The default is **vibe**.

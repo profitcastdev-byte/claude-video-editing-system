@@ -20,6 +20,7 @@ Log each note **verbatim**, before you change anything: `cves learn note "<the u
 ## Run
 - Edit `edit.yaml`. Re-render only what changed: `cves render --only <id>` (or a full `cves render` if the cut changed), then `cves mix && cves encode`.
 - `cves qc`, and fix until there are 0 FAILs (as in `/cves:qc`).
+- Then the review loop on the revision (`/cves:review`): `cves critique`, `cves review build`, look, fix, until no high findings (max 3 rounds), and sign it off.
 
 ## Feedback → rules
 For each note that would apply to future videos, write it as a general rule and open a PR on a branch (never `main`):

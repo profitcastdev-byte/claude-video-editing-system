@@ -24,4 +24,4 @@ Target: `$ARGUMENTS` (the current project's final MP4 by default). Follow the `v
 After 0 FAILs only: "QC passed", the WARNING list with timecodes, and the file path. If it can't pass, list the blocking FAILs, why you can't fix them, and what you need from the user. Don't attach the file.
 
 ## Stop?
-Not while there are FAILs you can fix. Otherwise hand back to delivery.
+Not while there are FAILs you can fix. Then `/cves:critique` and the review loop (`/cves:review`) before delivery.
