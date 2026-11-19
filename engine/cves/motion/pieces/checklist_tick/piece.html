@@ -1,0 +1,71 @@
+<div class="safe center">
+  <div class="ck" id="ck">
+    <div class="hd"><h2 class="title" id="tt"></h2><div class="cnt num" id="cnt"></div></div>
+    <div class="rows glass" id="rows"></div>
+  </div>
+</div>
+<style>
+  .ck { width: min(100%, calc(var(--u) * 86)); font-size: var(--t-4); text-align: left; display: flex; flex-direction: column; gap: var(--s-3); }
+  .hd { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s-3); }
+  #tt { font-size: var(--t-5); }
+  .cnt { font-size: var(--t-5); color: var(--accent); white-space: nowrap; }
+  .cnt small { color: var(--muted); font-size: 0.62em; font-weight: 700; }
+  .rows { display: flex; flex-direction: column; padding: calc(var(--u) * 1.2) calc(var(--u) * 3.4); }
+  .row { display: flex; align-items: center; gap: calc(var(--u) * 2.8); padding: calc(var(--u) * 2.6) 0; position: relative; }
+  .row + .row { border-top: max(1px, calc(var(--u) * 0.12)) solid rgb(var(--text-rgb) / 0.1); }
+  .bx { width: 1.25em; height: 1.25em; flex: none; border-radius: calc(var(--r-s) * 0.6); position: relative; color: var(--bg);
+        border: max(2px, calc(var(--u) * 0.32)) solid rgb(var(--text-rgb) / 0.35); }
+  .bx .fill { position: absolute; inset: calc(var(--u) * -0.32); border-radius: inherit; background: var(--accent); transform-origin: center; }
+  .bx svg { position: absolute; inset: 6%; width: 88%; height: 88%; }
+  .tx { position: relative; font-weight: 700; line-height: 1.15; }
+  .tx .sk { position: absolute; left: -0.1em; right: -0.1em; top: 55%; height: max(2px, calc(var(--u) * 0.36)); border-radius: 99px; background: var(--accent); transform-origin: left center; }
+  @media (min-aspect-ratio: 1/1) { .ck { width: min(100%, calc(var(--u) * 110)); } }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let tt, cnt, cv, rowsEl, rows = [], tl, total;
+  C.piece({
+    setup(P, ctx) {
+      tt = document.getElementById('tt'); cnt = document.getElementById('cnt'); rowsEl = document.getElementById('rows');
+      if (P.title) C.words(tt, P.title); else tt.remove();
+      const items = (P.items || []).map((x) => (typeof x === 'string' ? { text: x } : x));
+      const t0 = (P.title ? D(0.4) : D(0.1)) + D(0.3) + items.length * D(0.08) + D(0.2), st = D(P.stagger || 0.5);
+      let k = 0;
+      items.forEach((it, i) => {
+        const r = C.el('div', 'row', rowsEl); const bx = C.el('div', 'bx', r); const fill = C.el('div', 'fill', bx);
+        const path = C.svg(bx, C.CHECK).querySelector('path'); const tx = C.el('div', 'tx', r, C.plain(it.text)); tx.dataset.text = C.plain(it.text);
+        const sk = P.strike ? C.el('div', 'sk', tx) : null; const done = it.done !== false;
+        rows.push({ r, bx, fill, path, tx, sk, done, in: (P.title ? D(0.35) : D(0.05)) + i * D(0.08), at: typeof it.at === 'number' ? it.at : t0 + (done ? k++ : k) * st });
+      });
+      total = rows.length;
+      if (P.counter !== false) { cv = C.el('span', '', cnt, '0'); C.el('small', '', cnt, '/' + total); cnt.dataset.text = `${rows.filter((r) => r.done).length}/${total}`; cnt.style.minWidth = '2.6em'; cnt.style.textAlign = 'right'; } else cnt.remove();
+      const maxH = rowsEl.closest('.safe').clientHeight * 0.95, ck = document.getElementById('ck'); let fs = parseFloat(getComputedStyle(ck).fontSize);
+      for (let n = 0; n < 30 && ck.getBoundingClientRect().height > maxH; n++) { fs *= 0.94; ck.style.fontSize = fs + 'px'; }
+      tl = C.timeline().at('tt', 0, D(0.6)).at('card', P.title ? D(0.25) : 0, D(0.6));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t);
+      if (tt.isConnected) tt.querySelectorAll('.wi').forEach((wi, i) => C.rise(wi, t, i * D(0.04), D(0.6), wi.offsetHeight));
+      C.rise(rowsEl, t, tl.t0('card'), D(0.6), 3 * u, { extra: ex ? { o: 1 - ex } : {} });
+      let n = 0;
+      rows.forEach((x) => {
+        C.rise(x.r, t, x.in, D(0.5), 2.2 * u, { fade: 2 });
+        if (!x.done) { x.fill.style.transform = 'scale(0)'; C.draw(x.path, 0); return; }
+        const pb = C.prog(t, x.at, D(0.3)), pk = C.prog(t, x.at + D(0.08), D(0.35));
+        x.fill.style.transform = `scale(${C.easings.outBack(pb).toFixed(4)})`; C.draw(x.path, C.easings.outCubic(pk));
+        C.set(x.bx, { s: 1 + 0.12 * Math.sin(Math.PI * pb) });
+        if (x.sk) { x.sk.style.transform = `scaleX(${C.MOVE(C.prog(t, x.at + D(0.18), D(0.4))).toFixed(4)})`; x.tx.style.color = t >= x.at + D(0.3) ? 'var(--muted)' : ''; }
+        else x.tx.style.color = t >= x.at + D(0.12) ? 'var(--text)' : '';
+        if (t >= x.at + D(0.1)) n++;
+      });
+      if (!P.strike) rows.forEach((x) => { if (!(x.done && t >= x.at + D(0.12))) x.tx.style.color = 'var(--muted)'; });
+      if (cv) { cv.textContent = String(n); C.rise(cnt, t, tl.t0('card') + D(0.2), D(0.5), 1.6 * u, { extra: ex ? { o: 1 - ex } : {} }); }
+      if (ex && tt.isConnected) C.set(tt, { o: 1 - ex });
+    },
+    cues() {
+      C.cue(tl.t0('card'), 'card', -18);
+      rows.forEach((x, i) => { if (x.done) C.cue(x.at, 'pop', -18, { pitch: 1 + i * 0.8 }); });
+    },
+  });
+})();
+</script>

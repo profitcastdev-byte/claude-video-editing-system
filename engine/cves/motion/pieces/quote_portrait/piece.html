@@ -1,0 +1,92 @@
+<div class="safe center">
+  <figure class="qp" id="qp">
+    <div class="pic" id="pic" data-el="portrait">
+      <svg class="ring" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path id="rg" pathLength="1"/></svg>
+      <div class="mask" id="mask"><div class="img" id="img"></div><div class="mono" id="mono"></div></div>
+    </div>
+    <div class="txt">
+      <div class="mark" id="mark" data-el="mark">&#8220;</div>
+      <blockquote id="bq"></blockquote>
+      <figcaption id="cap"><span class="rule" id="rule"></span><span class="who"><b id="au"></b><small id="ro"></small></span></figcaption>
+    </div>
+  </figure>
+</div>
+<style>
+  .qp { width: min(100%, calc(var(--u) * 86)); display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-4); text-align: left; }
+  .pic { position: relative; width: calc(var(--u) * 30); height: calc(var(--u) * 30); flex: none; }
+  .pic.arch { height: calc(var(--u) * 38); }
+  .mask { position: absolute; inset: calc(var(--u) * 1.4); border-radius: 50%; overflow: hidden; background: var(--surface);
+          box-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 6) rgb(0 0 0 / 0.4); }
+  .arch .mask { border-radius: 999px 999px 0 0; }
+  .img { position: absolute; inset: 0; background-size: cover; background-position: 50% 30%; }
+  .mono { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: calc(var(--u) * 10); letter-spacing: -0.03em; color: var(--text);
+          background: radial-gradient(120% 120% at 25% 15%, var(--accent) 0%, var(--accent-dark) 55%, rgb(var(--card-rgb) / 1) 100%); }
+  .ring { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ring path { fill: none; stroke: var(--accent); stroke-linecap: round; }
+  .txt { position: relative; min-width: 0; width: 100%; }
+  .mark { font-family: var(--font-serif); font-weight: 700; color: var(--accent); font-size: calc(var(--t-9) * 1.5); line-height: 0.7; height: 0.34em; margin-left: -0.04em; }
+  blockquote { font-size: var(--t-6); font-weight: 700; line-height: 1.12; letter-spacing: -0.01em; margin-top: var(--s-2); text-wrap: pretty; }
+  blockquote.serif { font-family: var(--font-serif); font-size: calc(var(--t-6) * 1.1); line-height: 1.08; }
+  figcaption { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-4); }
+  figcaption .rule { width: calc(var(--u) * 7); flex: none; }
+  .who { display: flex; flex-direction: column; gap: 0.2em; }
+  .who b { font-size: var(--t-3); font-weight: 700; }
+  .who small { font-size: var(--t-1); font-weight: 600; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+  @media (min-aspect-ratio: 1/1) {
+    .qp { width: min(100%, calc(var(--u) * 150)); flex-direction: row; align-items: center; gap: var(--s-6); }
+    .pic { width: calc(var(--u) * 46); height: calc(var(--u) * 46); }
+    .pic.arch { width: calc(var(--u) * 40); height: calc(var(--u) * 54); }
+  }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let pic, mask, img, mono, rg, mark, bq, W, cap, rule, au, ro, tl;
+  C.piece({
+    setup(P, ctx) {
+      pic = document.getElementById('pic'); mask = document.getElementById('mask'); img = document.getElementById('img'); mono = document.getElementById('mono');
+      rg = document.getElementById('rg'); mark = document.getElementById('mark'); bq = document.getElementById('bq'); cap = document.getElementById('cap');
+      rule = document.getElementById('rule'); au = document.getElementById('au'); ro = document.getElementById('ro');
+      const arch = P.shape === 'arch'; if (arch) pic.classList.add('arch');
+      if (P.portrait) { img.style.backgroundImage = `url("${P.portrait}")`; mono.remove(); }
+      else { img.remove(); const ini = C.plain(P.author || '').split(' ').filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase(); mono.textContent = ini || '“'; }
+      // the ring follows the mask's outline: a circle, or an arch (a semicircle on two straight sides)
+      const r = pic.getBoundingClientRect(), vb = `0 0 ${r.width.toFixed(1)} ${r.height.toFixed(1)}`; rg.parentNode.setAttribute('viewBox', vb);
+      rg.setAttribute('stroke-width', (0.55 * ctx.u).toFixed(2));
+      const p = 0.5 * ctx.u, w = r.width - 2 * p, h = r.height - 2 * p, R = w / 2;
+      rg.setAttribute('d', arch ? `M ${p} ${p + h} L ${p} ${p + R} A ${R} ${R} 0 0 1 ${p + w} ${p + R} L ${p + w} ${p + h} Z`
+                                : `M ${p + R} ${p} A ${R} ${R} 0 1 1 ${p + R - 0.01} ${p} Z`);
+      if (P.serif !== false) bq.classList.add('serif');
+      W = C.words(bq, P.quote);
+      bq.querySelectorAll('.w').forEach((w) => { w.style.overflow = 'visible'; });
+      C.fit(bq, bq.clientWidth, ctx.h * (ctx.w > ctx.h ? 0.5 : 0.36), 7);
+      if (P.author) { au.textContent = C.plain(P.author); au.dataset.text = au.textContent; } else au.remove();
+      if (P.role) { ro.textContent = C.plain(P.role); ro.dataset.text = ro.textContent; } else ro.remove();
+      if (!P.author && !P.role) cap.remove();
+      const n = W.words.length, each = D(Math.min(0.06, 1.1 / Math.max(1, n)));
+      tl = C.timeline().at('pic', 0, D(0.9)).at('ring', D(0.25), D(0.9)).at('push', 0, D(3.5)).at('mark', D(0.45), D(0.6)).at('words', D(0.55), D(0.7) + each * (n - 1));
+      tl.at('rule', tl.end('words') - D(0.2), D(0.55)).at('cap', tl.end('words') - D(0.05), D(0.6)); tl.each = each;
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), pp = tl.p('pic', t);
+      // the mask opens from its centre while the picture inside pushes in slowly (never stops dead)
+      mask.style.clipPath = pic.classList.contains('arch') ? `inset(${((1 - pp) * 100).toFixed(2)}% 0 0 0)` : `inset(${((1 - pp) * 50).toFixed(2)}% round 999px)`;
+      C.set(mask, { o: tl.raw('pic', t) > 0 ? 1 - ex : 0 });
+      const inner = img.isConnected ? img : mono;
+      C.set(inner, { s: 1.18 - 0.12 * pp - 0.06 * C.easings.outQuad(tl.raw('push', t)), blur: (1 - pp) * 0.8 * u });
+      C.draw(rg, tl.p('ring', t, C.MOVE)); rg.style.opacity = (tl.raw('ring', t) > 0 ? 1 : 0) * (1 - ex);
+      C.set(pic, { y: -ex * 2 * u });
+      const pm = tl.p('mark', t, 'spring(0.62)');
+      C.set(mark, { s: 0.6 + 0.4 * pm, o: Math.min(1, tl.raw('mark', t) * 3) * (1 - ex) });
+      W.inners.forEach((wi, i) => {
+        const p = C.prog(t, tl.t0('words') + i * tl.each, D(0.7));
+        C.set(wi, { y: (1 - C.IN(p)) * 0.35 * wi.offsetHeight - ex * 2 * u, o: C.easings.outCubic(p) * (1 - ex), blur: (1 - C.easings.outCubic(p)) * 0.5 * u });
+      });
+      if (cap.isConnected) {
+        rule.style.transform = `scaleX(${tl.p('rule', t, C.MOVE).toFixed(4)})`; rule.style.opacity = 1 - ex;
+        C.set(cap.querySelector('.who'), { x: (1 - tl.p('cap', t)) * 3 * u, o: tl.raw('cap', t) * (1 - ex) });
+      }
+    },
+    cues(P) { C.cue(0, 'swipe', -24, { trim: [0, 0.3] }); if (P.author || P.role) C.cue(tl.t0('cap'), 'pop', -24, { pitch: -2 }); },
+  });
+})();
+</script>

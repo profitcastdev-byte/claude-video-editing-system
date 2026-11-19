@@ -1,0 +1,108 @@
+<div class="safe center" id="root">
+  <div class="card glass" id="card">
+    <div class="bell" id="bell" data-el="bell">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.2c-3.3 0-5.6 2.5-5.6 5.8v3.6L4.6 15.6v1.2h14.8v-1.2l-1.8-3V9c0-3.3-2.3-5.8-5.6-5.8zM9.8 18.2a2.2 2.2 0 0 0 4.4 0z"/></svg>
+      <i class="badge" id="badge"></i>
+    </div>
+    <div class="av" id="av"><div class="ph" id="ph"></div><div class="mono" id="mono"></div></div>
+    <div class="who"><b id="nm"></b><small id="hd"></small></div>
+    <div class="chip" id="pf"></div>
+    <div class="btnwrap" id="bw">
+      <div class="ripple" id="rp" data-el="ripple"></div>
+      <div class="btn" id="btn"><span class="lbl" id="lb1"></span><span class="lbl done" id="lb2"><svg viewBox="0 0 100 100" class="tick"><path id="tk" d="M24 54 L42 71 L76 32" pathLength="1"/></svg><span id="lb2t"></span></span></div>
+    </div>
+  </div>
+  <svg class="cursor" id="cur" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 2 L4 19 L8.6 14.8 L11.6 21.4 L14.6 20 L11.7 13.6 L18 13.4 Z"/></svg>
+</div>
+<style>
+  .card { position: relative; width: min(100%, calc(var(--u) * 82)); display: flex; flex-direction: column; align-items: center; text-align: center;
+          gap: var(--s-2); padding: calc(var(--u) * 6) calc(var(--u) * 5) calc(var(--u) * 5); --glass-alpha: 0.86; }
+  .av { position: relative; width: calc(var(--u) * 24); height: calc(var(--u) * 24); border-radius: 50%; overflow: hidden; margin-bottom: var(--s-2);
+        box-shadow: 0 0 0 calc(var(--u) * 0.6) rgb(var(--card-rgb) / 1), 0 0 0 calc(var(--u) * 1.1) var(--accent); }
+  .ph { position: absolute; inset: 0; background-size: cover; background-position: center; }
+  .mono { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: calc(var(--u) * 8); letter-spacing: -0.03em; color: var(--text);
+          background: radial-gradient(120% 120% at 25% 15%, var(--accent) 0%, var(--accent-dark) 60%, var(--card) 100%); }
+  .who { display: flex; flex-direction: column; gap: 0.25em; }
+  .who b { font-size: var(--t-5); font-weight: 800; letter-spacing: -0.015em; line-height: 1.05; }
+  .who small { font-size: var(--t-2); font-weight: 600; color: var(--muted); }
+  #pf { margin-top: var(--s-1); }
+  .btnwrap { position: relative; margin-top: var(--s-4); }
+  .btn { position: relative; display: grid; place-items: center; padding: calc(var(--u) * 2.6) calc(var(--u) * 7); border-radius: 999px; white-space: nowrap;
+         background: linear-gradient(180deg, var(--accent), var(--accent-dark)); color: var(--text); font-size: var(--t-4); font-weight: 800;
+         box-shadow: 0 calc(var(--u) * 1.4) calc(var(--u) * 4) rgb(var(--accent-rgb) / 0.42), inset 0 max(1px, calc(var(--u) * 0.18)) 0 rgb(var(--text-rgb) / 0.35); }
+  .btn .surf { position: absolute; inset: 0; border-radius: inherit; background: var(--surface); border: max(1px, calc(var(--u) * 0.15)) solid rgb(var(--text-rgb) / 0.18); opacity: 0; }
+  .lbl { grid-area: 1 / 1; position: relative; display: inline-flex; align-items: center; gap: 0.35em; }
+  .tick { width: 1em; height: 1em; } .tick path { fill: none; stroke: var(--accent); stroke-width: 13; stroke-linecap: round; stroke-linejoin: round; }
+  .ripple { position: absolute; inset: 0; border-radius: 999px; border: calc(var(--u) * 0.45) solid var(--accent); opacity: 0; }
+  .bell { position: absolute; right: calc(var(--u) * 4); top: calc(var(--u) * 4); width: calc(var(--u) * 8); height: calc(var(--u) * 8); color: var(--text); transform-origin: 50% 12%; }
+  .bell svg { width: 100%; height: 100%; fill: currentColor; }
+  .badge { position: absolute; right: -8%; top: -4%; width: 34%; height: 34%; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 calc(var(--u) * 0.5) rgb(var(--card-rgb) / 1); }
+  .cursor { position: absolute; left: 0; top: 0; width: calc(var(--u) * 6.4); height: calc(var(--u) * 6.4); fill: var(--text); stroke: var(--bg); stroke-width: 1.2; stroke-linejoin: round;
+            filter: drop-shadow(0 calc(var(--u) * 0.5) calc(var(--u) * 0.8) rgb(0 0 0 / 0.5)); transform-origin: 17% 8%; }
+  @media (min-aspect-ratio: 1/1) { .card { width: min(100%, calc(var(--u) * 64)); padding: calc(var(--u) * 5) calc(var(--u) * 5) calc(var(--u) * 4.5); } .av { width: calc(var(--u) * 18); height: calc(var(--u) * 18); } }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let root, card, av, ph, mono, nm, hd, pf, bw, btn, surf, lb1, lb2, tk, rp, bell, badge, cur, tl, tgt;
+  C.piece({
+    setup(P, ctx) {
+      const $ = (id) => document.getElementById(id);
+      root = $('root'); card = $('card'); av = $('av'); ph = $('ph'); mono = $('mono'); nm = $('nm'); hd = $('hd'); pf = $('pf'); bw = $('bw'); btn = $('btn');
+      lb1 = $('lb1'); lb2 = $('lb2'); tk = $('tk'); rp = $('rp'); bell = $('bell'); badge = $('badge'); cur = $('cur');
+      if (P.logo) { ph.style.backgroundImage = `url("${P.logo}")`; mono.remove(); }
+      else { ph.remove(); mono.textContent = C.plain(P.name).split(' ').filter((w) => /\w/.test(w)).map((w) => w[0]).slice(0, 2).join('').toUpperCase(); }
+      nm.textContent = C.plain(P.name); nm.dataset.text = nm.textContent;
+      if (P.handle) { hd.textContent = C.plain(P.handle); hd.dataset.text = hd.textContent; } else hd.remove();
+      if (P.platform) { pf.textContent = C.plain(P.platform); pf.dataset.text = pf.textContent; } else pf.remove();
+      surf = C.el('div', 'surf'); btn.insertBefore(surf, btn.firstChild);
+      lb1.textContent = C.plain(P.button || 'Follow'); btn.dataset.text = lb1.textContent;
+      if (P.done !== '') $('lb2t').textContent = C.plain(P.done || 'Following'); else lb2.remove();
+      if (P.bell === false) bell.remove();
+      if (P.cursor === false) cur.remove();
+      C.fit(nm, card.clientWidth * 0.86, ctx.h * 0.2, 2);
+      const rr = root.getBoundingClientRect(), rb = btn.getBoundingClientRect();
+      tgt = { x: rb.left - rr.left + rb.width * 0.62, y: rb.top - rr.top + rb.height * 0.6, sx: rb.left - rr.left + rb.width * 1.25, sy: rb.top - rr.top + rb.height * 2.4 };
+      tl = C.timeline().at('card', 0, D(0.7)).at('av', D(0.12), D(0.7)).at('nm', D(0.28), D(0.6)).at('hd', D(0.38), D(0.6)).at('pf', D(0.46), D(0.6)).at('btn', D(0.5), D(0.6));
+      tl.at('cur', D(0.75), D(0.8)).at('click', D(0.75) + D(0.8), D(0.36));
+      tl.at('ripple', tl.t0('click') + D(0.08), D(0.7)).at('done', tl.t0('click') + D(0.12), D(0.4)).at('tick', tl.t0('click') + D(0.25), D(0.4)).at('bell', tl.t0('click') + D(0.45), D(1.0));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t);
+      const pc = tl.p('card', t), fc = (tt) => (1 - C.IN(C.prog(tt, 0, D(0.7)))) * 7 * u;
+      C.set(card, { y: fc(t) - ex * 3 * u, s: 0.95 + 0.05 * pc, o: Math.min(1, tl.raw('card', t) * 2.4) * (1 - ex), blur: C.mblur(fc, t) });
+      const pa = tl.p('av', t, 'spring(0.6)'); C.set(av, { s: 0.7 + 0.3 * pa, o: Math.min(1, tl.raw('av', t) * 3) });
+      C.rise(nm, t, tl.t0('nm'), D(0.6), 2 * u);
+      if (hd.isConnected) C.rise(hd, t, tl.t0('hd'), D(0.6), 1.6 * u);
+      if (pf.isConnected) C.rise(pf, t, tl.t0('pf'), D(0.6), 1.4 * u);
+      const pb = tl.p('btn', t), prc = tl.raw('click', t), press = Math.sin(Math.PI * C.clamp(prc)) * 0.06;
+      C.set(bw, { y: (1 - pb) * 2 * u, o: Math.min(1, tl.raw('btn', t) * 2.5) });
+      C.set(btn, { s: 1 - press });
+      const pd = lb2.isConnected ? tl.p('done', t) : 0;
+      btn.dataset.text = pd > 0.5 ? document.getElementById('lb2t').textContent : lb1.textContent;
+      surf.style.opacity = pd.toFixed(3); btn.style.boxShadow = pd > 0.5 ? 'none' : '';
+      C.set(lb1, { y: -pd * 1.2 * u, o: 1 - pd });
+      if (lb2.isConnected) { C.set(lb2, { y: (1 - pd) * 1.2 * u, o: pd }); C.draw(tk, C.easings.outCubic(tl.raw('tick', t))); }
+      const pr = tl.raw('ripple', t); C.set(rp, { s: 1 + 0.3 * C.easings.outCubic(pr), o: pr > 0 ? (1 - pr) * 0.9 : 0 });
+      if (bell.isConnected) {
+        const pl = tl.raw('bell', t), sw = Math.sin(pl * Math.PI * 5) * Math.pow(1 - pl, 1.6) * 18;
+        C.set(bell, { r: pl > 0 && pl < 1 ? sw : 0, s: 0.8 + 0.2 * C.easings.outCubic(C.prog(t, tl.t0('bell') - D(0.2), D(0.3))), o: Math.min(1, C.prog(t, tl.t0('bell') - D(0.2), D(0.25)) * 2) });
+        C.set(badge, { s: C.easings.outBack(C.prog(t, tl.t0('bell') + D(0.15), D(0.35))) });
+      }
+      if (cur.isConnected) {
+        const pm = C.easings.inOutCubic(tl.raw('cur', t)), q = 1 - pm;
+        const cx = tgt.sx + 6 * u, cy = tgt.sy + 4 * u, mx = tgt.x + 14 * u, my = tgt.sy + 2 * u;
+        let x = q * q * cx + 2 * q * pm * mx + pm * pm * tgt.x, y = q * q * cy + 2 * q * pm * my + pm * pm * tgt.y;
+        const away = C.easings.inCubic(C.prog(t, tl.end('ripple'), D(0.5)));
+        x += away * 4 * u; y += away * 6 * u;
+        C.set(cur, { x, y, s: 1 - 0.14 * Math.sin(Math.PI * C.clamp(prc)), o: Math.min(1, tl.raw('cur', t) * 4) * (1 - away) * (1 - ex) });
+      }
+    },
+    cues(P) {
+      C.cue(0, 'swipe', -22, { trim: [0, 0.3] });
+      if (P.cursor !== false) C.cue(tl.t0('ripple'), 'button', -14);
+      if (lb2.isConnected) C.cue(tl.t0('done'), 'pop', -20, { pitch: 3 });
+      if (P.bell !== false) C.cue(tl.t0('bell'), 'ding', -21);
+    },
+  });
+})();
+</script>

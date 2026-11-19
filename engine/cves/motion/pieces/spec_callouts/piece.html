@@ -1,0 +1,103 @@
+<div class="stage" id="st">
+  <div class="prod" id="prod" data-el="product"><img id="img" alt=""></div>
+  <svg class="lines" id="sv" xmlns="http://www.w3.org/2000/svg"></svg>
+</div>
+<style>
+  .prod { position: absolute; display: grid; place-items: center; }
+  .prod img { max-width: 100%; max-height: 100%; object-fit: contain; filter: drop-shadow(0 calc(var(--u) * 3) calc(var(--u) * 5) rgb(0 0 0 / 0.45)); }
+  .lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .lines path { fill: none; stroke: var(--text); stroke-opacity: 0.9; stroke-linecap: round; stroke-linejoin: round; }
+  .dot { position: absolute; width: 0; height: 0; }
+  .dot i { position: absolute; left: 0; top: 0; border-radius: 50%; }
+  .dot .core { width: calc(var(--u) * 2.2); height: calc(var(--u) * 2.2); margin: calc(var(--u) * -1.1) 0 0 calc(var(--u) * -1.1); background: var(--accent);
+               border: calc(var(--u) * 0.4) solid var(--text); box-shadow: 0 0 calc(var(--u) * 1.6) rgb(var(--accent-rgb) / 0.8); }
+  .dot .pulse { width: calc(var(--u) * 9); height: calc(var(--u) * 9); margin: calc(var(--u) * -4.5) 0 0 calc(var(--u) * -4.5); border: calc(var(--u) * 0.3) solid var(--accent); }
+  .card { position: absolute; width: max-content; padding: calc(var(--u) * 1.8) calc(var(--u) * 2.6); border-radius: var(--r-s); --glass-alpha: 0.88; display: flex; flex-direction: column; gap: 0.3em; }
+  .card small { font-size: var(--t-1); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); line-height: 1; }
+  .card b { font-size: var(--t-3); font-weight: 700; line-height: 1.1; }
+  .card.r { text-align: left; } .card.l { text-align: right; }
+  @media (min-aspect-ratio: 1/1) { .card b { font-size: var(--t-4); } .card { padding: calc(var(--u) * 2) calc(var(--u) * 3); } }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let prod, img, sv, items = [];
+  C.piece({
+    setup(P, ctx) {
+      const u = ctx.u, W = ctx.w, H = ctx.h, st = document.getElementById('st');
+      prod = document.getElementById('prod'); img = document.getElementById('img'); sv = document.getElementById('sv');
+      sv.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      const sf = getComputedStyle(document.documentElement), pct = (v) => parseFloat(sf.getPropertyValue(v)) / 100;
+      const sx0 = pct('--safe-l') * W, sy0 = pct('--safe-t') * H, sx1 = W - pct('--safe-r') * W, sy1 = H - pct('--safe-b') * H;
+      const land = W > H, sw = sx1 - sx0;
+      // the picture: centred, a share of the safe zone that leaves room for the cards at the sides
+      let box = { x: 0, y: 0, w: W, h: H };
+      if (P.image) {
+        const bw = sw * (land ? 0.38 : 0.62), bh = (sy1 - sy0) * (land ? 0.82 : 0.56);
+        img.src = P.image;
+        const r = (img.naturalWidth && img.naturalHeight) ? img.naturalWidth / img.naturalHeight : 1;
+        const w = Math.min(bw, bh * r), h = w / r;
+        box = { x: (W - w) / 2, y: sy0 + ((sy1 - sy0) - h) / 2, w, h };
+        Object.assign(prod.style, { left: box.x + 'px', top: box.y + 'px', width: w + 'px', height: h + 'px' });
+      } else prod.remove();
+      const list = (P.callouts || []).filter((c) => c);
+      const gap = 1.6 * u, clear = 7 * u, st0 = D(0.3), stg = D(+P.stagger || 0.45), minW = 22 * u;
+      const pts = list.map((c) => ({ c, px: box.x + C.clamp(+c.x || 0.5) * box.w, py: box.y + C.clamp(+c.y || 0.5) * box.h }));
+      pts.forEach((q) => { q.side = q.c.side === 'left' || q.c.side === 'right' ? q.c.side : (q.px < W / 2 ? 'left' : 'right'); });
+      // each side's cards share one column whose inner edge clears every point on that side (a card never covers a point)
+      // with a picture the column sits just outside the picture when there is room for a card there (longer, calmer leaders)
+      const col = (sd) => { const g = pts.filter((q) => q.side === sd); if (!g.length) return null;
+        let e = sd === 'left' ? Math.min(...g.map((q) => q.px - clear)) : Math.max(...g.map((q) => q.px + clear));
+        if (P.image) { const o = sd === 'left' ? Math.min(e, box.x - 3 * u) : Math.max(e, box.x + box.w + 3 * u);
+          if ((sd === 'left' ? o - sx0 : sx1 - o) >= minW * 1.3) e = o; }
+        return e; };
+      ['left', 'right'].forEach((sd) => {           // no room on a side: its callouts move to the other one
+        const e = col(sd); if (e === null) return;
+        if ((sd === 'left' ? e - sx0 : sx1 - e) < minW) pts.forEach((q) => { if (q.side === sd) q.side = sd === 'left' ? 'right' : 'left'; });
+      });
+      const edge = { left: col('left'), right: col('right') };
+      const sides = { left: [], right: [] };
+      pts.forEach((q, i) => {
+        const { c, px, py, side } = q;
+        const card = C.el('div', 'card glass ' + (side === 'left' ? 'l' : 'r'), st);
+        C.el('small', '', card, C.plain(c.title || '')); C.el('b', '', card, C.plain(c.value || ''));
+        card.dataset.text = [C.plain(c.title || ''), C.plain(c.value || '')].filter(Boolean).join(' ');
+        const room = side === 'left' ? edge.left - gap - sx0 : sx1 - edge.right - gap;
+        card.style.maxWidth = Math.max(minW, Math.min(room, sw * (land ? 0.3 : 0.46))) + 'px';
+        const dot = C.el('div', 'dot', st); dot.style.left = px + 'px'; dot.style.top = py + 'px';
+        const pulse = C.el('i', 'pulse', dot), core = C.el('i', 'core', dot);
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('pathLength', '1'); path.setAttribute('stroke-width', (0.36 * u).toFixed(2)); sv.appendChild(path);
+        const it = { c, card, dot, pulse, core, path, px, py, side, at: typeof c.at === 'number' ? c.at : st0 + i * stg };
+        sides[side].push(it); items.push(it);
+      });
+      // stack each side's cards near their points' heights, pushed apart so they never overlap, inside the safe zone
+      ['left', 'right'].forEach((sd) => {
+        const g = sides[sd].sort((a, b) => a.py - b.py); let y = sy0;
+        g.forEach((it) => { const h = it.card.offsetHeight; it.cy = Math.max(y, Math.min(it.py - h / 2, sy1 - h)); y = it.cy + h + gap; });
+        let over = g.length ? g[g.length - 1].cy + g[g.length - 1].card.offsetHeight - sy1 : 0;
+        for (let k = g.length - 1; k >= 0 && over > 0; k--) { g[k].cy -= over; over = k ? Math.max(0, g[k - 1].cy + g[k - 1].card.offsetHeight + gap - g[k].cy) : 0; }
+        g.forEach((it) => {
+          const w = it.card.offsetWidth, h = it.card.offsetHeight, cx = sd === 'left' ? edge.left - gap - w : edge.right + gap;
+          it.card.style.left = cx + 'px'; it.card.style.top = it.cy + 'px';
+          const ey = it.cy + h / 2, end = sd === 'left' ? edge.left : edge.right, dir = sd === 'left' ? -1 : 1;
+          const run = Math.min(Math.abs(ey - it.py), Math.abs(end - it.px) * 0.6), ex = it.px + dir * run;
+          it.path.setAttribute('d', `M ${it.px.toFixed(1)} ${it.py.toFixed(1)} L ${ex.toFixed(1)} ${ey.toFixed(1)} L ${end.toFixed(1)} ${ey.toFixed(1)}`);
+          it.dir = dir;
+        });
+      });
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t);
+      if (prod.isConnected) { const pp = C.prog(t, 0, D(0.7)); C.set(prod, { s: 0.94 + 0.06 * C.IN(pp), y: (1 - C.IN(pp)) * 2 * u, o: Math.min(1, pp * 2) * (1 - ex) }); }
+      items.forEach((it) => {
+        const pd = C.prog(t, it.at, D(0.35)), pl = C.prog(t, it.at + D(0.15), D(0.45)), pc = C.prog(t, it.at + D(0.45), D(0.55));
+        C.set(it.core, { s: C.easings.outBack(pd), o: pd > 0 ? 1 - ex : 0 });
+        const pu = C.prog(t, it.at + D(0.05), D(1.1)); C.set(it.pulse, { s: 0.2 + 0.9 * C.easings.outCubic(pu), o: pu > 0 ? (1 - pu) * 0.8 * (1 - ex) : 0 });
+        C.draw(it.path, C.MOVE(pl) * (1 - ex)); it.path.style.opacity = pl > 0 ? '1' : '0';
+        const e = C.IN(pc);
+        C.set(it.card, { x: (1 - e) * 2.5 * u * it.dir, o: Math.min(1, pc * 2.5) * (1 - ex), blur: (1 - e) * 0.5 * u });
+      });
+    },
+    cues() { items.forEach((it, i) => { C.cue(it.at, 'pop', -20, { pitch: i % 3 }); C.cue(it.at + D(0.45), 'swipe', -26, { trim: [0, 0.25] }); }); },
+  });
+})();
+</script>

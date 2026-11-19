@@ -1,0 +1,75 @@
+<div class="safe center" id="root">
+  <div class="line" id="ln"><div class="hl" id="hl" data-el="highlight"></div><p class="kt" id="kt"></p></div>
+</div>
+<style>
+  #root.low { justify-content: flex-end; padding-bottom: var(--s-5); }
+  .line { position: relative; width: min(100%, calc(var(--u) * 90)); }
+  .kt { position: relative; font-size: var(--t-7); font-weight: 800; letter-spacing: -0.02em; line-height: 1.16; text-wrap: balance;
+        text-shadow: 0 calc(var(--u) * 0.3) calc(var(--u) * 1.6) rgb(0 0 0 / 0.35); }
+  .kt .w { overflow: visible; }
+  .kt .wi { color: rgb(var(--text-rgb) / 0.42); }
+  .kt .acc { color: inherit; }
+  .hl { position: absolute; left: 0; top: 0; border-radius: calc(var(--u) * 1.4); background: var(--accent);
+        box-shadow: 0 calc(var(--u) * 0.8) calc(var(--u) * 3) rgb(var(--accent-rgb) / 0.45); opacity: 0; }
+  .line.left .kt { text-align: left; }
+  @media (min-aspect-ratio: 1/1) { .line { width: min(100%, calc(var(--u) * 150)); } }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let root, ln, kt, hl, W, times = [], boxes = [], tl, under, hh;
+  const mixRGB = (a, b, p) => a.map((x, i) => Math.round(x + (b[i] - x) * p));
+  let TXT, ACC, BG;
+  C.piece({
+    setup(P, ctx) {
+      root = document.getElementById('root'); ln = document.getElementById('ln'); kt = document.getElementById('kt'); hl = document.getElementById('hl');
+      if (P.position === 'low') root.classList.add('low');
+      if (P.align === 'left') ln.classList.add('left');
+      const tw = (P.words || []).filter((x) => x && (x.word || x.text));
+      const text = tw.length ? tw.map((x) => x.word || x.text).join(' ') : P.text;
+      W = C.words(kt, text);
+      C.fit(kt, ln.clientWidth, ctx.h * 0.5, 4);
+      const rs = getComputedStyle(document.documentElement), trip = (v) => rs.getPropertyValue(v).trim().split(/\s+/).map(Number);
+      TXT = trip('--text-rgb'); ACC = trip('--accent-rgb'); BG = trip('--bg-rgb');
+      under = P.style === 'underline';
+      const t0 = D(0.5), per = 1 / Math.max(0.5, +P.wps || 2.6);
+      times = W.inners.map((_, i) => (tw.length && typeof tw[i].at === 'number' ? tw[i].at : t0 + i * per));
+      // word boxes relative to the line (layout is final after fit); the pill pads them slightly
+      const lr = ln.getBoundingClientRect(), fs = parseFloat(getComputedStyle(kt).fontSize);
+      boxes = W.words.map((w) => { const r = w.getBoundingClientRect(); return { x: r.left - lr.left, y: r.top - lr.top, w: r.width, h: r.height }; });
+      hh = under ? Math.max(2, fs * 0.09) : 0;
+      if (under) hl.style.borderRadius = '99px';
+      tl = C.timeline().at('in', 0, D(0.55));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), pin = tl.p('in', t);
+      C.set(kt, { y: (1 - pin) * 2 * u - ex * 2 * u, o: Math.min(1, tl.raw('in', t) * 2) * (1 - ex), blur: (1 - pin) * 0.6 * u });
+      let act = -1; times.forEach((x, i) => { if (t >= x) act = i; });
+      W.inners.forEach((wi, i) => {
+        const p = C.prog(t, times[i], D(0.22)), lit = C.easings.outCubic(p);
+        const isAct = i === act, accent = W.words[i].classList.contains('accent');
+        // dim -> full text; the active word reads on the pill (bg colour) or in the accent (underline); accent words keep the accent once lit
+        const dim = 0.42 + 0.58 * lit;
+        let target = accent ? ACC : TXT;
+        if (isAct) target = under ? ACC : BG;
+        const col = mixRGB(TXT, target, isAct ? lit : (accent ? lit : 0));
+        wi.style.color = `rgb(${col[0]} ${col[1]} ${col[2]} / ${dim.toFixed(3)})`;
+        C.set(wi, { y: -lit * 0.06 * wi.offsetHeight });
+      });
+      // the highlight glides between word boxes (MOVE curve) over the first part of each word's time
+      if (act >= 0) {
+        const a = boxes[Math.max(0, act - 1)], b = boxes[act], wrap = Math.abs(a.y - b.y) > 2;
+        // along a line the highlight glides; onto a new line it re-forms on the word (a diagonal sweep would cross the text)
+        const pm = act === 0 || wrap ? 1 : C.MOVE(C.prog(t, times[act], D(0.2)));
+        const x = C.lerp(a.x, b.x, pm), y = C.lerp(a.y, b.y, pm), w = C.lerp(a.w, b.w, pm), h = C.lerp(a.h, b.h, pm);
+        const pad = 0.08 * h, appear = act === 0 || wrap ? C.easings.outCubic(C.prog(t, times[act], D(0.2))) : 1;
+        hl.style.left = (x - pad).toFixed(2) + 'px'; hl.style.width = (w + 2 * pad).toFixed(2) + 'px';
+        if (under) { hl.style.top = (y + h - hh * 0.6).toFixed(2) + 'px'; hl.style.height = hh.toFixed(2) + 'px'; }
+        else { hl.style.top = (y + 0.02 * h).toFixed(2) + 'px'; hl.style.height = (h * 0.98).toFixed(2) + 'px'; }
+        C.set(hl, { sx: 0.6 + 0.4 * appear, o: appear * (1 - ex) * Math.min(1, tl.raw('in', t) * 2) });
+        hl.style.transform += ` translateY(${(-0.06 * b.h * appear).toFixed(2)}px)`;
+      } else C.set(hl, { o: 0 });
+    },
+    cues() { C.cue(0, 'swipe', -26, { trim: [0, 0.3] }); },
+  });
+})();
+</script>

@@ -1,0 +1,19 @@
+title: Follow card
+description: A profile card rises in (avatar or logo, name, handle, platform chip), a cursor glides to the Follow button and clicks; the button presses and flips to its done state with a drawn tick, and a bell rings in the corner with a small notification badge.
+kinds: [cutaway, overlay, end]
+hero: true
+duration: 3.8
+params:
+  name: {type: str, required: true, help: channel / account name}
+  handle: {type: str, default: "", help: "e.g. @yourhandle"}
+  button: {type: str, default: Follow, help: "button label (Follow, Subscribe)"}
+  done: {type: str, default: Following, help: label after the click}
+  logo: {type: path, default: "", help: "avatar or logo picture (asset id or path); empty: an initials monogram"}
+  platform: {type: str, default: "", help: "small chip under the handle (e.g. YouTube, Instagram); empty: none"}
+  bell: {type: bool, default: true, help: ring a notification bell after the click}
+  cursor: {type: bool, default: true}
+preview:
+  duration: 3.8
+  params: {name: "Northside Plumbing Co.", handle: "@northside.fixes", platform: "New videos every Tuesday", button: "Subscribe", done: "Subscribed"}
+cues:
+  - [1.6, button, -16]

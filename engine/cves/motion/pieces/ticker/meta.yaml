@@ -1,0 +1,16 @@
+title: Ticker
+description: One or two marquee bands wipe open across the safe zone and scroll their items (separated by accent marks) at a constant speed after an eased start, the second band running the other way; the edges fade so nothing hard-clips.
+kinds: [overlay, cutaway]
+duration: 4.0
+params:
+  items: {type: list, required: true, help: "short phrases (strings); a second band (rows: 2) runs the same items reversed"}
+  rows: {type: int, default: 2, help: 1 | 2 bands}
+  speed: {type: number, default: 14, help: "scroll speed in u per second (u = 1 % of the short side)"}
+  tilt: {type: number, default: -2.5, help: "band angle in degrees (kept within +-6)"}
+  position: {type: str, default: center, help: "center | top | bottom (inside the safe zone)"}
+  mark: {type: str, default: "✦", help: "separator between items"}
+preview:
+  duration: 4.0
+  params: {items: ["Same-day quotes", "Licensed and insured", "Five-star rated", "No call-out fee", "Open on weekends"]}
+cues:
+  - [0.0, whoosh, -24]

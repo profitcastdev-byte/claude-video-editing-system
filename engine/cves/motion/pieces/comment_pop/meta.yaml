@@ -1,0 +1,16 @@
+title: Comment pop
+description: A social comment bubble springs up from its avatar corner, the handle and text settle in, then the heart pops filled and the like count ticks up to its total.
+kinds: [overlay, cutaway]
+duration: 3.4
+params:
+  handle: {type: str, required: true, help: "e.g. @maya.cooks"}
+  text: {type: str, required: true, help: "the comment; *stars* mark accent words"}
+  likes: {type: int, default: 0, help: "final like count (0 = no counter)"}
+  verified: {type: bool, default: false, help: a verified tick after the handle}
+  time: {type: str, default: "now", help: "small timestamp after the handle, e.g. 2h"}
+  avatar: {type: path, default: "", help: "optional round avatar image (else a monogram disc)"}
+  position: {type: str, default: center, help: "center | low (sits in the lower third, for overlays)"}
+preview:
+  params: {handle: "@maya.cooks", text: "Booked them after this video. *Best decision* this year.", likes: 1284, verified: true, time: "2h"}
+cues:
+  - [0.0, pop, -18]

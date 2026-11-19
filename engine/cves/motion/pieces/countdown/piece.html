@@ -1,0 +1,105 @@
+<div class="safe center" id="root">
+  <div class="eyebrow" id="lb"></div>
+  <div class="dial" id="dial">
+    <svg class="ring" id="ring" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" data-el="ring">
+      <circle class="trk" cx="50" cy="50" r="46"/><circle class="arc" id="arc" cx="50" cy="50" r="46" pathLength="1" transform="rotate(-90 50 50)"/>
+    </svg>
+    <div class="num" id="num"></div>
+    <div class="end display" id="end"></div>
+  </div>
+  <div class="bar" id="bar"><div class="fill" id="fill"></div></div>
+  <p class="body" id="cp"></p>
+</div>
+<style>
+  #root { gap: var(--s-4); }
+  .dial { position: relative; display: grid; place-items: center; }
+  .ring { position: absolute; width: 100%; height: 100%; inset: 0; }
+  .ring circle { fill: none; stroke-width: 2.2; }
+  .ring .trk { stroke: rgb(var(--text-rgb) / 0.12); }
+  .ring .arc { stroke: var(--accent); stroke-linecap: round; filter: drop-shadow(0 0 1.2px rgb(var(--accent-rgb) / 0.8)); }
+  .num { grid-area: 1 / 1; display: flex; font-size: calc(var(--t-9) * 1.7); color: var(--text); white-space: nowrap;
+         text-shadow: 0 0 calc(var(--u) * 5) rgb(var(--accent-rgb) / 0.3); }
+  .slot { position: relative; display: inline-grid; overflow: clip; overflow-clip-margin: 0.04em; padding: 0.06em 0; }
+  .slot > span { grid-area: 1 / 1; display: block; text-align: center; will-change: transform; }
+  .sep { display: inline-block; color: var(--accent); padding: 0.06em 0.02em; transform: translateY(-0.06em); }
+  .end { grid-area: 1 / 1; font-size: calc(var(--t-9) * 1.25); color: var(--accent); white-space: nowrap; }
+  .num.clock { font-size: calc(var(--t-9) * 1.3); }
+  .bar { width: min(80%, calc(var(--u) * 66)); height: calc(var(--u) * 0.9); border-radius: 99px; background: rgb(var(--text-rgb) / 0.12); overflow: hidden; }
+  .fill { width: 100%; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent-dark), var(--accent)); transform-origin: left center; }
+  #cp { font-size: var(--t-3); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let lb, dial, ring, arc, num, end, bar, fill, cp, slots = [], tl, clock, vals, step, roll, t0, len;
+  const pad2 = (v) => String(Math.max(0, v)).padStart(2, '0');
+  const clockStr = (s) => { s = Math.max(0, Math.floor(s)); return `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor(s / 60) % 60)}:${pad2(s % 60)}`; };
+  C.piece({
+    setup(P, ctx) {
+      lb = document.getElementById('lb'); dial = document.getElementById('dial'); ring = document.getElementById('ring'); arc = document.getElementById('arc');
+      num = document.getElementById('num'); end = document.getElementById('end'); bar = document.getElementById('bar'); fill = document.getElementById('fill'); cp = document.getElementById('cp');
+      clock = P.mode === 'clock';
+      if (P.label) { lb.textContent = C.plain(P.label); lb.dataset.text = lb.textContent; } else lb.remove();
+      if (P.caption) { cp.textContent = C.plain(P.caption); cp.dataset.text = cp.textContent; } else cp.remove();
+      t0 = D(0.25); roll = D(0.32);
+      if (clock) {
+        step = 1; ring.remove(); end.remove(); num.classList.add('clock');
+        len = 8;
+      } else {
+        bar.remove();
+        const a = Math.round(+P.from), b = Math.round(+P.to), dir = a >= b ? -1 : 1; vals = [];
+        for (let v = a; dir < 0 ? v >= b : v <= b; v += dir) vals.push(String(v));
+        step = Math.max(0.25, +P.step_s || 0.8); len = Math.max(...vals.map((v) => v.length));
+        if (P.end_text) { end.textContent = C.plain(P.end_text); end.dataset.text = end.textContent; } else end.remove();
+      }
+      // one rolling slot per character (tabular digits keep the width still)
+      const sample = clock ? clockStr(+P.seconds_left || 0) : vals[0].padStart(len, ' ');
+      [...sample].forEach((ch) => {
+        if (ch === ':') { C.el('span', 'sep', num, ':'); slots.push(null); return; }
+        const s = C.el('span', 'slot', num); slots.push({ s, a: C.el('span', '', s, '0'), b: C.el('span', '', s, '0') });
+      });
+      num.dataset.text = clock ? clockStr(+P.seconds_left || 0) : vals[0];
+      C.fit(num, document.getElementById('root').clientWidth * (clock ? 0.96 : 0.6), ctx.h * 0.36, 1, 0.3);
+      if (!clock) { const d = Math.max(num.offsetWidth, num.offsetHeight) * 1.55; dial.style.width = d + 'px'; dial.style.height = d + 'px'; if (end.isConnected) C.fit(end, d * 0.86, d * 0.6, 1, 0.3); }
+      tl = C.timeline().at('lb', 0, D(0.5)).at('in', 0, D(0.55)).at('cp', D(0.3), D(0.6));
+      if (!clock) { tl.at('end', t0 + vals.length * step, D(0.6)); }
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), rel = t - t0;
+      if (lb.isConnected) { C.rise(lb, t, 0, D(0.5), 1.6 * u); if (ex) C.set(lb, { o: 1 - ex }); }
+      if (cp.isConnected) { C.rise(cp, t, tl.t0('cp'), D(0.6), 1.6 * u); if (ex) C.set(cp, { o: 1 - ex }); }
+      const pin = tl.p('in', t);
+      let k = Math.floor(Math.max(0, rel) / step), cur, prev, pr;
+      const done = !clock && k >= vals.length;
+      if (clock) { const s0 = +P.seconds_left || 0; cur = clockStr(s0 - k); prev = clockStr(s0 - k + 1); }
+      else { const kk = Math.min(k, vals.length - 1); cur = vals[kk].padStart(len, ' '); prev = (vals[kk - 1] || vals[kk]).padStart(len, ' '); }
+      pr = k === 0 || done ? 1 : C.prog(rel - k * step, 0, roll);
+      num.dataset.text = cur.trim();
+      slots.forEach((x, i) => {
+        if (!x) return;
+        x.a.textContent = prev[i] === ' ' ? '' : prev[i]; x.b.textContent = cur[i] === ' ' ? '' : cur[i];
+        const h = x.s.offsetHeight, moving = prev[i] !== cur[i] && pr < 1, p = C.easings.inOutCubic(pr);
+        C.set(x.a, { y: moving ? -p * h : 0, o: moving ? C.clamp(1 - p * 2.2) : 0, blur: moving ? Math.sin(Math.PI * p) * 0.5 * u : 0 });
+        C.set(x.b, { y: moving ? (1 - p) * h : 0, o: moving ? C.clamp((p - 0.35) / 0.5) : 1, blur: moving ? Math.sin(Math.PI * p) * 0.5 * u : 0 });
+      });
+      const pe = done ? tl.p('end', t) : 0;
+      C.set(num, { s: (0.88 + 0.12 * pin) * (1 - 0.25 * pe), y: (1 - pin) * 3 * u, o: Math.min(1, tl.raw('in', t) * 2.5) * (1 - pe) * (1 - ex), blur: (1 - pin) * u + pe * 1.2 * u });
+      if (!clock) {
+        // the ring drains once per number, then closes empty under the end word
+        const f = done ? 0 : 1 - C.clamp((rel - k * step) / step);
+        arc.style.strokeDasharray = '1 1'; arc.style.opacity = f > 0.01 ? '1' : '0'; arc.style.strokeDashoffset = (1 - f * C.clamp(tl.raw('in', t) * 1.4)).toFixed(4);
+        C.set(ring, { s: 0.9 + 0.1 * pin + 0.06 * pe, o: Math.min(1, tl.raw('in', t) * 2) * (1 - 0.6 * pe) * (1 - ex) });
+        if (end.isConnected) C.set(end, { s: 0.7 + 0.3 * C.easings.outBack(tl.raw('end', t)), o: Math.min(1, tl.raw('end', t) * 3) * (1 - ex) });
+      } else {
+        fill.style.transform = `scaleX(${(1 - C.clamp(t / ctx.dur)).toFixed(4)})`;
+        C.set(bar, { o: Math.min(1, tl.raw('in', t) * 2) * (1 - ex) });
+      }
+    },
+    cues(P, ctx) {
+      C.cue(0, 'pop', -20);
+      if (P.mode === 'clock') return;
+      for (let k = 1; k < vals.length; k++) C.cue(t0 + k * step, 'switch', -22, { pitch: k * 0.5 });
+      if (end.isConnected) C.cue(tl.t0('end'), 'lowhit', -13, { reveal: true });
+    },
+  });
+})();
+</script>
