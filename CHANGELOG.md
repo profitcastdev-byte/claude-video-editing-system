@@ -16,7 +16,7 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
   (`story.align: false`). `cves select --align-only` prints the report alone.
 - **STORY-17 "every chosen word is heard"** (`cves qc --stage story`): each clip's own span of `voice_final.wav` is
   transcribed separately (a whole-file pass skipped a sentence that was in the cut) and its word recall against `text:` must
-  reach `qc.words_recall_min` (0.85); the missing words are listed per clip, and clips without `text:` are skipped and named.
+  reach `qc.words_recall_min` (0.85), and a clip whose first or last word is lost fails on its own (`qc.words_edges`); the missing words are listed per clip, and clips without `text:` are skipped and named.
   QC-GATES.md: 184 rows (STORY-14 was already the loops gate).
 - **Named story structures**: style `grammar.structure: problem | offer | story | custom` (`cves.structure`). `problem` =
   H P A PR O C (the old fixed order), `offer` = H M PR R C (M mechanism, R risk reversal), `story` = H S T PR C (S setup,
@@ -24,7 +24,7 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
   (a beat outside the structure warns, as does a clip without `text:`). Music `hook_beats` / `turn_beats` / `drop_beats`
   now default per structure (offer: turn M, drop PR). STORY-13 runs only when the structure has a P beat; STORY-07 checks
   the offer after the proof, or for `offer` the risk reversal after the proof.
-- New style keys `grammar.structure`, `story.align*` (7), `qc.words_recall_min`; `grammar.beats` and `music.hook_beats` /
+- New style keys `grammar.structure`, `story.align*` (7), `qc.words_recall_min`, `qc.words_edges`; `grammar.beats` and `music.hook_beats` /
   `turn_beats` / `drop_beats` now default to null (= from the structure). `tools/make_demo.py` writes `text:` on every
   clip; `tests/test_story.py`.
 

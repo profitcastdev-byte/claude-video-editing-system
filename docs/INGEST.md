@@ -148,7 +148,8 @@ and `cves select` prints one line per clip (`align <id>: in 114.02 -> 113.99 (-0
 **STORY-17** (`cves qc --stage story`) closes the loop: each clip's own span of `voice_final.wav` (from the `edl.json`
 segments) is transcribed separately, never the whole file (whisper skips whole sentences on long files), and the
 recall of the clip's `text:` words is compared with style `qc.words_recall_min` (0.85), fillers ignored and numbers
-normalised the same way. A FAIL lists the missing words per clip; clips without `text:` are skipped and named.
+normalised the same way. A clip whose first or last word is not heard fails whatever its recall (`qc.words_edges`):
+that is a clipped take, the failure of the first real job ("We've" heard as "I've", a lost final "refund"). A FAIL lists the missing words per clip; clips without `text:` are skipped and named.
 
 ## Voice chain
 

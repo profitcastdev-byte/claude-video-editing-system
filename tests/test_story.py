@@ -55,6 +55,7 @@ def test_recall_ignores_fillers_and_lists_missing_words():
     sc, miss = AL.recall("Not happy in 30 days? You get a hundred percent refund.", "um not happy in thirty days you get a 100%")
     assert miss == ["refund"] and abs(sc - .9) < 1e-9
     assert AL.recall("three hundred plus clients", "300+ client")[0] == 1.0
+    assert AL.recall("We've done this for 300 plus clients", "I've done this for 300 plus clients", edges=True)[2] == (True, False)
 
 
 # ------------------------------------------------------------------ take alignment
@@ -165,6 +166,19 @@ def test_story17_fails_when_a_clip_is_truncated(story_cut):
     assert L[i].startswith("[FAIL]") and nf >= 1, rep
     det = L[i + 1]
     assert last["id"] in det and AL.tokens(words[-1][2])[0] in det and AL.tokens(words[-2][2])[0] in det, rep
+
+def test_story17_fails_one_lost_last_word(story_cut):
+    """recall alone passes one lost word of a long clip; a lost last word is a clipped take and fails anyway"""
+    pr = story_cut; edl = pr.json("edl.json"); W = _raw_words(pr)
+    c = max(edl["clips"], key=lambda c: len(c["text"].split())); segs = [s for s in edl["segments"] if s["clip"] == c["id"]]
+    words = [w for w in W if segs[0]["in"] <= (w[0] + w[1]) / 2 <= segs[-1]["out"]]
+    segs[-1]["out"] = round(words[-1][0] - .01, 5); pr.save_json("edl.json", edl)
+    E = pr.edit; E.setdefault("qc", {})["words_recall_min"] = .5; pr.save_edit(E)
+    nf, rep = QC.run_stage(project.Project(pr.root), "story"); L = rep.splitlines(); i = next(k for k, l in enumerate(L) if "STORY-17" in l)
+    assert L[i].startswith("[FAIL]") and "last word lost" in L[i + 1], rep
+    E["qc"]["words_edges"] = False; pr.save_edit(E)
+    nf, rep = QC.run_stage(project.Project(pr.root), "story")
+    assert next(l for l in rep.splitlines() if "STORY-17" in l).startswith("[PASS]"), rep
 
 def test_story17_skips_clips_without_text(story_cut):
     pr = story_cut; edl = pr.json("edl.json"); edl["clips"][1].pop("text"); pr.save_json("edl.json", edl)

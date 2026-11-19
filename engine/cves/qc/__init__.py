@@ -299,13 +299,18 @@ def run_stage(pr, stage):
         try:
             rows = AL.clip_recall(pr, ING_.whisper_language(pr, S))
             got = [r for r in rows if r["score"] is not None]; skip = [r["clip"] for r in rows if r["score"] is None]
-            low = [r for r in got if r["score"] < thr]
+            strict = (Q.get("words_edges") if Q.get("words_edges") is not None else S.get("qc.words_edges", True)) is not False
+            edge_ = lambda r: strict and any(r.get("edge") or [])          # a lost first / last word = a clipped take
+            low = [r for r in got if r["score"] < thr or edge_(r)]
             sk = f"; {len(skip)} clip(s) without text: skipped ({', '.join(map(str, skip))})" if skip else ""
             if not got:
                 gate("STORY-17", False, f"no clip has text: (add each clip's words to selects.yaml){sk}", status="WARN")
             else:
-                gate("STORY-17", not low, f"{len(got)} clip(s) heard, lowest word recall {min(r['score'] for r in got):.0%} (>= {thr:.0%}){sk}",
-                     "\n".join(f"{r['clip']} ({r['score']:.0%}, cut {r['span'][0]:.2f}-{r['span'][1]:.2f}s): missing {' '.join(r['missing'])} | heard: {r['heard'][:100]}" for r in low))
+                gate("STORY-17", not low, f"{len(got)} clip(s) heard, lowest word recall {min(r['score'] for r in got):.0%} (>= {thr:.0%}"
+                     f"{', first and last words kept' if strict else ''}){sk}",
+                     "\n".join(f"{r['clip']} ({r['score']:.0%}, cut {r['span'][0]:.2f}-{r['span'][1]:.2f}s): missing {' '.join(r['missing'])}"
+                                f"{' [' + ' and '.join(n for n, e in zip(('first word', 'last word'), r['edge']) if e) + ' lost: clipped take]' if edge_(r) else ''}"
+                                f" | heard: {r['heard'][:100]}" for r in low))
         except Exception as e:
             gate("STORY-17", False, f"not measured: {type(e).__name__}: {e}", status="WARN")
         tail = Q.get("brand_tail", [])

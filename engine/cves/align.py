@@ -110,14 +110,16 @@ def best_run(ref, hyp, hint=None):
     tail = ref[::-1].index(h[j - 1]) if h[j - 1] in ref else 0      # ... and after it
     return i, j, difflib.SequenceMatcher(None, ref, h[i:j], autojunk=False).ratio(), head, tail
 
-def recall(ref_text, heard_text):
-    """(share of the reference's words heard, [missing words in order]); fillers ignored, numbers normalised"""
+def recall(ref_text, heard_text, edges=False):
+    """(share of the reference's words heard, [missing words in order]); fillers ignored, numbers normalised.
+    edges=True adds a third value: (first word missing, last word missing), the signature of a clipped take"""
     ref = [t for t in tokens(ref_text) if t not in FILLERS]
     hyp = [t for t in _canon(ref, tokens(heard_text)) if t not in FILLERS]
-    if not ref: return 1.0, []
+    if not ref: return (1.0, [], (False, False)) if edges else (1.0, [])
     sm = difflib.SequenceMatcher(None, ref, hyp, autojunk=False); got = set()
     for a, _, size in sm.get_matching_blocks(): got.update(range(a, a + size))
-    return len(got) / len(ref), [ref[i] for i in range(len(ref)) if i not in got]
+    out = (len(got) / len(ref), [ref[i] for i in range(len(ref)) if i not in got])
+    return out + ((0 not in got, len(ref) - 1 not in got),) if edges else out
 
 
 # ------------------------------------------------------------------ audio
@@ -361,12 +363,12 @@ def span_text(wav, t0, t1, lang):
     finally: shutil.rmtree(d, ignore_errors=True)
 
 def clip_recall(pr, lang, pad=.08):
-    """[{clip, score, missing, heard}] per clip of edl.json (score None = no text: skipped)"""
+    """[{clip, score, missing, edge: [first lost, last lost], heard}] per clip of edl.json (score None = no text: skipped)"""
     edl = pr.json("edl.json"); spans = clip_spans(edl); wav = pr.e("voice_final.wav"); dur = sf.info(wav).duration; out = []
     for c in edl["clips"]:
         if c["id"] not in spans: continue
-        if not (c.get("text") or "").strip(): out.append({"clip": c["id"], "score": None, "missing": [], "heard": ""}); continue
+        if not (c.get("text") or "").strip(): out.append({"clip": c["id"], "score": None, "missing": [], "edge": [False, False], "heard": ""}); continue
         t0, t1 = spans[c["id"]]; heard = span_text(wav, max(0.0, t0 - pad), min(dur, t1 + pad), lang)
-        sc, miss = recall(c["text"], heard)
-        out.append({"clip": c["id"], "score": sc, "missing": miss, "heard": " ".join(heard.split()), "span": [round(t0, 2), round(t1, 2)]})
+        sc, miss, edge = recall(c["text"], heard, edges=True)
+        out.append({"clip": c["id"], "score": sc, "missing": miss, "edge": list(edge), "heard": " ".join(heard.split()), "span": [round(t0, 2), round(t1, 2)]})
     return out

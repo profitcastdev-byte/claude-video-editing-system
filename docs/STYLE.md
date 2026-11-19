@@ -176,7 +176,7 @@ graphics gets gates that match:
 | `grammar.face_on_first_frame` | RET-13 face on frame 0 (only when true) |
 | `grammar.roto_max` | GFX-25 behind-the-head moments |
 | `grammar.structure`, `grammar.beats` | STORY-01 beat order (STORY-07 / STORY-13 apply only where their beats exist), the beat labels, the music hook / turn / drop beats |
-| `qc.words_recall_min` (or `edit.yaml qc.words_recall_min`) | STORY-17 word recall of each clip's `text:` |
+| `qc.words_recall_min`, `qc.words_edges` (or the same `edit.yaml qc:` keys) | STORY-17 word recall of each clip's `text:`, and its first / last word |
 | `story.align*` | take alignment in `cves select` (not a gate; its result is in `edl.json` clips `aligned:`) |
 | `framing.min_step` | CUT-05 scale change at every direct A-roll cut |
 | `framing.extreme_max` | FRAME-09 extreme punch-ins |
@@ -418,6 +418,7 @@ story-stage thresholds (an `edit.yaml qc:` key of the same name wins for one vid
 | key | default | meaning |
 |---|---|---|
 | `qc.words_recall_min` | `0.85` | STORY-17: share of each clip's `text:` words heard in its own span of `voice_final.wav` |
+| `qc.words_edges` | `true` | STORY-17 also fails a clip whose first or last `text:` word is not heard (the signature of a clipped take), whatever its recall |
 
 #### `sound`
 
