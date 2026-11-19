@@ -99,6 +99,9 @@ def accents(TL, cues, log=None):
             if room < r_min: rec["status"] = f"skipped: {room:.2f} s of room before the target (< sound.accents.riser_min_s {r_min})"; continue
             s = SFX.pick(risers, "riser", inten, exclude=[taken.get("riser")] if taken.get("riser") else (), max_s=min(r_max, room), min_s=r_min)
             if s is None or float(s["duration_s"]) > room + 1e-6: rec["status"] = "skipped: no resolving riser in the bank fits the room"; continue
+            st = tgt - float(s["peak_at_s"])
+            if any(kw["accent"] == "riser" and t0 < tgt + gap and kw["target"] > st - gap for t0, _, _, kw in out):
+                rec["status"] = "skipped: it would overlap another riser"; continue
             out.append((tgt - float(s["peak_at_s"]), s["id"], r_gain, {"peak_at": tgt, "accent": "riser", "target": tgt, "beat_snap": False, "why": why}))
         else:
             imx = float(A.get("impact_max_s", 2.0))
