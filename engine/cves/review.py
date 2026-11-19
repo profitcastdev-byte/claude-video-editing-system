@@ -3,12 +3,14 @@
 `cves review build [vNNN|master]` writes one review pack per round, `PROJECT/Edit/review/rNNN/`:
   cuts/cut_NN.jpg   one contact image per cut: the frames at style `review.cut_offsets` around it (0 = first frame after the cut)
   index.jpg         every cut on one sheet (last frame before | first frame after), flagged cuts marked
+  strips_N.jpg      the cut strips Claude looks at (every flagged cut + style `review.look_unflagged` others, `review.look_px` tall), stacked to fit one image read
+  ends.jpg          payoff.jpg over endcard.jpg: one read
   hook.jpg          the first `review.hook_s` seconds at `review.hook_fps`
   payoff.jpg        frames across the payoff window (`structure.payoff_window`) before the end card
   endcard.jpg       the end card (entry, settle, middle, last frame)
   audio.json        loudness per section, vocal-to-music ratio (stems), clicks at cuts, silence gaps, `earshot measure`
   findings.json     [{id, severity: high|med|low, t, kind, message, patch?}]; `patch` = {set: {edit.yaml path: value}, safe}
-  REVIEW.md         the facts, the findings and a rubric of questions Claude answers by looking at the images
+  REVIEW.md         what to look at (in read order), the findings to judge (QC gates by id only), facts, sound, the rubric
 `cves review apply` applies the safe patches of the latest round (edit.yaml backup kept) and records them.
 `cves review signoff --verdict ship|revise --notes "..."` records Claude's verdict and what is still wrong in the journal.
 Rounds live in `Edit/review/state.json`; a loop is capped at `review.max_rounds` (3) and closed by a sign-off.
@@ -430,10 +432,10 @@ def _sheet(tiles, cols, tw, th, title, labels, marks=None, lh=22, title_h=30):
         _label(d, (x + 2, y + th + 3), labels[i], 13, (255, 120, 110) if col == (230, 60, 60) else (225, 225, 225))
     return im
 
-def write_images(out, tiles, cuts, offsets, flagged, cut_kinds, sizes, fps, hook_idx, payoff_idx, end_idx, hook_first):
+def write_images(out, tiles, cuts, offsets, flagged, cut_kinds, sizes, fps, hook_idx, payoff_idx, end_idx, hook_first, look=(1560, 3)):
     os.makedirs(os.path.join(out, "cuts"), exist_ok=True); paths = {"cuts": []}
     RED, YEL, GRN = (230, 60, 60), (255, 200, 90), (90, 210, 120)
-    tw, th = sizes["cut"]
+    tw, th = sizes["cut"]; strips = {}
     for ci, (fc, t, lab, *_) in enumerate(cuts):
         frs = [fc + o for o in offsets]; ts = [tiles.get((f, "cut")) for f in frs]
         labels = [f"{'+' if o > 0 else ''}{o} f  {f / fps:.2f}s" + ("  CUT" if o == 0 else "") for o, f in zip(offsets, frs)]
@@ -442,8 +444,8 @@ def write_images(out, tiles, cuts, offsets, flagged, cut_kinds, sizes, fps, hook
             if o == 0 and i not in marks: marks[i] = YEL
         kinds = cut_kinds.get(ci + 1)
         title = f"cut {ci + 1:02d} @ {t:.2f}s (frame {fc}): {lab}" + (f"   FLAGGED: {', '.join(sorted(kinds))}" if kinds else "")
-        p = os.path.join(out, "cuts", f"cut_{ci + 1:02d}.jpg"); _sheet(ts, len(offsets), tw, th, title[:150], labels, marks).save(p, quality=88)
-        paths["cuts"].append(p)
+        p = os.path.join(out, "cuts", f"cut_{ci + 1:02d}.jpg"); im = _sheet(ts, len(offsets), tw, th, title[:150], labels, marks); im.save(p, quality=88)
+        paths["cuts"].append(p); strips[ci + 1] = im
     # index: last frame before | first frame after, every cut
     iw, ih = sizes["index"]; pairs, labs, mk = [], [], {}
     for ci, (fc, t, lab, *_) in enumerate(cuts):
@@ -468,9 +470,26 @@ def write_images(out, tiles, cuts, offsets, flagged, cut_kinds, sizes, fps, hook
     paths["hook"] = p
     for name, idx, title in (("payoff", payoff_idx, "payoff window"), ("endcard", end_idx, "end card")):
         p = os.path.join(out, f"{name}.jpg")
-        _sheet([tiles.get((f, "cut")) for f in idx] or [None], max(1, min(6, len(idx))), tw, th, title, [f"{f / fps:.2f}s" for f in idx] or ["none"]).save(p, quality=88)
-        paths[name] = p
+        im = _sheet([tiles.get((f, "cut")) for f in idx] or [None], max(1, min(6, len(idx))), tw, th, title, [f"{f / fps:.2f}s" for f in idx] or ["none"])
+        im.save(p, quality=88); paths[name] = p; strips[name] = im
+    # what Claude reads: the strips of every flagged cut (+ a few unflagged ones) stacked into as few sheets as fit one
+    # image read (<= LOOK_PX on the long side), and payoff + end card on one sheet (docs/REVIEW.md)
+    flag = sorted(cut_kinds); rest = [c for c in range(1, len(cuts) + 1) if c not in cut_kinds]
+    look_px, k = int(look[0]), int(look[1]); pick = [rest[round(i * (len(rest) - 1) / max(1, k - 1))] for i in range(min(k, len(rest)))] if rest else []
+    paths["look_cuts"] = sorted(set(flag) | set(pick)); paths["strips"] = []
+    ims = [strips[c] for c in paths["look_cuts"]]
+    per = max(1, look_px // max(1, ims[0].height)) if ims else 1
+    for i in range(0, len(ims), per):
+        p = os.path.join(out, f"strips_{i // per + 1}.jpg"); _stack(ims[i:i + per]).save(p, quality=85); paths["strips"].append(p)
+    p = os.path.join(out, "ends.jpg"); _stack([strips["payoff"], strips["endcard"]]).save(p, quality=85); paths["ends"] = p
     return paths
+
+def _stack(ims):
+    """images one under another on the review background (left-aligned)"""
+    W, H = max(i.width for i in ims), sum(i.height for i in ims)
+    out = Image.new("RGB", (W, H), (18, 18, 20)); y = 0
+    for i in ims: out.paste(i, (0, y)); y += i.height
+    return out
 
 # ======================================================================== build
 def build(pr, which=None):
@@ -550,7 +569,8 @@ def build(pr, which=None):
         hook_first = next((hook_idx[i + 1] for i, d in enumerate(Dh) if d >= thr), None)
         if hook_first is None and hook_facts.get("first_graphic_s") is not None:
             hook_first = min(hook_idx, key=lambda f: abs(f / fps - hook_facts["first_graphic_s"]))
-    paths = write_images(out, tiles, cuts, offsets, flagged, cut_kinds, sizes, fps, hook_idx, payoff_idx, end_idx, hook_first)
+    paths = write_images(out, tiles, cuts, offsets, flagged, cut_kinds, sizes, fps, hook_idx, payoff_idx, end_idx, hook_first,
+                         look=(_R(S, "look_px", 1560), _R(S, "look_unflagged", 3)))
 
     with open(os.path.join(out, "cuts.json"), "w", encoding="utf-8") as f:
         json.dump([{"cut": i + 1, "t": round(c[1], 3), "frame": c[0], "timeline_frame": c[3], "picture_offset_f": c[0] - c[3], "label": c[2],
@@ -565,15 +585,16 @@ def build(pr, which=None):
     st["rounds"].append(rec); save_state(pr, st)
     facts = {"video": os.path.basename(video), "version": version, "duration_s": round(dur, 2), "size": [W, H], "fps": round(fps, 3),
              "cuts": len(cuts), "cut_offsets": offsets, "body_end_s": round(body_end, 2), "end_card_s": round(dur - body_end, 2), **{(k if k.startswith("hook") else f"hook_{k}"): v for k, v in hook_facts.items()}}
+    look = [paths["index"]] + paths["strips"] + [paths["hook"], paths["ends"]]
     md = write_md(out, rec, mx, F, A, facts, paths, cq)
     from . import learn
     learn.on_review(pr, {"round": n, "loop": st["loop"], "dir": dname, "video": os.path.basename(video), "counts": counts, "qc_fail": qc_fail,
                          "high": [x["kind"] for x in F if x["severity"] == "high"]})
     return {"dir": out, "md": md, "round": n, "max_rounds": mx, "cap_reached": cap_reached, "counts": counts, "qc_fail": qc_fail,
-            "findings": F, "audio": A, "paths": paths}
+            "findings": F, "audio": A, "paths": paths, "look": look}
 
 RUBRIC = [
-    ("cuts", "index.jpg, then every flagged cuts/cut_NN.jpg (and 3 unflagged ones)",
+    ("cuts", "index.jpg + strips_N.jpg",
      ["Does every cut land on a word or action boundary, never mid-gesture or mid-word?",
       "Any black, white, duplicated or half-rendered frame in the -2..+2 strip?",
       "After each cut, does the eye land where the last shot left it (eye trace), or does it hunt?",
@@ -581,54 +602,72 @@ RUBRIC = [
       "Does the framing change enough at A-roll cuts (or is the jump covered)?"]),
     ("hook", "hook.jpg", ["Is there a visual change by the hook time (green tile)? Would you stop scrolling on frame 0?",
                           "Is the topic or subject readable in the first second, sound off?"]),
-    ("payoff", "payoff.jpg", ["Does the payoff deliver what the hook promised, and is it the visual peak of the piece?"]),
-    ("end card", "endcard.jpg", ["Is the end card on long enough to read twice? CTA legible, inside the safe zone, brand right?"]),
+    ("payoff", "ends.jpg, top", ["Does the payoff deliver what the hook promised, and is it the visual peak of the piece?"]),
+    ("end card", "ends.jpg, bottom", ["Is the end card on long enough to read twice? CTA legible, inside the safe zone, brand right?"]),
     ("sound", "audio.json (+ earshot)", ["Is the voice clear over the music everywhere (vmr)? Any pop at a cut? Any section jumping in level?",
                                          "Any silence that is not a deliberate drop-out?"]),
     ("verdict", "everything above", ["Would a senior editor show this to the owner now? If not: the one change that matters most."]),
 ]
 
+def _qc_only(x):
+    """a QC finding with nothing new to look at: it restates a QC-REPORT line (referred to by gate id in REVIEW.md)"""
+    return bool(x.get("gate")) and x.get("t") is None and not x.get("cut") and x["kind"] not in ("dead_hook",)
+
 def write_md(out, rec, mx, F, A, facts, paths, cq):
+    """REVIEW.md: only what Claude must look at and decide. QC lines are referred to by id, not restated (QC-REPORT.txt);
+    facts are one line; the images are listed in read order (index, strip sheets, hook, ends)."""
     rel = lambda p: os.path.relpath(p, out).replace(os.sep, "/")
     hi = rec["counts"]["high"]; qf = rec.get("qc_fail")
     ready = hi == 0 and qf == 0
     L = [f"# Review round {rec['n']} of {mx}: {facts['video']} ({facts['version']})", ""]
     if rec["cap_reached"]:
-        L += [f"> **Round cap reached ({rec['n']}/{mx}).** This is the last round of this loop: fix only what is quick and safe, then sign off "
-              "(`cves review signoff --verdict ship|revise --notes \"...\"`) and record what is still wrong.", ""]
+        L += [f"> **Round cap reached ({rec['n']}/{mx}).** Last round of this loop: fix only what is quick and safe, then sign off "
+              "and record what is still wrong.", ""]
     L += [f"**Ready to show the owner: {'YES' if ready else 'NO'}** "
-          f"({hi} high finding(s); QC FAIL: {qf if qf is not None else 'unknown, run `cves qc` on this render'}).", "",
-          "Claude: look at the images below with the Read tool (index first, then every flagged cut), answer the rubric, fix what edit.yaml can "
-          "fix, re-render and run the loop again (docs/REVIEW.md). The engine measured; you judge.", "",
-          "## Images", "", f"- `{rel(paths['index'])}`: every cut (last frame before | first after)",
-          f"- `cuts/cut_NN.jpg`: {len(paths['cuts'])} cut strips (frames {', '.join(f'{o:+d}' for o in facts.get('cut_offsets', []))} around each cut; yellow = the cut frame, red = flagged)",
-          f"- `{rel(paths['hook'])}`, `{rel(paths['payoff'])}`, `{rel(paths['endcard'])}`", "",
-          "## Facts", "", "| fact | value |", "|---|---|"]
-    L += [f"| {k} | {v} |" for k, v in facts.items()]
-    L += ["", f"## Findings ({len(F)}: {rec['counts']['high']} high, {rec['counts']['med']} med, {rec['counts']['low']} low)", ""]
-    if F:
+          f"({hi} high finding(s); QC FAIL: {qf if qf is not None else 'unknown, run `cves qc` on this render'}). "
+          "The engine measured; you judge: look, answer the rubric, fix, re-render, run the loop again (docs/REVIEW.md).", ""]
+    lc = paths.get("look_cuts") or []
+    look = [(paths["index"], "every cut: last frame before | first after; red = machine finding")]
+    per = (len(lc) + len(paths.get("strips") or [1]) - 1) // max(1, len(paths.get("strips") or [1]))
+    for i, p in enumerate(paths.get("strips") or []):
+        cs = lc[i * per:(i + 1) * per]
+        look.append((p, f"cut strips {', '.join(f'{c:02d}' + ('*' if any(x.get('cut') == c for x in F) else '') for c in cs)} "
+                        f"(frames {', '.join(f'{o:+d}' for o in facts.get('cut_offsets', []))}; yellow = cut frame, red = flagged, * = has a finding)"))
+    look += [(paths["hook"], "the hook frame by frame; green = first visual change"),
+             (paths["ends"], "payoff window, then the end card")]
+    L += [f"## Look ({len(look)} image reads, in this order)", ""] + [f"{i + 1}. `{rel(p)}`: {d}" for i, (p, d) in enumerate(look)]
+    L += [f"   Other cuts: `cuts/cut_NN.jpg` ({len(paths['cuts'])}); open one only to settle a doubt the index raises.", ""]
+    judge = [x for x in F if not _qc_only(x)]; qc_ = [x for x in F if _qc_only(x)]
+    L += [f"## Decide ({len(judge)} finding(s) to judge; {rec['counts']['high']} high, {rec['counts']['med']} med, {rec['counts']['low']} low in all)", ""]
+    if judge:
         L += ["| id | sev | t (s) | kind | finding | patch |", "|---|---|---|---|---|---|"]
-        for x in F:
+        for x in judge:
             p = x.get("patch")
-            ps = ("safe: `cves review apply`" if p.get("safe") else "suggested (apply by hand)") + ": `" + json.dumps({k: v for k, v in p.items() if k != "safe"}) + "`" if p else ""
+            ps = ("safe: `cves review apply`" if p.get("safe") else "by hand") + ": `" + json.dumps({k: v for k, v in p.items() if k != "safe"}) + "`" if p else ""
             L.append(f"| {x['id']} | {x['severity']} | {'' if x['t'] is None else x['t']} | {x['kind']} | {x['message'].replace('|', '/')} | {ps} |")
-    else: L.append("No machine findings. That proves nothing about taste: answer the rubric.")
+    else: L.append("No machine findings to judge. That proves nothing about taste: answer the rubric.")
+    if qc_:
+        by = {}
+        for x in qc_: by.setdefault("FAIL" if x["severity"] == "high" else "WARN", []).append(f"{x['id']}={x['gate']}")
+        L += ["", "QC gates (detail in `Edit/QC-REPORT.txt`; fix FAILs, never loosen a gate): "
+              + "; ".join(f"{k} {', '.join(v)}" for k, v in sorted(by.items()))]
     v = A.get("vmr") or {}
-    L += ["", "## Sound (audio.json)", "", f"- integrated: {A.get('integrated_lufs')} LUFS; sections: "
-          + ", ".join(f"{s['name']} {s['lufs']}" for s in A.get("sections") or []),
-          f"- vocal-to-music (1-4 kHz, speech): " + (f"median {v.get('median_db')} dB, p10 {v.get('p10_db')} dB, {v.get('share_under_min', 0):.0%} under {v.get('min_db')} dB"
-                                                       if "median_db" in v else str(v.get("skipped", "n/a"))),
-          f"- clicks at cuts: {sum(1 for c in A.get('cuts') or [] if c.get('stem') is not None or c['click_ratio'] > 4)} flagged of {len(A.get('cuts') or [])}; "
-          f"silences: {len(A.get('silences') or [])}; end tail {A.get('end_tail_db')} dBFS",
-          f"- earshot: " + ((A.get("earshot") or {}).get("summary") or str((A.get("earshot") or {}).get("skipped", "n/a")))]
-    if cq: L += ["", f"Critique facts: `Edit/critique/critique.json` (shots {cq.get('facts', {}).get('shots')}, first change {cq.get('facts', {}).get('first_change_s')} s)."]
-    L += ["", "## Rubric (answer each by looking; yes / no + timecode + the fix)", ""]
+    fx = "; ".join(f"{k} {v_}" for k, v_ in facts.items() if k not in ("video", "version", "cut_offsets"))
+    L += ["", "## Facts", "", fx, "",
+          "## Sound (`audio.json`; never claim how it sounds without it)", "",
+          f"- {A.get('integrated_lufs')} LUFS; sections " + ", ".join(f"{s['name']} {s['lufs']}" for s in A.get("sections") or [])
+          + "; vmr " + (f"median {v.get('median_db')} dB, p10 {v.get('p10_db')} dB, {v.get('share_under_min', 0):.0%} under {v.get('min_db')} dB"
+                        if "median_db" in v else str(v.get("skipped", "n/a"))),
+          f"- clicks at cuts {sum(1 for c in A.get('cuts') or [] if c.get('stem') is not None or c['click_ratio'] > 4)}/{len(A.get('cuts') or [])}; "
+          f"silences {len(A.get('silences') or [])}; end tail {A.get('end_tail_db')} dBFS; earshot: "
+          + ((A.get("earshot") or {}).get("summary") or str((A.get("earshot") or {}).get("skipped", "n/a")))]
+    if cq: L += [f"- critique facts: `Edit/critique/critique.json` (shots {cq.get('facts', {}).get('shots')}, first change {cq.get('facts', {}).get('first_change_s')} s)"]
+    L += ["", "## Rubric (yes / no + timecode + the fix, from the images)", ""]
     for name, src, qs in RUBRIC:
-        L += [f"### {name} ({src})", ""] + [f"- [ ] {q}  \n  answer: " for q in qs] + [""]
-    L += ["## Loop", "", "1. Fix: `cves review apply` (safe patches), then the rest by hand in edit.yaml.",
-          "2. Re-render: `cves build` (or `cves render --only ...` + `cves mix` + `cves encode` + `cves qc`), `cves critique`, `cves review build`.",
-          f"3. Stop when QC has 0 FAIL and there are no high findings, or at round {mx}. Then sign off:", "",
-          "```", "cves review signoff --verdict ship --notes \"<what is still not perfect>\"", "cves review signoff --verdict revise --notes \"<why it cannot ship>\"", "```", ""]
+        L += [f"**{name}** ({src})"] + [f"- [ ] {q}" for q in qs] + [""]
+    L += ["## Loop", "", f"`cves review apply` (safe patches), the rest by hand in edit.yaml → `cves build` → `cves critique` → `cves review build`. "
+          f"Stop at 0 QC FAIL and no high findings, or at round {mx}, then always sign off: "
+          "`cves review signoff --verdict ship|revise --notes \"<what is still not perfect / why it cannot ship>\"`.", ""]
     md = os.path.join(out, "REVIEW.md")
     with open(md, "w", encoding="utf-8") as f: f.write("\n".join(L))
     return md

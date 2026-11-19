@@ -1,7 +1,7 @@
 # Templates
 
 Every visual moment in an edit comes from a template. Claude fills in `edit.yaml`; it never writes new drawing code for a video.
-Run `cves templates` to see the live list. All times are cut-time seconds (from `Edit/words.json`). Elements must land on or just after their spoken word (gate GFX-01). Each template also emits its own sound-effect cues.
+Run `cves templates` to see the live list by kind, `cves templates <name>` for one template's params and its section here (`--json` for both). All times are cut-time seconds (from `Edit/words.json`). Elements must land on or just after their spoken word (gate GFX-01). Each template also emits its own sound-effect cues.
 
 **What every template guarantees**
 - **No copy in code.** Every string comes from `params`. Defaults are empty: leave a param out and that element is not drawn.

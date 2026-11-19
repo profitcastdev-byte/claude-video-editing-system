@@ -17,8 +17,10 @@ cves review show [--json]                       the latest round: counts, open f
 Run it after `cves build` (render, mix, encode, QC) and `cves critique`, before the owner sees any cut:
 
 1. `cves qc` on the master (0 FAIL is the goal) and `cves critique`.
-2. `cves review build`. Read `REVIEW.md`, then look at the images with the Read tool: `index.jpg` first, every flagged
-   `cuts/cut_NN.jpg` (and a few unflagged ones), `hook.jpg`, `payoff.jpg`, `endcard.jpg`. Answer the rubric in `REVIEW.md`.
+2. `cves review build`. Read `REVIEW.md`, then look with the Read tool at the images its **Look** list names, in order:
+   `index.jpg`, the `strips_N.jpg` sheets (every flagged cut + `review.look_unflagged` others), `hook.jpg`, `ends.jpg`
+   (payoff over end card); about 4-5 image reads. Open a single `cuts/cut_NN.jpg` only to settle a doubt. Answer the
+   rubric in `REVIEW.md`.
 3. Fix: `cves review apply` for the safe patches; everything else by hand in `edit.yaml` (the suggested patches show where).
 4. Re-render (`cves build`, or `cves render --only ...` + `cves mix` + `cves encode` + `cves qc`), `cves critique`, and
    `cves review build` again.
@@ -41,13 +43,15 @@ Packs are numbered across loops and never overwritten (except a rebuild of the s
 |---|---|
 | `cuts/cut_NN.jpg` | one contact image per cut: the frames at `review.cut_offsets` (default -2..+2; 0 = the first frame of the incoming shot, yellow), flagged frames in red, the cut's label (segments, cutaway in / out, B-roll shot) |
 | `index.jpg` | every cut on one sheet: last frame before, first frame after; cuts with a finding in red |
+| `strips_N.jpg` | the cut strips to look at, stacked: every flagged cut plus `review.look_unflagged` (3) unflagged ones spread over the video, as many per sheet as fit `review.look_px` (1560 px, about one image read) |
+| `ends.jpg` | `payoff.jpg` over `endcard.jpg`, one read |
 | `hook.jpg` | the first `review.hook_s` (3) s at `review.hook_fps` (10); the first visual change in green |
 | `payoff.jpg` | `review.payoff_frames` (6) frames across the payoff window (`structure.payoff_window`) before the end card |
 | `endcard.jpg` | the end card: entry, +0.25 s, middle, last frame (the last second when there is no end card) |
 | `cuts.json` | per cut: timeline time and frame, the frame where the picture really changes (`picture_offset_f`), label, image, finding kinds |
 | `audio.json` | integrated loudness and loudness per section (hook / body / payoff / end card, BS.1770); per cut the click ratio and peak; silences; end tail level; vocal-to-music ratio over speech (`vmr`); `earshot` (`earshot measure --json --light` on the master, or the reason it was skipped) |
 | `findings.json` | `[{id, severity, t, kind, message, patch?, cut?, gate?}]`, high first; `applied: true` once applied |
-| `REVIEW.md` | ready-to-show verdict, facts, findings table, sound summary, the rubric, the loop commands |
+| `REVIEW.md` | only what Claude must look at and decide: the ready-to-show verdict, the **Look** list (images in read order), the findings to judge (QC gates that only restate a QC-REPORT line are listed by id, not repeated), one line of facts, the sound summary, the rubric, the loop in one line |
 | `applied.json`, `signoff.json` | what `apply` changed (with the backup name) and the sign-off record |
 
 **Cut positions.** The cuts come from `critique.structure` (timeline segments, cutaway edges, B-roll shots, the end card).

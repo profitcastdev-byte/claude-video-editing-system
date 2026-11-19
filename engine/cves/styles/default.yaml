@@ -358,6 +358,8 @@ review:                       # `cves review` (docs/REVIEW.md): the render revie
   hook_s: 3.0                 # length of the hook strip (hook.jpg), s; also the hook section of the loudness report
   hook_fps: 10                # frames per second sampled into the hook strip
   payoff_frames: 6            # frames sampled across the payoff window (structure.payoff_window) before the end card
+  look_unflagged: 3           # unflagged cuts spot-checked per round: their strips join the flagged ones in strips_N.jpg
+  look_px: 1560               # tallest strips_N.jpg sheet (px): about one image read; strips stack until the next would pass it
   black_luma: 18              # a frame within 2 of a cut darker than this (mean luma 0-255) between brighter shots is a black flash
   flash_delta: 60             # a frame within 2 of a cut this much brighter (mean luma) than both shots is a white flash
   glitch_ratio: 0.35          # one-frame glitch: frame -1 vs +1 differ by less than this share of the steps into and out of the frame

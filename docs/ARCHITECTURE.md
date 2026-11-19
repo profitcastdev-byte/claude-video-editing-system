@@ -17,6 +17,9 @@ claude-video-editing-system/
   CHANGELOG.md, CONTRIBUTING.md, CLAUDE.md
   engine/cves/            Python package (CLI: `cves ...`)
     cli.py                entry point
+    out.py                console output: third-party noise filter (fd 2, workers included), short QC summaries, one-line errors + Edit/logs/cves.log
+    status.py             `cves status`: stage reached, last QC, open FAILs, the next command (read-only)
+    tlist.py              `cves templates [NAME] [--kinds] [--json]`: the registry in a few lines, one template's params + docs
     project.py            project folder layout, edit.yaml load/save/validate
     ingest.py             transcribe, pause-tighten, plate extract, matte, faces, voice chain
     gfx.py                drawing kit (2x supersampled, Material icons, fonts) + ELEMENT LOG; the canvas (set_canvas, safe_zone)
