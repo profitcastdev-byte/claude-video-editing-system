@@ -1,7 +1,8 @@
 # The demo edit (tools/make_demo.py). "{start:<clip>+0.3}" / "{end:<clip>}" resolve to cut times of that clip's segment.
 # Uses only generic templates, so it doubles as a worked example of edit.yaml.
 chest:
-  - {segment: 01_hook_0, template: lower_third, params: {name: "Alex Demo", role: "Synthetic presenter", at: "{start:01_hook+0.4}"}}
+  # after the punch-in, so the hook's captions show the topic word first (RET-12); a card plate keeps the role legible (GFX-15)
+  - {segment: 01_hook_0, template: lower_third, params: {name: "Alex Demo", role: "Synthetic presenter", style: card, y: 1440, at: "{start:01_hook+1.6}"}}
 cutaways:
   - id: c1
     template: checklist

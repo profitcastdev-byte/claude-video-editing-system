@@ -39,6 +39,8 @@ claude-video-editing-system/
     learn.py              `cves learn`: project journal (Edit/journal.jsonl) -> mined candidate patterns -> human-approved promotion
                           into the learned style layers; taste study of great videos (docs/LEARNING.md)
     critique.py           `cves critique`: contact sheet + energy timeline + CRITIQUE.md rubric (senior-editor review)
+    review.py             `cves review`: watches the render: cut strips, hook, payoff, end card, audio -> findings.json + REVIEW.md; safe patches; sign-off (docs/REVIEW.md)
+    treatments.py         `cves treatments`: 2-3 creative treatments of one plan, half-size proxies, comparison sheet, pick (docs/TREATMENTS.md)
     deliver.py, variants.py  `cves deliver`: QC-stamped Export/vNNN/ (master, captions, cover, qc.json, style snapshot) + variants (reframes, cut-downs) that pass their own QC
     qc/                   `cves qc` gates (+ `--stage story|plan`) -> Edit/QC-REPORT.txt
     export/               resolve.py (FCPXML + media + bridge), kdenlive.py (.kdenlive via OTIO), layers.py (shared)
@@ -71,9 +73,11 @@ claude-video-editing-system/
 | 4a Direction | Claude writes `Edit/DIRECTION.md` | Claude (text) | concept, emotional arc, the one signature moment, motif, what we will not do (knowledge-base/CREATIVE.md); shown with the cut list or the edit plan, not a third approval |
 | 4 Plan | `cves prep` → `cves plan` → Claude fills `edit.yaml` → `cves qc --stage plan` | local + Claude (text) | `words.json`, plate/, matte/, `faces.json` (box + landmarks), `edit.yaml` |
 | 5 Edit plan | `cves moodboard` | local + Claude reads EDIT-PLAN.md, reviews 1 image | `Moodboard/EDIT-PLAN.html`: multi-track timeline + every shot with rendered build frames, words, sound; **user approves** |
+| 5b Treatments (open brief) | `cves treatments make / render / compare / pick` | local + Claude picks 2-3 treatments, reviews 1 sheet | `Edit/treatments/compare/sheet.jpg` + `compare.mp4`; **user picks one** (docs/TREATMENTS.md) |
 | 6 Render + mix | `cves build` (or `cves render && cves mix && cves encode`; `cves beats` for beat sync) | local | final MP4 + stems + `elements.jsonl` |
 | 7 QC | `cves qc` | local; Claude fixes edit.yaml until it passes | `QC-REPORT.txt` + `qc.json`; thresholds for per-client choices come from the style profile |
 | 7b Critique | `cves critique` | local + Claude scores the rubric, fixes anything < 7, logs it (`cves learn rate --by claude`) | `Edit/critique/` contact sheet, energy timeline, `CRITIQUE.md` (knowledge-base/CREATIVE.md) |
+| 7c Review loop | `cves review build` → `cves review apply` → re-render → again; `cves review signoff` | local measures; Claude looks at the pack, answers the rubric, fixes; max `review.max_rounds` (3) rounds | `Edit/review/rNNN/` cut strips, hook / payoff / end card strips, `audio.json`, `findings.json`, `REVIEW.md` ([REVIEW.md](REVIEW.md)) |
 | 8a Vibe delivery | `cves deliver [--variants 4:5,1:1,cut15]` | local + Claude | a new `Export/vNNN/` (master, SRT/WebVTT, cover, qc.json, style snapshot, variants that passed QC; `docs/DELIVERY.md`); refused unless `qc.json` has 0 FAIL for that exact master; user gives notes in words |
 | 8b Control delivery | `cves export resolve` / `cves export kdenlive` | local + Claude via MCP | layered project; Claude drives the editor live (Resolve) or by project file (Kdenlive); user edits by hand |
 
@@ -119,7 +123,8 @@ Every time is cut time in seconds; the engine snaps edits to frame/segment bound
 - motion (`m_*`, `templates/motion.py`): HTML/CSS pieces from `engine/cves/motion/pieces/`, `~/.cves/motion/` and `PROJECT/Brand/motion/`, rendered once by headless Chromium (`cves.motion`, pre-rendered by `render.render()` before the worker pool) and read back as cached RGBA frames; cutaway, overlay (chest), `_roto` and `_end` uses. See `docs/MOTION.md`.
 
 New template = new file + registry entry + a moodboard sample in `docs/TEMPLATES.md`. Templates lay out relative to the canvas
-(`G.W`, `G.H`, `G.safe()`, px scaled by `G.U`; legacy fixed 1080×1920 modules are fitted into the safe zone) and read every
+(`G.W`, `G.H`, `G.safe()`, px scaled by `G.U` and rasterised at the real canvas; the UI cutaways and roto cards pick a
+tall / square / wide arrangement) and read every
 colour and font through `gfx` from the style profile, never as literal values (`docs/CONTRACTS.md` §4, FORMATS.md §3).
 
 ## 6. Element log (unlocks the remaining QC gates)

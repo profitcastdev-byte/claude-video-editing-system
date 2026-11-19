@@ -7,6 +7,7 @@ Merge order (later wins):
   3. ~/.cves/taste/learned.yaml            personal learned taste (`cves learn promote`); may hold client-scoped sections
   4. styles/<preset>.yaml                  optional named preset (edit.yaml: style.preset)
   5. PROJECT/Edit/style.yaml               written by `cves inspire` from the client's reference edits
+  5b. PROJECT/Edit/treatment.yaml `style:`  the creative treatment (`cves treatments make` / `pick`, docs/TREATMENTS.md)
   6. PROJECT/Brand/style.yaml              brand tokens (logo colours, fonts) the client supplies
   7. edit.yaml `style:` keys               per-video overrides
 The learned layers (2, 3) apply only their sections whose scope matches the project (goal / platform / client from
@@ -109,8 +110,12 @@ def load(pr=None, preset=None, extra=None):
         if preset in NOT_PRESETS or not os.path.exists(p): raise SystemExit(f"style preset '{preset}' not found in {HERE}")
         L = _read(p); d = _merge(d, L); layers.append(L); sources.append(f"preset:{preset}")
     if pr is not None:
-        for name, p in (("inspire", pr.e("style.yaml")), ("brand", pr.p("Brand", "style.yaml"))):
-            if os.path.exists(p): L = _read(p); d = _merge(d, L); layers.append(L); sources.append(name)
+        for name, p in (("inspire", pr.e("style.yaml")), ("treatment", pr.e("treatment.yaml")), ("brand", pr.p("Brand", "style.yaml"))):
+            if not os.path.exists(p): continue
+            L = _read(p)
+            if name == "treatment":          # after inspire, before Brand and edit.yaml: brand rules still win
+                name = f"treatment:{L.get('name') or '?'}"; L = L.get("style") if isinstance(L.get("style"), dict) else {}
+            d = _merge(d, L); layers.append(L); sources.append(name)
         inline = {k: v for k, v in st.items() if k != "preset"}
         if inline: d = _merge(d, inline); layers.append(inline); sources.append("edit.yaml")
     if extra: d = _merge(d, extra); layers.append(extra)

@@ -11,7 +11,8 @@ AI-built motion graphics look good, but the sounds an AI picks sound cheap. The 
 | Source | Use | How |
 |---|---|---|
 | **Openverse** (openverse.org, free API) | Real recordings under Creative Commons (CC0 / CC BY only; NC, SA and ND are refused). Includes Freesound | `cves music search "whoosh" --kind sfx`, then `cves music download <id>` (credits are written to `Music/CREDITS.md` automatically) |
-| `assets/sfx/` (in this repo) | 13 CC0 house sounds: lowhit, swipe, whoosh, keyboard, card, pop, switch, riser, boom, ring, ding, scribble, button | Used by the templates' cues; see `assets/sfx/CREDITS.md` |
+| `assets/sfx/` (in this repo) | 13 CC0 recordings (lowhit, swipe, whoosh, keyboard, card, pop, switch, riser, boom, ring, ding, scribble, button) + 15 CC0 sounds synthesized by CVES (risers that resolve on their peak, impacts, whooshes, pops, a tick, a room tone), catalogued in `manifest.yaml` by category and intensity | Template cues by name; anything by role: `@impact:hard`, `@riser`, `@whoosh:soft` (docs/SOUND.md §4); see `assets/sfx/CREDITS.md` |
+| `cves sfx fetch` | Grow your own bank (`~/.cves/sfx` or `PROJECT/Music/sfx`) with real **CC0** recordings from Openverse / Freesound (`FREESOUND_API_KEY`), converted, measured, credited | `cves sfx fetch "door slam" --category impact --to project`; `cves sfx list` |
 | **ElevenLabs** / **Magnific** (Claude connectors) | Custom SFX or music when nothing in a library fits | `cves music generate` prints the hand-off; `cves music credit <file>` records it |
 | **Real SFX** skill (github.com/Clipwing/skills) | Reads a timeline and places real recordings on the frame | Optional; see TOOLS-REGISTRY |
 | **earshot** (github.com/Leonxlnx/earshot) | Gives Claude "ears": describe, compare, A/B, realness, critique, loudness | Installed by the installers; run before judging any sound |
@@ -28,6 +29,8 @@ AI-built motion graphics look good, but the sounds an AI picks sound cheap. The 
 ## Music
 - **The bed sits about −7 LU under the voice while he speaks.** The user rejected −23, −14 and −10 LU as too quiet. Gate SND-04 measures the real music+SFX bed against the voice, and `mix.py` corrects to the target instead of guessing.
 - **Ducking is frequency-split.** The voice band (250 Hz–5 kHz) dips 8 dB while he speaks; lows and highs dip only 3 dB. The bed stays big without masking consonants.
+- **Ducking follows the voice envelope** (v0.4, `mix.duck_mode: envelope`). The dip tracks the syllables: a 40 ms attack, and a release of about 1.25 syllable periods (250–400 ms). The bed comes back between phrases instead of holding a fixed dip. `gate` keeps the old fixed dips.
+- **The music's sections follow the story** (v0.4). The drop lands on the payoff, and its build starts on the turn when a drop allows it. A riser resolves on the payoff, with a downbeat hit, within the restraint budget (docs/SOUND.md).
 - **The duck looks ahead 120 ms,** so the music is already down when a soft word starts.
 - **Sync the drop to the biggest visual beat.** In the example, the drums land on the extreme punch-in at "your turn" (`music.drop_track` / `drop_cut` in edit.yaml).
 - **Licensing:** paid ads need licensed music. Use Openverse (CC0 / CC BY with credit), or generate with ElevenLabs or Magnific. Never ship a commercial track you don't hold rights to.

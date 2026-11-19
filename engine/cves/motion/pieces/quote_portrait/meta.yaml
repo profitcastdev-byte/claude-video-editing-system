@@ -1,0 +1,16 @@
+title: Quote with portrait
+description: A portrait (or an initials monogram on an accent gradient) opens out of a circular or arch mask with a slow push-in and an accent ring drawing round it, then the quote fades up word by word and the name and role slide in under a drawn rule.
+kinds: [cutaway, overlay]
+duration: 4.4
+params:
+  quote: {type: str, required: true, help: "the quote; *stars* mark accent words"}
+  author: {type: str, default: "", help: name under the quote (its initials make the monogram when there is no portrait)}
+  role: {type: str, default: ""}
+  portrait: {type: path, default: "", help: "a photo (asset id or path); empty: an initials monogram"}
+  shape: {type: str, default: circle, help: circle | arch}
+  serif: {type: bool, default: true, help: set the quote in the style's serif}
+preview:
+  duration: 4.4
+  params: {quote: "They answered on a *Sunday night* and fixed it before breakfast.", author: "Maya Ortiz", role: "Homeowner, verified review"}
+cues:
+  - [0.0, swipe, -24]

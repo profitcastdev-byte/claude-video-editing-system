@@ -18,6 +18,7 @@ journal (per project)  ->  cves learn mine  ->  candidates  ->  promote (a perso
 | `PROJECT/Edit/journal.jsonl` | client project | **no** (client folder) | append-only events: time, cves version, style hash + the event |
 | `PROJECT/Edit/journal.last_edit.yaml` | client project | no | edit.yaml as of the last build (for revision diffs) |
 | `PROJECT/Edit/critique/` | client project | no | contact sheet, energy timeline, `critique.json`, `CRITIQUE.md` |
+| `PROJECT/Edit/review/` | client project | no | review packs per round, `findings.json`, `REVIEW.md`, sign-offs ([REVIEW.md](REVIEW.md)) |
 | `~/.cves/taste/candidates.jsonl` | your machine | **no** | proposed patterns with evidence (project / version refs, quoted notes) |
 | `~/.cves/taste/learned.yaml` | your machine | no | your personal learned layer; may hold `client:<name>` sections |
 | `~/.cves/taste/rules.md` | your machine | no | personal learned rules |
@@ -44,6 +45,11 @@ journals under the projects root) and anything path-like, and refuses to write i
 | `deliver` | `cves deliver` | version, variants and their status, forced or not, the decisions (as `build`) |
 | `import-edits` | `cves import-edits` | what the human changed in Resolve / Kdenlive, as an edit.yaml diff + the importer's applied list |
 | `critique` | `cves critique` | which version was reviewed |
+| `review` | `cves review build` | round, loop, pack folder, finding counts, QC FAIL count, the kinds of the high findings |
+| `review-apply` | `cves review apply` | the safe patches applied (`[{id, kind, changes: [{path, old, new}]}]`) |
+| `review-signoff` | `cves review signoff` | verdict (`ship` / `revise`), Claude's notes, the high / med findings still open, rounds used, cap reached ([REVIEW.md](REVIEW.md)) |
+| `treatments-make` / `-render` / `-compare` | `cves treatments` | the treatments built, rendered or compared, with their plan metrics ([TREATMENTS.md](TREATMENTS.md)) |
+| `treatment-pick` | `cves treatments pick` | the treatment chosen, the ones offered, goal / client / platform, its metrics and the edit.yaml diff it brought |
 
 And these by hand (Claude runs them during the workflow, `plugin/skills/video-editor/SKILL.md`):
 
@@ -59,7 +65,7 @@ delivered version.
 
 ## 3. Mining
 `cves learn mine [--root DIR]` reads every `Edit/journal.jsonl` under the projects root (`$CVES_CLIENTS`, config
-`clients_root`, else `~/CVES Projects`) and proposes candidates of three kinds:
+`clients_root`, else `~/CVES Projects`) and proposes candidates of four kinds:
 
 - **Repeated corrections**: the same kind of change made by people at least twice (in the editor, or in edit.yaml after a
   note): a style key raised or lowered, a value switched (transition kind, caption style), a template deleted. A style key
@@ -70,6 +76,9 @@ delivered version.
 - **Note clusters**: notes grouped by topic (captions, music, SFX, pace, transitions, colour, zoom, hook, brand, motion)
   and direction (more / less, faster / slower) that recur. Some map to a style nudge (louder music = `sound.bed_lu` +2
   LU, bigger captions = `captions.size` +10%, faster = `grammar.max_shot_s` −0.5 s); the rest become rules.
+- **Treatment preferences**: `treatment-pick` events per client and per goal. The same treatment picked at least twice and
+  in at least 60% of that scope's picks becomes a `treatments.prefer` style change for that scope (`client:<name>` or
+  `goal:<ad|viral>`); once promoted, `cves treatments list / make` offer it first.
 
 Each candidate has an id, a plain-words statement, a proposed style change (`key → value`) or rule text, a scope
 (`global`, `client:<name>` (local only), `goal:ad|viral`, `platform:<name>`, joinable with `+`), evidence (project /
@@ -88,8 +97,8 @@ Only keys that exist in `engine/cves/styles/default.yaml` can be learned; `promo
 reach teammates with the next `git pull` (open a PR as for any repo change; `CONTRIBUTING.md`).
 
 ## 5. How learned taste is applied
-`style.load()` merges `default → repo learned → personal learned → preset → inspire (Edit/style.yaml) → Brand → edit.yaml
-style:` (docs/CONTRACTS.md §1). A learned file holds `scopes: {<scope>: {style keys}}`; only sections whose scope matches
+`style.load()` merges `default → repo learned → personal learned → preset → inspire (Edit/style.yaml) → treatment
+(Edit/treatment.yaml) → Brand → edit.yaml style:` (docs/CONTRACTS.md §1). A learned file holds `scopes: {<scope>: {style keys}}`; only sections whose scope matches
 the project apply (goal from `edit.yaml goal:`, platform from `edit.yaml platform.target`, client from `project.client`;
 a project without a goal matches only `global` and its client / platform sections). General sections merge first,
 specific ones last. `S["_sources"]` lists `learned:repo` / `learned:personal` when they applied. Because the preset, the
@@ -107,6 +116,8 @@ frame-difference pass if that is unavailable). Per kind it writes medians to `~/
 1. Creative direction before the plan (`Edit/DIRECTION.md`, knowledge-base/CREATIVE.md §1).
 2. After QC passes: `cves critique`, fill `CRITIQUE.md`, fix anything below 7 that is fixable, log the scores with
    `cves learn rate ... --by claude`.
+2b. Then the review loop ([REVIEW.md](REVIEW.md)): `cves review build`, look at the pack, fix, re-render, until 0 FAIL and no high
+   findings (max 3 rounds), and `cves review signoff` records the verdict and what was still wrong.
 3. After every user note: `cves learn note "<their words>"`. After delivery: ask for a 1–10 rating and log it; log
    platform results when the user has them.
 4. Every few deliveries: `cves learn mine`, show the user the new candidates, and promote only what they approve.

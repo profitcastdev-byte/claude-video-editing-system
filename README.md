@@ -5,7 +5,7 @@ An autonomous editing agent for short-form talking-head video (Reels, Shorts, Ti
 
 No look is hard-coded. Each client's style is **measured from their own reference edits** (`cves inspire`) into a style profile. That profile drives the grade, captions, transitions, framing, pacing, sound levels and the QC thresholds. The engine knows craft, not a house style.
 
-The craft comes from a 73-video curriculum covering motion, editing, graphic design, retention, sound, narrative, composition, colour and platform. It is distilled into a rulebook of 181 quality rules. **93 of them are measured automatically on every render** (`cves qc`), plus 17 early checks on the story and the plan. The rest are checked by eye on the edit plan and contact sheets. A render with any failing gate cannot be delivered.
+The craft comes from a 73-video curriculum covering motion, editing, graphic design, retention, sound, narrative, composition, colour and platform. It is distilled into a rulebook of 183 quality rules. **95 of them are measured automatically on every render** (`cves qc`), plus 17 early checks on the story and the plan. The rest are checked by eye on the edit plan and contact sheets. A render with any failing gate cannot be delivered.
 
 ## Two ways to work
 | | **Vibe mode** | **Control mode** |
@@ -21,7 +21,8 @@ The craft comes from a 73-video curriculum covering motion, editing, graphic des
 4. **Story:** Claude picks the takes and tags the story beats. **You approve the cut list.**
 5. **Plan:** Claude fills `edit.yaml` from templates and media (graphics, images, B-roll, screen recordings, picture-in-picture, generated assets), then runs `cves validate`.
 6. **Edit plan:** a multi-track timeline plus every shot with frames from the final renderer, its words, framing, transitions and sound. **You approve.**
-7. Render → beat-synced mix → encode → `cves qc`. Claude fixes until there are 0 FAILs.
+6b. Open or creative brief: `cves treatments` builds 2-3 takes (punchy / cinematic / minimal) as fast half-size proxies and a side-by-side sheet; you pick one (docs/TREATMENTS.md).
+7. Render → beat-synced mix (music sections on the story beats, risers and impacts, voice-following ducking; docs/SOUND.md) → encode → `cves qc`. Then **Claude watches its own cut** (`cves review`: frame strips at every cut, the hook, payoff and end card, audio checks; docs/REVIEW.md) and fixes and re-renders, up to 3 rounds, until there are 0 FAILs and no high findings, before you see it.
 8. `cves deliver`: a versioned `Export/vNNN/` with the master, captions, cover, 4:5 / 1:1 / 16:9 reframes, hook, end-card and music variants, and 15 / 30 s cut-downs. Every variant passes QC itself, and delivery refuses a file QC hasn't approved.
 
 Your notes become rules or gates, so they never come back (`LESSONS.md`). CVES also journals every edit, note, rating and result, mines them for repeated patterns, and proposes them as taste you approve (`cves learn`, `docs/LEARNING.md`): nothing changes the look until a person promotes it.
@@ -63,13 +64,18 @@ Restart Claude Code and run `/cves:install`. It installs every tool, model and s
 - Never ship unlicensed music in a paid ad.
 
 ## Known limits (honest)
-- **Native formats, legacy layouts.** Any canvas renders natively (`canvas.size`, docs/FORMATS.md), but the v0.2 UI cutaways
-  (`search_rows`, `card_list`, `stat`, `browser_list`) and the roto cards keep their 1080×1920 layout and are fitted into the
-  safe zone on other canvases (smaller on landscape). On canvases whose short side is far from 1080 (e.g. 4K) relative
-  templates are drawn at a 1080 short side and scaled, so graphics are slightly softer than footage.
-- **Resolve round trip:** the FCPXML is validated structurally, and a Kdenlive project loads in `melt`, but a live DaVinci Resolve import has not been tested yet.
+- **Native formats.** Any canvas renders natively (`canvas.size`, docs/FORMATS.md). The v0.2 UI cutaways (`search_rows`,
+  `card_list`, `stat`, `browser_list`) and the roto cards now lay out per canvas shape (the original layout on 9:16, a
+  scaled block on square canvases, a landscape arrangement with two-column lists on wide ones), and relative templates are
+  rasterised at the canvas's real resolution (photo cards and panes included), so 4K graphics are crisp. A third-party
+  template that touches layer pixels without `G.px` must set `RASTER = False` and is then scaled up (docs/TEMPLATES.md).
+- **HDR.** PQ and HLG A-roll and B-roll / media clips are tonemapped to SDR BT.709 through the same chain. HDR stills (PQ
+  AVIF / HEIC) are not; without ffmpeg's `zscale` the fallback only re-matrixes colours (docs/INGEST.md).
+- **Resolve round trip:** the Kdenlive round trip (export, edit the project, melt render, `import-edits`, rebuild) is an
+  automated test. DaVinci Resolve is not installed on the build machine, so a live Resolve import and a Resolve-written
+  FCPXML have not been tested; [docs/RESOLVE-CHECKLIST.md](docs/RESOLVE-CHECKLIST.md) is the script for the first person with Resolve.
 - **Complex scripts** (Indic, Arabic) need Pillow with libraqm for correct shaping; `cves doctor` reports whether it is available.
-- **Not every gate is automated:** 93 of the 181 rules are. The others need instruments that don't exist yet (role and intent tags, blur and banding detectors, music-stem gates); see `knowledge-base/QC-GATES.md`.
+- **Not every gate is automated:** 95 of the 183 rules are. The others need instruments that don't exist yet (role and intent tags, blur and banding detectors, music-stem gates); see `knowledge-base/QC-GATES.md`.
 - **Footage limits the grade can't remove:** on the first test ad, two colour gates still fail. COL-06 (cut-to-cut colour match) fails where skin drifts within a shot and where the wall patch changes between punch-ins. FRAME-03 (edge halo) fails where a bright door frame sits next to the shoulder and where hair is motion-blurred. Both report honestly instead of being loosened.
 - **Windows CI** runs the test suite; a full edit on a Windows machine has not been tried by hand yet.
 - **Linux is not a supported editing platform.** CI runs the tests there, but Ubuntu's own `melt` (MLT 7.36) ignores overlay transparency in landscape projects, so Kdenlive playback is verified with the MLT that ships in Kdenlive (7.43, macOS), not on Linux.

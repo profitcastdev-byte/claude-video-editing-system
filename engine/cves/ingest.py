@@ -159,6 +159,46 @@ def _tonemap_chain(P, S):
 
 def _even(x): return max(2, int(round(x / 2)) * 2)
 
+# ------------------------------------------------------------------ HDR B-roll / media clips -> SDR (the A-roll tonemap, reused)
+_SDR_PROBE = {}
+def is_hdr(path):
+    """True when the video's transfer is PQ or HLG (probe cached per path + mtime + size; stills and audio are never HDR here)"""
+    try: st = os.stat(path)
+    except OSError: return False
+    k = (os.path.abspath(path), st.st_mtime, st.st_size)
+    if k not in _SDR_PROBE:
+        try: _SDR_PROBE[k] = probe_file(path)
+        except SystemExit: _SDR_PROBE[k] = None
+    P = _SDR_PROBE[k]; return bool(P and P.get("hdr"))
+
+def sdr_source(path, S=None, cache=None):
+    """B-roll and media clips go through the SAME HDR -> SDR BT.709 chain as A-roll ingest (`_tonemap_chain`: zscale +
+    tonemap, style ingest.hdr.*). An SDR source is returned unchanged. An HDR (PQ / HLG) one is tonemapped once into a
+    lossless 10-bit FFV1 proxy `<cache>/<name>-<key>.sdr.mkv` (video only, display rotation applied, timestamps kept,
+    tagged BT.709) and that path is returned; the clip's own audio is still read from the original. cache: the project's
+    Edit/conform (render passes it), else ~/.cves/cache/sdr. Style ingest.hdr.broll: false turns it off."""
+    if not path or os.path.isdir(path) or not os.path.isfile(path): return path
+    S = S if S is not None else STY.load()
+    if not S.get("ingest.hdr.broll", True) or not is_hdr(path): return path
+    st = os.stat(path); P = _SDR_PROBE[(os.path.abspath(path), st.st_mtime, st.st_size)]
+    tm = _tonemap_chain(P, S)
+    import hashlib
+    key = hashlib.sha256(json.dumps([os.path.abspath(path), st.st_mtime, st.st_size, tm[1]], default=str).encode()).hexdigest()[:12]
+    cache = cache or os.path.join(os.path.expanduser("~"), ".cves", "cache", "sdr"); os.makedirs(cache, exist_ok=True)
+    out = os.path.join(cache, f"{os.path.splitext(os.path.basename(path))[0]}-{key}.sdr.mkv")
+    if os.path.exists(out): return out
+    fd, tmp = tempfile.mkstemp(suffix=".mkv", dir=cache); os.close(fd)
+    try:
+        sh([C.get("ffmpeg"), "-v", "error", "-y", "-i", path, "-map", f"0:v:{P['stream']}", "-an", "-sn", "-dn", "-fps_mode", "passthrough",
+            "-vf", tm[1], "-c:v", "ffv1", "-level", "3", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
+            "-color_range", "tv", tmp])
+        os.replace(tmp, out)                       # atomic: a parallel worker never reads a half-written proxy
+    except subprocess.CalledProcessError as e:
+        if os.path.exists(tmp): os.remove(tmp)
+        raise SystemExit(f"HDR -> SDR tonemap of {path} failed ({tm[0]}): {(e.stderr or '').strip()[-300:]}")
+    print(f"cves: HDR {P['color_transfer']} B-roll {os.path.basename(path)} -> SDR BT.709 ({tm[0]}) {out}", file=sys.stderr)
+    return out
+
 def _face_path(path, P, S, axis, cw, ch):
     """sample YuNet faces on the (rotated, square-pixel) source, smooth, convert to a crop offset path [[t, px], ...].
     Streams frames through an ffmpeg pipe at ingest.face_crop.sample_fps: never holds the video in RAM."""

@@ -44,12 +44,23 @@ def video_args(S):
     return a
 
 
+def proxy_video_args(S):
+    """ffmpeg args for a proxy (treatment previews, docs/TREATMENTS.md): the delivery colour tags, but a fast x264 preset
+    and a lighter crf from style `treatments.proxy_preset` / `proxy_crf`. Never used for a delivered file."""
+    D = S.get("delivery") or {}; color = D.get("color", "bt709")
+    vf = f"scale=out_color_matrix={color}:out_range=tv,format=yuv420p"
+    return ["-vf", vf, "-c:v", "libx264", "-preset", str(S.get("treatments.proxy_preset", "veryfast")), "-crf", str(S.get("treatments.proxy_crf", 26)),
+            "-x264-params", f"colorprim={color}:transfer={color}:colormatrix={color}:range=tv",
+            "-color_primaries", color, "-color_trc", color, "-colorspace", color, "-color_range", "tv", "-movflags", "+faststart"]
+
+
 def audio_args(S):
     A = (S.get("delivery") or {}).get("audio") or {}
     return ["-c:a", str(A.get("codec", "aac")), "-ar", str(A.get("sample_rate", 48000)), "-b:a", str(A.get("bitrate", "256k"))]
 
 
-def encode(pr, out=None, frames="frames", audio=None):
+def encode(pr, out=None, frames="frames", audio=None, proxy=False):
+    """proxy=True: fast preview video settings (proxy_video_args); the full-quality path is unchanged"""
     S = STY.load(pr); fr, (w, h) = stream_params(pr)
     title = (pr.edit.get("project", {}) or {}).get("title", "edit").replace(" ", "_")
     out = out or pr.p("Export", f"{title}.mp4"); os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
@@ -62,5 +73,6 @@ def encode(pr, out=None, frames="frames", audio=None):
     if (im.shape[1], im.shape[0]) != (w, h):
         raise SystemExit(f"frames are {im.shape[1]}x{im.shape[0]} but timeline.json says {w}x{h}: re-run `cves render`")
     subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", "-framerate", fr, "-i", src, "-i", mixf,
-                    "-map", "0:v", "-map", "1:a"] + video_args(S) + audio_args(S) + ["-shortest", out], check=True)
+                    "-map", "0:v", "-map", "1:a"] + (proxy_video_args(S) if proxy else video_args(S))
+                   + audio_args(S) + ["-shortest", out], check=True)
     return out

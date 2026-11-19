@@ -26,7 +26,7 @@ def lower_third(t, p, ctx):
     x0 = (G.W / 2 - (tw + 60) / 2) if centre else z[0] + pad; tx = x0 + 34
     e = ease_out(pa); slide = G.mo("slide_px", 50) * .6
     if style == "card":
-        res.append(El(G.alpha(G.layer(lambda d: G.rrect(d, (x0 - 8, top, x0 - 8 + (tw + 76) * e, top + h), 18, fill=G.CARD + (235,), outline=G.CARD_B, width=2)), vis),
+        res.append(El(G.alpha(G.layer(lambda d: G.rrect(d, (x0, top, x0 + (tw + 68) * e, top + h), 18, fill=G.CARD + (235,), outline=G.CARD_B, width=2)), vis),
                       "lower.plate", "chest", t_key=Q(at)))
     res.append(El(G.alpha(G.layer(lambda d: G.rrect(d, (x0, top + h / 2 - h / 2 * e, x0 + 8, top + h / 2 + h / 2 * e), 4, fill=c)), vis), "lower.bar", "chest", t_key=Q(at)))
     na = at + .06; pn = ease_out(G.enter(t, na, .3, F))
@@ -59,7 +59,8 @@ def kinetic_caption_emphasis(t, p, ctx):
     oa = p.get("out_at", ctx.get("end", 1e9) - .2); po = ease_in(G.enter(t, oa, .2, F))
     z = G.safe(); sf = p.get("scale_from", 1.35); hold = clamp((t - G.q(at, F)) / 3) * .04
     sc = 1 + (sf - 1) * (1 - ease_out(qv)) + hold
-    tr = p.get("tracking", 4); f = G.fit_font("xb", int(p.get("size", 260) * sc), wd, (z[2] - z[0]) * sc, tr)
+    tr = p.get("tracking", 4); base = G.fit_font("xb", int(p.get("size", 260)), wd, (z[2] - z[0]) / 1.04, tr)   # fit at rest, room for the hold
+    f = G.fit_font("xb", int(base.size * sc), wd, 1e9, tr)          # the entry scales from there (a fitted word never ends past the safe zone)
     c = G.col(p.get("color"), G.MINT); y = p.get("y", 560 if G.is_design() else G.safe()[1] + .3 * (G.safe()[3] - G.safe()[1]))
     im = faded(lambda d: G.draw_text(d, (G.W / 2, y - 80 * po), wd, f, c, tracking=tr, anchor="ms"), min(1, qv * 2) * (1 - po))
     return [El(im, "emph.word", "roto", text=wd, t_key=Q(at))]

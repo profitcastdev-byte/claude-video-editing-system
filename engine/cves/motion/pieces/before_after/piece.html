@@ -1,0 +1,75 @@
+<div class="safe center">
+  <div class="fr" id="fr">
+    <div class="pane af" id="af"><span class="big" id="at"></span></div>
+    <div class="pane bf" id="bf"><span class="big" id="bt"></span></div>
+    <div class="hd" id="hd" data-el="handle"><div class="bar"></div><div class="knob"><svg viewBox="0 0 100 100"><path d="M38 30 L20 50 L38 70 M62 30 L80 50 L62 70" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+    <div class="chip lbl l" id="bl"></div>
+    <div class="chip lbl r" id="al"></div>
+  </div>
+</div>
+<style>
+  .fr { position: relative; width: min(100%, calc(var(--u) * 86)); aspect-ratio: 4 / 5; flex: none; border-radius: calc(var(--r) * 1.2); overflow: hidden;
+        box-shadow: 0 calc(var(--u) * 2.4) calc(var(--u) * 7) rgb(0 0 0 / 0.45), 0 0 0 max(1px, calc(var(--u) * 0.14)) rgb(var(--text-rgb) / 0.16); }
+  .pane { position: absolute; inset: 0; background-size: cover; background-position: center; }
+  .big { position: absolute; top: 50%; transform: translate(-50%, -50%); }
+  .bf { background-color: var(--surface); background-image: linear-gradient(160deg, rgb(var(--text-rgb) / 0.06), rgb(0 0 0 / 0.25)); }
+  .af { background-color: var(--accent-dark); background-image: radial-gradient(120% 90% at 70% 20%, rgb(var(--accent-rgb) / 0.85), rgb(var(--accent-dark-rgb) / 1)); }
+  .pane.img { background-color: var(--card); }
+  .big { font-weight: 800; white-space: normal; letter-spacing: -0.03em; line-height: 1; text-align: center; font-size: var(--t-7); padding: 0 8%; }
+  .bf .big { color: var(--muted); }
+  .af .big { color: var(--text); text-shadow: 0 calc(var(--u) * 0.4) calc(var(--u) * 3) rgb(0 0 0 / 0.3); }
+  .hd { position: absolute; top: 0; bottom: 0; left: 0; width: 0; z-index: 3; }
+  .bar { position: absolute; top: 0; bottom: 0; left: calc(var(--u) * -0.3); width: calc(var(--u) * 0.6); background: var(--text); box-shadow: 0 0 calc(var(--u) * 2) rgb(0 0 0 / 0.45); }
+  .knob { position: absolute; top: 50%; left: calc(var(--u) * -4.5); width: calc(var(--u) * 9); height: calc(var(--u) * 9); margin-top: calc(var(--u) * -4.5);
+          border-radius: 50%; background: var(--text); color: var(--bg); display: grid; place-items: center; box-shadow: 0 calc(var(--u) * 1) calc(var(--u) * 3) rgb(0 0 0 / 0.45); }
+  .knob svg { width: 62%; height: 62%; }
+  .lbl { position: absolute; top: calc(var(--u) * 3); z-index: 4; text-transform: uppercase; letter-spacing: 0.14em; font-size: var(--t-1);
+         background: rgb(var(--card-rgb) / 0.82); color: var(--text); border-color: rgb(var(--text-rgb) / 0.2); }
+  .lbl.l { left: calc(var(--u) * 3); }
+  .lbl.r { right: calc(var(--u) * 3); background: var(--accent); color: var(--bg); border-color: transparent; }
+  @media (min-aspect-ratio: 1/1) { .big { font-size: var(--t-6); } .fr { width: auto; height: min(100%, calc(var(--u) * 82)); aspect-ratio: 16 / 10; } }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let fr, bf, af, hd, bl, al, bt, at, tl, W;
+  C.piece({
+    setup(P, ctx) {
+      fr = document.getElementById('fr'); bf = document.getElementById('bf'); af = document.getElementById('af'); hd = document.getElementById('hd');
+      bl = document.getElementById('bl'); al = document.getElementById('al'); bt = document.getElementById('bt'); at = document.getElementById('at');
+      if (P.before) { bf.style.backgroundImage = `url("${P.before}")`; bf.classList.add('img'); bt.remove(); }
+      else if (P.before_text) { bt.textContent = C.plain(P.before_text); bt.dataset.text = bt.textContent; } else bt.remove();
+      if (P.after) { af.style.backgroundImage = `url("${P.after}")`; af.classList.add('img'); at.remove(); }
+      else if (P.after_text) { at.textContent = C.plain(P.after_text); at.dataset.text = at.textContent; } else at.remove();
+      const split = C.clamp(+P.split_at || 0.5, 0.05, 0.95);
+      [[bt, split / 2, split], [at, (1 + split) / 2, 1 - split]].forEach(([x, cx, w]) => {
+        if (!x.isConnected) return; x.style.left = (cx * 100).toFixed(2) + '%'; x.style.width = (w * fr.clientWidth * 0.8) + 'px';
+        C.fit(x, w * fr.clientWidth * 0.8, fr.clientHeight * 0.36, 3, 0.3); });
+      const fsz = [bt, at].filter((x) => x.isConnected).map((x) => parseFloat(getComputedStyle(x).fontSize));
+      if (fsz.length) [bt, at].forEach((x) => { if (x.isConnected) x.style.fontSize = Math.min(...fsz) + 'px'; });   // one size both sides
+      bl.textContent = C.plain(P.before_label || 'Before'); bl.dataset.text = bl.textContent;
+      al.textContent = C.plain(P.after_label || 'After'); al.dataset.text = al.textContent;
+      W = fr.clientWidth;
+      const s0 = typeof P.sweep_at === 'number' ? P.sweep_at : D(0.6);
+      tl = C.timeline().at('fr', 0, D(0.6)).at('bl', D(0.25), D(0.5)).at('hd', s0 - D(0.15), D(0.35)).at('sw1', s0, D(0.75)).at('sw2', s0 + D(0.75), D(0.55)).at('al', s0 + D(0.35), D(0.5));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), split = C.clamp(+P.split_at || 0.5, 0.05, 0.95), low = Math.max(0.12, split - 0.3);
+      // handle: rests at the right edge, sweeps past the split (revealing most of the after) and settles back on it
+      const x = 1.0 + (low - 1.0) * C.MOVE(tl.raw('sw1', t)) + (split - low) * C.MOVE(tl.raw('sw2', t));
+      const pf = tl.p('fr', t);
+      C.set(fr, { y: (1 - pf) * 4 * u - ex * 3 * u, s: 0.95 + 0.05 * pf, o: Math.min(1, tl.raw('fr', t) * 2.5) * (1 - ex) });
+      bf.style.clipPath = `inset(0 ${((1 - x) * 100).toFixed(3)}% 0 0)`;
+      const vx = (tt) => (1.0 + (low - 1.0) * C.MOVE(tl.raw('sw1', tt)) + (split - low) * C.MOVE(tl.raw('sw2', tt))) * W;
+      C.set(hd, { x: x * W, o: tl.raw('hd', t) * (1 - ex) });
+      hd.querySelector('.knob').style.transform = `scale(${(0.5 + 0.5 * C.IN(tl.raw('hd', t))).toFixed(4)})`;
+      hd.querySelector('.bar').style.filter = C.mblur(vx, t) > 0 ? `blur(${(C.mblur(vx, t) * 0.4).toFixed(2)}px)` : 'none';
+      C.rise(bl, t, tl.t0('bl'), D(0.5), 1.6 * u);
+      C.rise(al, t, tl.t0('al'), D(0.5), 1.6 * u);
+      if (at.isConnected) at.style.opacity = C.clamp((1 - x) / (1 - split) * 1.5).toFixed(3);   // the after copy exists once the wipe uncovers it
+      // the "after" chip only shows once its side has room
+      al.style.opacity = (parseFloat(al.style.opacity || 0) * C.clamp((1 - x) * 4)).toFixed(3);
+    },
+    cues() { C.cue(0, 'swipe', -24, { trim: [0, 0.3] }); C.cue(tl.t0('sw1'), 'whoosh', -22, { trim: [0, 0.5] }); C.cue(tl.t0('al'), 'pop', -22, { pitch: 3 }); },
+  });
+})();
+</script>

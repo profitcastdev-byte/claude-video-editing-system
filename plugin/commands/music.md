@@ -22,13 +22,13 @@ One line: mood, energy, bpm range, instruments, where the drop should land (`mus
 
 ## Then: sync the music to the edit (docs/MUSIC.md)
 1. Set `music:` in `edit.yaml`: `file`, `bed_lu`, `credits`. Set `drop_cut` (cut seconds) only if the drop must land somewhere other than the first proof / offer beat (`music.drop_beats`).
-2. `cves beats` analyses the track: tempo, beats, downbeats, sections, energy, drop candidates -> `Edit/beats.json`. Check the drop candidate by ear (earshot on a clip around it) before trusting it.
+2. `cves beats` analyses the track: tempo, beats, downbeats, sections, phrases (intro / build / drop / body / break / outro), energy, drop candidates -> `Edit/beats.json`. It also prints where the hook, the turn and the payoff fall against those sections. Check the drop candidate by ear (earshot on a clip around it) before trusting it.
 3. Pick a sync mode (`music.sync` in edit.yaml or the style; the modes are cumulative):
    - `drop`: the strongest drop lands on the story moment. `drop_track` is computed, so don't measure it by hand;
    - `cuts`: also moves cutaway in/out points and graphic entries onto beats (±`music.snap_tolerance_s`). A-roll cuts never move, and GFX-01 is respected;
    - `full`: also nudges whoosh / hit / boom / riser peaks onto beats in the mix (≤ 1 frame).
 4. `cves beats --sync <mode>` prints the plan and the moves. Read it, then `cves beats --sync <mode> --apply` writes `edit.yaml` (a backup `edit.yaml.bak-*` is kept, along with the comments).
-5. `cves mix`. The bed is fitted on bar lines (looped with a crossfade if the track is short) and ends on a downbeat with a one-bar tail. Then run the SND gates (`cves qc`), and `ebur128` on `Edit/mix.wav` (-14 LUFS, TP ≤ -1).
+5. `cves mix`. The bed is fitted on bar lines (looped with a crossfade if the track is short) and ends on a downbeat with a one-bar tail. The music ducks under the voice envelope. A riser resolves on the payoff and a downbeat hit lands there, within the restraint budget (`Edit/mix.json accents`, docs/SOUND.md). Then run the SND gates (`cves qc`; SND-32 checks the riser resolve, SND-33 the drop section on the payoff), and `ebur128` on `Edit/mix.wav` (-14 LUFS, TP ≤ -1).
 6. Listen with earshot to the start, the drop region and the ending (and any loop seam `mix.json` reports) before telling the user how it sounds.
 - **Never** use a track without a recorded licence. Never commit music files to the repo.
 

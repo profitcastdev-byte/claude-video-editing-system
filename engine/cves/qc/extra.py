@@ -119,10 +119,15 @@ class Ctx:
     def in_trans(self, f, pad=0.):
         t = f / self.FPS
         for tb, kind in self.trans:
-            d = TRANS_DUR.get(kind, .12)
+            d = 0 if kind in (None, "cut") else float(self.S.get(f"transitions.{kind}_s", TRANS_DUR.get(kind, .12)))   # the window render drew (craft.trans_dur)
             if d and abs(t - tb) < d + pad: return (tb, kind)
         return None
     def in_snap(self, f): return bool(self.snap) and self.snap[0] <= f / self.FPS < self.snap[1]
+    def snap_hides_captions(self, f):
+        """render.compose: the snap hides captions only where its segment has roto type (which replaces them)"""
+        if not self.in_snap(f): return False
+        s = self.seg_of(f); roto = {r.get("segment") for r in (self.E.get("roto") or [])}
+        return bool(s) and s["id"] in roto
     def seg_of(self, f): j = self.seg_idx[f] if 0 <= f < len(self.seg_idx) else -1; return self.segs[j] if j >= 0 else None
 
     def aroll_M(self, f):
@@ -143,7 +148,7 @@ class Ctx:
     def cap_allowed(self, f):
         """frames where the renderer may draw a caption: A-roll, no chest element, not the snap, not a hide window"""
         t = f / self.FPS                 # A-roll, B-roll shots and uncovered frames take captions; drawn cutaways do not
-        if not 0 <= f < self.A or self.in_card(t) or self.in_snap(f): return False
+        if not 0 <= f < self.A or self.in_card(t) or self.snap_hides_captions(f): return False
         if any(a <= t < b for a, b in self.cap_hide): return False
         return not any(e["role"] == "chest" for e in self.by_f.get(f, []))
 
@@ -426,7 +431,7 @@ def gates_captions(cx, gate):
     off = lambda f: min(np.abs(np.array(f[:3], float) - want).max(), np.abs(np.array(f[:3], float) - want_hi).max()) > 40
     nonwhite = [f"{m['id']} fill {[round(v) for v in m['fill']]} vs style {cx.CS.get('color', '#FFFFFF')}" for m in ms if off(m["fill"])]
     noshadow = [f"{m['id']} shadow {m['shadow']:+.1f}" for m in ms if cx.CS.get("shadow", True) and m["shadow"] is not None and m["shadow"] < 2]
-    plate = [f"{m['id']} layer extends {m['margin']} px past the ink" for m in ms if cx.CS.get("style") != "box" and m["margin"] > 26]
+    plate = [f"{m['id']} layer extends {m['margin']} px past the ink" for m in ms if cx.CS.get("style") != "box" and m["margin"] > 26 * max(1., U_)]   # px at a 1080 short side (the caption shadow scales by U)
     bad += nonwhite + noshadow + plate
     caph = [m["cap_h"] for m in ms if m["cap_ok"]]
     if cx._results.get("cap_unmeasured"): bad_note = f" ({len(cx._results['cap_unmeasured'])} events only on transition frames: not measured)"
@@ -809,9 +814,9 @@ def gates_timeline(cx, gate):
         if not i.text: continue
         if i.role == "caption":
             for (s, e, w) in cx.cap_words(i):
-                if any(k in w.lower() for k in kws):
-                    f = max(i.f0, int(math.ceil((s - .03) * FPS)))
-                    if f <= i.f1 and (first is None or f < first[0]): first = (f, i.key, w)
+                if any(k in w.lower() for k in kws):     # the first frame the word is really drawn (not hidden by a chest / snap / card)
+                    f = next((g for g in range(max(i.f0, int(math.ceil((s - .03) * FPS))), min(i.f1, int(e * FPS)) + 1) if cx.cap_allowed(g)), None)
+                    if f is not None and (first is None or f < first[0]): first = (f, i.key, w)
         elif any(k in i.text.lower() for k in kws) and (first is None or i.f0 < first[0]): first = (i.f0, i.key, i.text)
     if not kws: gate("RET-12", False, "no qc.topic_keywords in edit.yaml", status="WARN")
     else: gate("RET-12", first is not None and first[0] / FPS <= 2.0, f"topic keyword on screen at {first[0] / FPS:.2f} s ({first[1]} '{first[2]}')" if first else "no text layer shows a topic keyword")
@@ -864,7 +869,7 @@ def gates_sound(cx, gate):
             env = np.sqrt(np.convolve(y ** 2, np.ones(480) / 480, "same")); pk = env.max() + 1e-12
             on_t, pk_t = t + int(np.argmax(env >= .1 * pk)) / SR, t + int(np.argmax(env)) / SR
             dc = (pk_t - cut_t) * FPS; jc = int(np.argmin(np.abs(dc)))
-            if any(n in name for n in SFX_PEAK_NAMES) and abs(dc[jc]) <= 12:      # transition whoosh: SND-08 (peak on the cut)
+            if any(n in name for n in SFX_PEAK_NAMES) and abs(dc[jc]) <= 12 and not kw.get("accent"):      # transition whoosh: SND-08 (peak on the cut); automatic risers: SND-32
                 s8.append((name, t, on_t, pk_t, cut_t[jc], dc[jc])); continue
             at, how = (pk_t, "peak") if "riser" in name else (on_t, "onset")      # SND-07: risers at their peak, the rest at onset
             d = (at - evt) * FPS; j = int(np.argmin(np.abs(d)))
@@ -958,7 +963,8 @@ def run_extra(pr, video, gate):
     for i in cx.inst:       # text contrast: static, opaque, transition-free frames, every 6th, <= 8 per element
         if not i.is_text: continue
         fr = [int(i.f[j]) for j in range(len(i.f)) if i.al[j] >= .95 and not cx.in_trans(int(i.f[j]))
-              and (i.role == "caption" or (0 < j < len(i.f) - 1 and np.abs(i.bb[j] - i.bb[j - 1]).max() <= 1))]
+              and (i.role == "caption" or (0 < j < len(i.f) - 1 and np.abs(i.bb[j] - i.bb[j - 1]).max() <= 1
+                                           and np.abs(i.bb[j + 1] - i.bb[j]).max() <= 1))]     # static on both sides (as GFX-08): not mid-entry
         text_fr[i.key] = (fr[::6] or fr[:1])[:8]
     roto_fr = sorted(set(f for i in cx.inst if i.role == "roto" and i.is_text for f in text_fr.get(i.key, [])))
     mattes = {}             # plate-space mattes for sampled A-roll frames and for roto text frames (person mask)
@@ -999,3 +1005,5 @@ def run_extra(pr, video, gate):
     safe(gate_col12, ["COL-12"])
     safe(gates_timeline, ["CUT-04", "RET-12"])
     safe(gates_sound, ["SND-07", "SND-08", "SND-09", "SND-11", "SND-13", "SND-22", "SND-23"])
+    from .sound_gates import gates_senior_sound            # v0.4 WS H: riser resolve + phrase alignment (WARN-only)
+    safe(gates_senior_sound, ["SND-32", "SND-33"])

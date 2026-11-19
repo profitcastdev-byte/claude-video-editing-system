@@ -200,6 +200,10 @@ roto: [{segment: 05_every_day_0, template: kinetic_caption_emphasis, params: {wo
 ---
 
 ## Cutaways built for UI moments (full screen; they hide jump cuts; 40–55 % of runtime)
+Laid out per canvas shape (FORMATS.md §3): the original layout on 9:16, a scaled block on square canvases, a landscape
+arrangement on wide ones (`card_list` in two columns from 4 items, `browser_list` rows in two columns from 4 rows).
+`top` and other px params are 1080×1920 design px and apply on tall canvases. `stat` (= `counter`) is documented with the
+generic templates.
 | Template | Use for | Key params |
 |---|---|---|
 | `search_rows` | searches typed out row by row | `label`, `pills [left, right]`, `pill_times {left:[t,dur], plus, right}`, `rows [{q, type:[a,b], tag, check, stars?}]`, `tag_text`, `enter`, `rows_in` |
@@ -207,6 +211,9 @@ roto: [{segment: 05_every_day_0, template: kinetic_caption_emphasis, params: {wo
 | `browser_list` | website / content deliverables on a page card | `head [[word, at, accent?]]`, `enter`, `hero_at`, `hero_icon`, `rows [{text, at, icon?}]`, `row_icon`, `pill`, `pill_at` |
 
 ## Roto (behind the presenter; at most 4 moments, each ≤ 3 s)
+The cards are laid out in fractions of their own box: the 1080×1920 box on 9:16, a box filling the safe-zone height
+(1.35:1 on wide canvases) elsewhere. `big_words` `ys` are 1080×1920 baselines (tall canvases); square and wide canvases
+spread the lines down the safe zone.
 | Template | Use for | Params |
 |---|---|---|
 | `map_card` | a map card behind the head: roads drawing in, pins popping (each pin is its own element) | `at`, `draw_at`, `pins_at`, `pins` (≤ 6), `pin_stagger` |
@@ -214,6 +221,7 @@ roto: [{segment: 05_every_day_0, template: kinetic_caption_emphasis, params: {wo
 | `listing_card` | a listing / profile card rising behind the head | `at`, `stars` (0 for none), `stars_at` |
 | `top3_card` | a ranked-results card and a badge | `at`, `badge`, `badge_at`, `rows`, `rows_at`, `row_stagger` |
 | `kinetic_caption_emphasis` | one word, big (see above) | `word`, `at` |
+| `text_behind` | big type tracked to the presenter's smoothed face landmarks, between the plate and the subject matte, so the head occludes it; lifts clear above the head when the segment has no matte (`craft.behind.*`, MOTION.md "Craft"). Counts against `creative.craft_per_30s` | `text`! (`*stars*` = accent), `at`, `out_at`, `position` (above / behind / low), `size`, `track`, `color`, `accent`, `lines` |
 
 ## Chest (replaces captions while visible; placed just under the chin, never over the face)
 | Template | Use for | Params |
@@ -265,21 +273,36 @@ Senior-grade motion design: HTML/CSS compositions in `engine/cves/motion/pieces/
 
 | template | kinds | hero | what it does | params (`!` = required) |
 |---|---|---|---|---|
+| `m_before_after` | cutaway/overlay |  | A framed picture opens on the "before", a slider handle sweeps across wiping in the "after", overshoots past the middle and settles on the split, with BEFORE / AFTER chips riding each side. | `before`, `after`, `before_text`, `after_text`, `before_label`, `after_label`, `split_at`, `sweep_at` |
 | `m_callout` | overlay/cutaway |  | A pin drops onto a point with a squash and two sonar rings, a leader line draws out from it and a glass label card slides off the end of the line. | `label`!, `sub`, `x`, `y`, `side`, `icon` |
 | `m_chart_bars` | cutaway |  | Bars grow from a baseline on a stagger with their values counting above them; the highlighted bar is in the accent, the rest stay quiet. | `title`, `bars`!, `prefix`, `suffix`, `decimals`, `highlight` |
+| `m_checklist_tick` | cutaway/overlay |  | Rows settle in as an empty checklist, then each square box is ticked in turn with a drawn stroke, done rows strike through (or light up) and a progress counter climbs to the total. | `items`!, `title`, `strike`, `counter`, `stagger` |
+| `m_comment_pop` | overlay/cutaway |  | A social comment bubble springs up from its avatar corner, the handle and text settle in, then the heart pops filled and the like count ticks up. | `handle`!, `text`!, `likes`, `verified`, `time`, `avatar`, `position` |
 | `m_compare` | cutaway |  | Two cards build side by side (stacked on a tall canvas), the "before" muted with crosses, the "after" lit in the accent with checks, a VS chip pops on the seam. | `left_title`, `right_title`, `left`!, `right`!, `vs` |
+| `m_countdown` | cutaway/overlay | yes | Each number rolls out of a mask as the next rolls in while an accent ring drains once per number, then the end word lands; clock mode ticks HH:MM:SS (only changing digits roll) over a draining bar. | `mode`, `from`, `to`, `step_s`, `end_text`, `seconds_left`, `label`, `caption` |
 | `m_cta` + `m_cta_end` | cutaway/overlay/end | yes | A headline settles, an accent button springs in, a cursor glides to it on a curve and clicks; the button presses, a ripple rings out and the label confirms. | `text`!, `title`, `sub`, `done`, `cursor` |
+| `m_follow_card` + `m_follow_card_end` | cutaway/overlay/end | yes | A profile card rises in (avatar or monogram, name, handle, chip), a cursor clicks Follow, the button flips to its done state with a drawn tick and a bell rings with a badge. | `name`!, `handle`, `button`, `done`, `logo`, `platform`, `bell`, `cursor` |
 | `m_glass_card` | cutaway/overlay |  | A frosted card focus-pulls in (blur to sharp, slight scale), a sheen sweeps across, then icon, tag, title and body build inside it. | `title`!, `body`, `eyebrow`, `icon`, `chip`, `align` |
 | `m_highlight_words` + `m_highlight_words_roto` | cutaway/overlay/roto |  | A sentence settles in, then marker strokes sweep behind the key words one after another and the words knock out of the marker. | `text`!, `style`, `highlight_at`, `plate` |
+| `m_karaoke` + `m_karaoke_roto` | overlay/cutaway/roto |  | The line settles in dim and each word lights on its own time with a small lift; a pill (or underline) glides from word to word and re-forms on the next line. | `text`, `words` ([{word, at}]), `wps`, `style`, `align`, `position` |
 | `m_kinetic_title` + `m_kinetic_title_roto` | cutaway/overlay/roto | yes | Headline words rise out of masks on a tight stagger, accent words get an underline sweep, eyebrow and sub settle in around them. | `text`!, `eyebrow`, `sub`, `align`, `scale`, `underline` |
 | `m_list_build` | cutaway/overlay |  | Rows slide in one by one on a stagger (or on their own `at`), each mark draws itself on (check, cross, number or dot), the latest row is lit. | `title`, `items`!, `mark`, `stagger` |
 | `m_logo_sting` + `m_logo_sting_end` | cutaway/overlay/end | yes | An accent pill outline draws itself around the mark and breathes out, the logo (or wordmark) focus-pulls in with a light sweep across it, the tagline tracks in underneath. | `logo`, `text`, `tagline`, `ring` |
 | `m_lower_third` | overlay/cutaway |  | An accent bar grows, a solid plate wipes open from it, the name rises inside and the role tracks in; it wipes back out before the shot ends. | `name`!, `role`, `align`, `position` |
+| `m_map_route` | cutaway/overlay |  | A stylised street map (drawn from the style's tones, no tiles) pushes in while the start pin lands, a glowing route draws with a travelling head, the destination pin drops and the place label and ETA chip rise. | `to`!, `from`, `eta`, `points`, `seed`, `draw_s` |
+| `m_notification_stack` | overlay/cutaway |  | Phone-style notification banners slide down one after another; each new one lands on top while the older ones compress behind it into a dimmer, smaller stack. | `items`!, `time`, `position`, `stagger` |
+| `m_price_tag` | cutaway/overlay | yes | The old price settles and an accent line strikes it through, the new price lands with weight under it, a starburst badge spins in and settles, an optional deadline chip slides in. | `price`!, `old_price`, `currency`, `badge`, `label`, `note` |
 | `m_progress` | cutaway/overlay |  | A track draws in, the fill runs to the value with a glowing head and a counting percentage, milestone dots light as the fill passes them. | `label`, `value`, `milestones`, `show_value`, `fill_s` |
 | `m_quote` | cutaway/overlay |  | An oversized accent quotation mark settles, the quote fades up word by word in the serif, a rule draws and the attribution slides in. | `quote`!, `author`, `role`, `serif` |
+| `m_quote_portrait` | cutaway/overlay |  | A portrait (or an initials monogram) opens out of a circle or arch mask with a slow push-in while an accent ring draws round it; the quote fades up word by word, then a rule, the name and role slide in. | `quote`!, `author`, `role`, `portrait`, `shape`, `serif` |
+| `m_rating_stars` | cutaway/overlay |  | The score counts up in big type while five stars fill left to right (the last one fractionally), then the review count and its source settle in underneath. | `score`!, `count`, `source`, `decimals`, `label` |
+| `m_spec_callouts` | overlay/cutaway |  | Points light up with a pulse, an elbow leader line draws out and a glass spec card slides off its end; each side's cards share a column that clears every point. | `callouts`! ([{x, y, title, value, side, at}]), `image`, `stagger` |
 | `m_split_reveal` + `m_split_reveal_roto` | cutaway/overlay/roto | yes | A word slams in, splits horizontally along its middle, the halves slide apart and a second word rises out of the gap in the accent colour. | `text`!, `reveal`!, `eyebrow`, `split_at` |
 | `m_stat_counter` | cutaway/overlay | yes | One big number counts up on an expo curve with a soft accent glow, its suffix lands with the final digit, a meter fills underneath and the label and caption frame it. | `value`!, `from`, `prefix`, `suffix`, `decimals`, `grouping`, `label`, `caption`, `max`, `count_s` |
 | `m_steps` | cutaway/overlay |  | Numbered nodes on a line that draws itself from step to step; each node fills and its label rises as the line reaches it. Vertical on tall canvases, horizontal on wide ones. | `title`, `steps`!, `stagger` |
+| `m_three_up` | cutaway/overlay |  | Three cards cascade in (a row on wide canvases, a stack on tall ones), each with a picture, an icon or a number; the highlighted card lifts with an accent edge. | `items`!, `title`, `image_1..3`, `icon_1..3`, `highlight`, `stagger` |
+| `m_ticker` | overlay/cutaway |  | One or two marquee bands wipe open across the safe zone and scroll at a constant speed after an eased start; the second band runs the other way, items split by accent marks, edges faded. | `items`!, `rows`, `speed`, `tilt`, `position`, `mark` |
+| `m_timeline` | cutaway/overlay |  | A time axis draws on (down a tall canvas, across a wide one) and reaches each dated event in turn: its dot lands, the date and label rise beside it, the latest event stays lit. | `events`!, `title`, `stagger`, `current` |
 
 ```yaml
 cutaways:
@@ -313,17 +336,27 @@ To add an icon:
 The canvas is configurable (style `canvas.size`, [FORMATS.md](FORMATS.md)). Template authors:
 - read the frame as `G.W`, `G.H` and the safe zone as `G.safe()` **at call time** (never `from ..gfx import W, H`);
 - place things relative to them (centre `G.W / 2`, blocks centred in the safe zone, fractions of `G.H`), and write px sizes
-  (fonts, radii, gaps) as px at a 1080 short side: the registry scales them by `G.U` on other canvases;
+  (fonts, radii, gaps) as px at a 1080 short side. The registry lays the template out on a canvas with a 1080 short side and
+  **rasterises it at the real canvas**: inside `G.layer` every coordinate, font size, stroke and icon is multiplied by the
+  raster scale `G.R` (= `G.U`), so 4K graphics are drawn at 4K. Layers come back `G.PW × G.PH` (the real canvas);
+- if a template touches layer pixels itself (a blur radius, `np.arange` over a layer, `Image.new` for a glow), it sizes
+  them from the layer (`im.size`, `a.shape`) and converts layout px with `G.px(v)`; a module that can't sets
+  `RASTER = False` (or `{names that are raster-safe}`) and is drawn at the layout size, then scaled. `media.py` keeps
+  boxes in layout px and every picture buffer (`view`, masks, `canvas_layer`) in layer px; `ctx["aroll"]` arrives at the
+  real canvas size in a raster-scaled call;
 - a module that draws its own picture at the canvas resolution (e.g. `broll_shot`) sets `NATIVE = True` (or `{names}`) and
   scales its own px by `G.U`;
-- a legacy module with hard-coded 1080×1920 coordinates sets `DESIGN = True`: it keeps drawing in 1080×1920 and is fitted,
-  per instance, into the canvas safe zone (uniform scale, never up, centred). `cutaways.py` and `roto.py` work this way.
+- a third-party module with hard-coded 1080×1920 coordinates can set `DESIGN = True`: it keeps drawing in 1080×1920 and is
+  fitted, per instance, into the canvas safe zone (uniform scale, never up, centred). No built-in module does any more: the
+  UI cutaways and roto cards pick a tall / square / wide arrangement (`templates/_layout.py`, FORMATS.md §3).
 Everything is the identity at 1080×1920.
 
 ### `broll_shot` (internal: the `broll:` track)
 One B-roll shot, full frame (`media.py`, native). The `broll:` track in `edit.yaml` compiles to it; you rarely name it
 yourself. Params: `asset` (id or footage path), `in`, `speed`, `after`, `framing` (`fill` | `fit`), `kenburns`, `anchor`,
-`audio`, `gain`. See FORMATS.md §5.
+`audio`, `gain`, and the craft moves (MOTION.md "Craft"): `ramp` (speed ramp), `out` (source end a ramp lands on),
+`camera` (push / pull / pan / drift, `handheld`), `depth` (2.5D parallax on a still), `match` (match cut onto the previous
+shot). See FORMATS.md §5.
 
 ## Adding a template
 1. Write `render(t, p, ctx) -> [El]` and `cues(p, ctx) -> [(t, sfx, gain_db, kw)]` in any module under `engine/cves/templates/` (or `$CVES_TEMPLATES`, `~/.cves/templates`, `PROJECT/Brand/templates`). Use these gfx helpers:

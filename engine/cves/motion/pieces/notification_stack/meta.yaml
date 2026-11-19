@@ -1,0 +1,13 @@
+title: Notification stack
+description: Phone-style notification banners slide down one after another; each new one lands on top while the older ones compress behind it into a dimmer, smaller stack.
+kinds: [overlay, cutaway]
+duration: 3.6
+params:
+  items: {type: list, required: true, help: "{app, title, body, icon, at} (icon: a file:// or data: URI, else the app initial on an accent well; at: cut-time second)"}
+  time: {type: str, default: "now", help: the timestamp shown on each banner}
+  position: {type: str, default: top, help: "top | center"}
+  stagger: {type: number, default: 0.75, help: seconds between banners when items have no `at`}
+preview:
+  params: {items: [{app: "Bookings", title: "New booking", body: "Saturday 10:30 · deep clean"}, {app: "Messages", title: "Sam", body: "Can you come earlier?"}, {app: "Reviews", title: "New 5-star review", body: "Spotless. Booking again next month."}]}
+cues:
+  - [0.0, ding, -20]

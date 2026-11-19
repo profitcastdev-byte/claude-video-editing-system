@@ -8,7 +8,7 @@ import multiprocessing as _mp
 Pool = _mp.get_context("spawn").Pool   # same on every OS; fork deadlocks once torch/OpenCV threads exist (Linux)
 from PIL import Image, ImageFilter
 from fractions import Fraction
-from . import gfx as G, templates as TPL, style as STY, captions as CAP, spines as SP
+from . import gfx as G, templates as TPL, style as STY, captions as CAP, spines as SP, craft as CR
 from .gfx import prog, clamp          # the canvas is G.W / G.H, read at call time (set per process by Timeline)
 from .look import grade
 
@@ -30,8 +30,10 @@ def refresh_needs_aroll():
 
 # ------------------------------------------------------------------ timeline
 class Timeline:
-    def __init__(self, pr):
-        self.pr = pr; E = pr.edit; self.E = E
+    def __init__(self, pr, proxy=None):
+        """proxy: a fraction of the canvas (treatment proxies, docs/TREATMENTS.md): the timeline is planned and the exposure
+        solved at full size, then the canvas and the face tracks are scaled; plates and mattes are resized as they decode"""
+        self.pr = pr; E = pr.edit; self.E = E; self.proxy = None
         self.S = STY.load(pr); self.style = self.S
         G.apply_style(self.S, canvas=G.canvas_of(self.S, pr))              # the ONLY source of look (docs/STYLE.md) + the canvas (docs/FORMATS.md)
         TPL.load_dir(pr.p("Brand", "templates"), "project")                  # per-client templates, if any
@@ -53,7 +55,7 @@ class Timeline:
             for s in edl["segments"]:
                 n = round((s["out"] - s["in"]) * self.FPS); self.segs.append(dict(s, f0=f0, n=n, t0=f0 / self.FPS, t1=(f0 + n) / self.FPS, kind="aroll")); f0 += n
         else:                                                                # picture segments = the broll shots (+ gaps)
-            self.segs = SP.tiles(self.broll, SP.duration(pr, self.spine, E), self.FPS); f0 = sum(s["n"] for s in self.segs)
+            self.segs = SP.tiles(self.broll, SP.duration(pr, self.spine, E), self.FPS, self.S); f0 = sum(s["n"] for s in self.segs)
         self.A_FRAMES = f0; self.T_END = f0 / self.FPS
         end = E.get("end_card") or {}; self.END = end.get("duration", 0)
         self.N = self.A_FRAMES + round(self.END * self.FPS)
@@ -71,7 +73,9 @@ class Timeline:
             self.trans.append((c["start"], c.get("in", self.S.get("transitions.in", "cut")))); self.trans.append((c["end"], c.get("out", self.S.get("transitions.out", "cut"))))
         if self.END: self.trans.append((self.T_END, end.get("in", self.S.get("transitions.in", "cut"))))
         for tr in E.get("transitions", []): self.trans.append((self.snap_t(tr["t"]), tr["kind"]))
+        self.craft_notes = CR.limit_transitions(self)                       # restraint: rate-limited transitions (docs/MOTION.md "Craft")
         self.roto = {r["segment"]: r for r in E.get("roto", [])} if self.aroll else {}     # roto / chest need a presenter
+        self.matte_ok = {s["id"]: os.path.exists(pr.e("matte", f"{s['id']}.mkv")) for s in self.segs} if self.aroll else {}
         self.chest = {}
         for c in (E.get("chest", []) if self.aroll else []):
             for sid in ([c["segment"]] if isinstance(c["segment"], str) else c["segment"]): self.chest.setdefault(sid, []).append(c)
@@ -82,6 +86,20 @@ class Timeline:
         self.gain = self._exposure() if self.aroll and ar.get("exposure_match", self.S.get("grade.exposure_match", True)) else {}
         self.caps = self._captions()
         self.root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        if proxy and float(proxy) != 1.0: self._to_proxy(float(proxy))
+
+    def _to_proxy(self, k):
+        """scale this timeline's canvas by k (even-rounded) for a fast proxy render. Called after the exposure solve, which
+        measures the full-size plates. Every module reads G.W / G.H / G.U at call time, so templates follow."""
+        w, h = self.size; pw, ph = max(16, int(round(w * k / 2)) * 2), max(16, int(round(h * k / 2)) * 2)
+        G.set_canvas(pw, ph); self.size = (G.W, G.H); self.proxy = (pw / w, ph / h)
+        sx, sy = self.proxy
+        def sc(f):
+            if not f: return f
+            f = list(f)
+            for j in range(min(len(f), 14)): f[j] = f[j] * (sx if j % 2 == 0 else sy)
+            return f
+        self.faces = {sid: [sc(f) for f in F] for sid, F in (self.faces or {}).items()}
 
     def resolve(self, p):
         """asset id (edit.yaml `assets:` / Edit/assets.json) -> path; else a path relative to the project or the repo"""
@@ -360,21 +378,25 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         sid = s["id"]; f = TL.faces[sid][min(k, len(TL.faces[sid]) - 1)]
         sm = smooth_face(TL, sid, k)
         cx, cy, fh = sm
+        z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
+        if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
+        M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # lift: anchor at the frame bottom raises the face
+        z0 = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
+        M0 = M if z0 == z else affine(z0, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # the shot's framing without a snap
+        if TL.snap and TL.snap[0] < s["t1"] and s["t0"] < TL.snap[1]:     # a snap punch-in in this shot: roto type fits the tighter view
+            Ms = affine(max(z0, TL.snap[2]), cx, G.H if sid in TL.lift else cy - fh * .05, True); M0 = Ms if Ms[0, 0] > M0[0, 0] else M0
         if mode in ("overlay", "chest"): img = None
         else:
             g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
             img = grade(np.clip(P * g, 0, 1) if np.any(g != 1) else P, A, (cx, cy), TL.S.get("grade"))
             r = TL.roto.get(sid)
             if r:
-                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"]))
+                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], view=M, seg_view=M0, **CR.roto_ctx(TL, s, k)))
                 if rels:
                     a = cv2.GaussianBlur(cv2.erode(A.astype(np.float32) / 255, np.ones((3, 3), np.uint8)), (0, 0), 1.2)[..., None]
                     person = img.copy()
                     for el in rels: img = G.over(img, el.im)
                     img = img * (1 - a) + person * a; els += rels
-        z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
-        if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
-        M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)    # lift: anchor at the frame bottom raises the face
         if img is not None: img = warp(img, M, cv2.INTER_CUBIC)
         _, scy, sfh = smooth_face(TL, sid, k, r=12)                         # smoothed: raw boxes made chest graphics shake (MOT-03)
         chin = (scy + sfh / 2) * M[1, 1] + M[1, 2]
@@ -387,7 +409,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
             front = []
             for c in TL.chest.get(sid, []):
                 front += TPL.get(c["template"])[0](t, c.get("params", {}), TL.ctx(s["t0"], s["t1"], chin=chin, chin_hold=chin_hold))
-            snapped = TL.snap and TL.snap[0] <= t < TL.snap[1]
+            snapped = TL.snap and TL.snap[0] <= t < TL.snap[1] and sid in TL.roto   # the snap's roto type replaces the captions; a bare punch-in keeps them
             if not front and not snapped and mode != "chest":     # chest mode: graphics only, captions go to subtitles
                 ce = caption_el(TL, t, cap_chin)
                 if ce: front.append(ce)
@@ -405,6 +427,11 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
             z = 1 + (.22 if after else .35) * e ** 1.5; img = zoom_blur(warp(img, affine(z, G.W / 2, G.H * .4, False)), e ** 1.2)
         elif kind == "glitch": img = glitch(img, e, i)
         elif kind == "fade": img = img * (1 - e)          # dip through black
+        elif kind in CR.TRANSITIONS:                         # the craft library (style craft.transitions.*)
+            mt = None
+            if kind == "mask_wipe" and A is not None and cut is None and s is not None and s.get("kind", "aroll") == "aroll" and TL.S.get("craft.transitions.wipe_shape") == "matte":
+                mt = warp(A.astype(np.float32) / 255, M)
+            img = CR.transition(kind, img, e, after, CR.seed_of(kind, round(CR.boundary(TL, t), 4)), TL.S, mt)
     return img, log_records(i, els, M)
 
 def _caption_front(TL, t, img, els):
@@ -436,7 +463,7 @@ def smooth_face(TL, sid, k, r=6):
 
 def trans_strength(TL, t):
     for tb, kind in TL.trans:
-        d = 0 if kind == "cut" else TL.S.get(f"transitions.{kind}_s", .12)
+        d = CR.trans_dur(TL.S, kind)
         if d and abs(t - tb) < d: return kind, 1 - abs(t - tb) / d, t >= tb
     return None, 0, False
 
@@ -458,6 +485,9 @@ def _decode(path, fmt):
     import av
     for f in av.open(path).decode(video=0): yield f.to_ndarray(format=fmt)
 
+def _zeros(TL):
+    while True: yield np.zeros((G.H, G.W), np.uint8)
+
 def _write(TL, out_dir, i, img, logf):
     t = i / TL.FPS
     if img.shape[2] == 4:
@@ -469,12 +499,12 @@ def _write(TL, out_dir, i, img, logf):
     cv2.imwrite(f"{out_dir}/{i:05d}.png", cv2.cvtColor(out, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_PNG_COMPRESSION, 1])
 
 _TL = None
-def _init(root):
+def _init(root, work=None, proxy=None):
     """worker initializer. spawn re-imports every module, so the canvas (gfx.set_canvas) and the style are re-applied here
-    by Timeline: never rely on the parent's module state"""
+    by Timeline: never rely on the parent's module state. work: a Variant's folder (treatments); proxy: canvas fraction"""
     global _TL
-    from .project import Project
-    _TL = Timeline(Project(root))
+    from .project import reopen
+    _TL = Timeline(reopen(root, work), proxy=proxy)
 
 def canvas_of_worker():
     """(G.W, G.H) as this process sees it (tests: the canvas is re-set inside spawned workers)"""
@@ -487,7 +517,9 @@ def job_seg(sid, only, out_dir, mode):
     if not frames: return 0
     need = s.get("kind", "aroll") == "aroll" and (mode == "aroll" or any(not TL.in_cut(f / TL.FPS) or (TL.in_cut(f / TL.FPS) or {}).get("template") in NEEDS_AROLL for f in frames))
     Pg = _decode(TL.pr.e("plate", f"{sid}.mkv"), "rgb48le") if need else None
-    Ag = _decode(TL.pr.e("matte", f"{sid}.mkv"), "gray") if need else None
+    Ag = (_decode(TL.pr.e("matte", f"{sid}.mkv"), "gray") if TL.matte_ok.get(sid, True) else _zeros(TL)) if need else None   # no matte: degrade (roto in front)
+    if need and TL.proxy:      # proxy: the full-size plate / matte, resized as it decodes (never re-ingested)
+        Pg = (cv2.resize(x, TL.size, interpolation=cv2.INTER_AREA) for x in Pg); Ag = (cv2.resize(x, TL.size, interpolation=cv2.INTER_AREA) for x in Ag)
     last = max(frames) - s["f0"]
     with open(os.path.join(out_dir, f"_log_{s['f0']:07d}_{sid}.jsonl"), "w", encoding="utf-8") as fh:
         for k in range(last + 1):
@@ -507,21 +539,50 @@ def job_tail(only, out_dir, mode):
             for x in r: fh.write(json.dumps(x) + "\n")
     return len(fr)
 
-def render(pr, only=None, out_dir=None, mode="final", workers=None):
+def media_refs(TL):
+    """every asset reference (id or path) the timeline's templates decode: `asset:` keys anywhere in their params"""
+    out = []
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k == "asset" and isinstance(v, str): out.append(v)
+                else: walk(v)
+        elif isinstance(o, list):
+            for v in o: walk(v)
+    for c in TL.cuts: walk(c.get("params") or {})
+    for k in ("chest", "roto"):
+        for r in (TL.E.get(k) or []) if hasattr(TL, "E") else []: walk(r.get("params") or {})
+    return sorted(set(out))
+
+def prepare_media(pr, TL):
+    """tonemap HDR video assets to SDR (ingest.sdr_source, the A-roll chain) before the workers start"""
+    from . import assets as AS, ingest as ING
+    from .templates.media import _is_still
+    for ref in media_refs(TL):
+        try: p = AS.resolve(pr, ref, strict=False) or (ref if os.path.isabs(ref) else pr.p(ref))
+        except SystemExit: continue
+        if p and os.path.isfile(p) and not _is_still(p): ING.sdr_source(p, TL.S, pr.e("conform"))
+
+def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None):
     """only: None (everything), a frame list, or an `--only` spec string (ids / ranges, see Timeline.frames_for).
+    proxy: a canvas fraction (e.g. 0.5) for a fast preview render (treatments); timeline.json then records `proxy`.
     Streams: each worker decodes one segment a frame at a time and writes frames + element records straight to disk;
     nothing holds the timeline's frames or logs in RAM, so memory does not grow with the video's length."""
     out_dir = out_dir or pr.e("frames"); os.makedirs(out_dir, exist_ok=True)
-    TL = Timeline(pr)    # also computes + caches exposure gains before forking
+    TL = Timeline(pr, proxy=proxy)    # also computes + caches exposure gains before forking
     if isinstance(only, str): only = TL.frames_for(only)
+    for n in TL.craft_notes: print(f"craft: {n}")
+    used, allowed = CR.budget(TL.E, TL.S, TL.N / TL.FPS)
+    if used > allowed: print(f"craft: {used} craft moves (ramps, camera moves, match cuts, text behind) > creative.craft_per_30s budget {allowed}: restraint")
     from . import motion as MOT; MOT.prerender(pr, TL)     # motion pieces (HTML) render their frames ONCE here, before the spawn pool: workers only read the cache
+    prepare_media(pr, TL)                                   # HDR B-roll / clips tonemapped to SDR once here, not raced by the workers
     for f in glob.glob(os.path.join(out_dir, "_log_*.jsonl")): os.remove(f)
     want = None if only is None else set(only)
     jobs = [(s["id"], None if want is None else sorted(f for f in range(s["f0"], s["f0"] + s["n"]) if f in want))
             for s in sorted(TL.segs, key=lambda s: -s["n"])]
     jobs = [(sid, fr) for sid, fr in jobs if fr is None or fr]
     tail = None if want is None else sorted(f for f in want if f >= TL.A_FRAMES)
-    with Pool(max(1, min(workers or max(2, (os.cpu_count() or 4) - 1), len(jobs) + 1)), initializer=_init, initargs=(pr.root,)) as pool:
+    with Pool(max(1, min(workers or max(2, (os.cpu_count() or 4) - 1), len(jobs) + 1)), initializer=_init, initargs=(pr.root, getattr(pr, "work", None), proxy)) as pool:
         res = [pool.apply_async(job_seg, (sid, fr, out_dir, mode)) for sid, fr in jobs]
         if tail is None or tail: res.append(pool.apply_async(job_tail, (tail, out_dir, mode)))
         n = sum(r.get() for r in res)
@@ -533,7 +594,7 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None):
                     for line in fh: out.write(line)
         pr.save_json("timeline.json", {"spine": TL.spine, "fps": TL.FPS, "fps_rational": list(TL.fps_rational), "size": list(TL.size), "frames": TL.N, "a_frames": TL.A_FRAMES, "zoom": TL.zoom, "lift": sorted(TL.lift), "snap": TL.snap, "creep": TL.creep,
                                        "cutaways": [dict({"id": c["id"], "start": c["start"], "end": c["end"], "template": c["template"]}, **({"broll": True} if c.get("broll") else {})) for c in TL.cuts],
-                                       "transitions": TL.trans, "exposure_gain": TL.gain,
+                                       "transitions": TL.trans, "exposure_gain": TL.gain, **({"proxy": list(TL.proxy)} if TL.proxy else {}),
                                        "segments": [{k: s.get(k) for k in ("id", "in", "out", "f0", "n", "t0", "t1", "kind")} for s in TL.segs]})
     for f in logs: os.remove(f)
     return n, TL.N

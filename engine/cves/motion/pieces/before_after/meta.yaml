@@ -1,0 +1,17 @@
+title: Before / after slider
+description: A framed picture opens on the "before", then a slider handle sweeps across wiping in the "after", overshoots past the middle and settles on the split, with BEFORE / AFTER chips riding each side.
+kinds: [cutaway, overlay]
+duration: 3.6
+params:
+  before: {type: path, default: "", help: "the before picture (empty = a muted panel with before_text)"}
+  after: {type: path, default: "", help: "the after picture (empty = an accent panel with after_text)"}
+  before_text: {type: str, default: "", help: big word or value on the before panel (no picture)}
+  after_text: {type: str, default: "", help: big word or value on the after panel (no picture)}
+  before_label: {type: str, default: "Before"}
+  after_label: {type: str, default: "After"}
+  split_at: {type: number, default: 0.5, help: "where the handle settles, 0..1 across the frame"}
+  sweep_at: {type: number, default: 0.6, help: piece-relative seconds before the handle starts moving}
+preview:
+  params: {before_text: "3 calls / week", after_text: "21 calls / week"}
+cues:
+  - [0.0, swipe, -22]

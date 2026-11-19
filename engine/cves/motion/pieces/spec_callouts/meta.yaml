@@ -1,0 +1,17 @@
+title: Spec callouts
+description: Points light up on the product (or on the video underneath) one after another, a pulse rings out from each, an elbow leader line draws out to the side and a glass card with the spec slides off its end; cards stack on the left and right without colliding.
+kinds: [overlay, cutaway]
+duration: 4.4
+params:
+  image: {type: path, default: "", help: "optional product picture (contained in the middle); callout x / y are then fractions of the picture, else of the frame"}
+  callouts: {type: list, required: true, help: "[{x, y, title, value, side: left|right, at}] (x, y 0..1; at = cut-time second)"}
+  stagger: {type: number, default: 0.45, help: seconds between callouts without their own at}
+preview:
+  duration: 4.4
+  params:
+    callouts:
+      - {x: 0.38, y: 0.32, title: "Battery", value: "30 h playback"}
+      - {x: 0.62, y: 0.45, title: "Drivers", value: "40 mm, tuned flat"}
+      - {x: 0.42, y: 0.62, title: "Weight", value: "220 g"}
+cues:
+  - [0.2, pop, -20]

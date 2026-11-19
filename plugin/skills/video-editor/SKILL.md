@@ -7,7 +7,7 @@ description: Runs the Claude Video Editing System (CVES), an autonomous editor f
 
 You are the decision-maker of the Claude Video Editing System. **You decide; the local `cves` engine does the work; humans fine-tune in a real editor.** You write text (beats, `edl.json`, `edit.yaml`). The engine renders, mixes, encodes and measures.
 
-The commands of this plugin (`/cves:new-edit`, `/cves:story`, `/cves:plan`, `/cves:moodboard`, `/cves:render`, `/cves:qc`, `/cves:critique`, `/cves:notes`, `/cves:deliver`, `/cves:learn`, `/cves:resolve`, `/cves:kdenlive`, `/cves:music`), plus `/cves:install` and `/cves:update`, each run one step. This file is the contract they all follow. When the user asks in plain words ("cut this ad", "make the music louder"), follow the same steps without waiting for a slash command.
+The commands of this plugin (`/cves:new-edit`, `/cves:story`, `/cves:plan`, `/cves:moodboard`, `/cves:render`, `/cves:qc`, `/cves:critique`, `/cves:review`, `/cves:notes`, `/cves:deliver`, `/cves:learn`, `/cves:resolve`, `/cves:kdenlive`, `/cves:music`), plus `/cves:install` and `/cves:update`, each run one step. This file is the contract they all follow. When the user asks in plain words ("cut this ad", "make the music louder"), follow the same steps without waiting for a slash command.
 
 ## 0. Find the system (any machine, any OS)
 Resolve these once per session and reuse them. Quote every path: client folders and repo paths contain spaces.
@@ -59,9 +59,11 @@ Do the steps in order. Don't skip a step, and don't start a step whose input has
 | 3b Direction | write `Edit/DIRECTION.md` (§2a) | Concept, arc, the ONE signature moment, motif, what we will NOT do | Shown with the cut list or the edit plan | No (not a third approval) |
 | 4 Plan | `cves prep` → `cves plan` → fill `edit.yaml` → `cves plan` → `cves qc --stage plan` | Templates + params, keyed to `words.json`, serving DIRECTION.md | A short summary only | No |
 | 5 Edit plan | `cves moodboard` | Read `EDIT-PLAN.md`; review `moodboard.jpg` once; fix `edit.yaml` | **`EDIT-PLAN.html`** (timeline + every shot with its build frames) | **Yes: approval 2** |
+| 5b Treatments (open or creative brief only, §2b) | `cves treatments make` → `cves treatments render` → `cves treatments compare` → `cves treatments pick <name>` | Which 2-3 treatments fit the brief; look at `sheet.jpg` once: clearly different, each tasteful | `compare/sheet.jpg` + `compare.mp4`, one line per treatment | **Yes: the user picks one** (it can ride with approval 2) |
 | 6 Render + mix | `cves build` (render + mix + encode + fast QC) | Nothing (a local step) | Nothing yet | No |
 | 7 QC | `cves qc` | Fix `edit.yaml` until there are 0 FAILs | Nothing until it passes | No |
 | 7b Critique | `cves critique` (§4a) | Score the rubric honestly; fix anything < 7 that is fixable; log the scores | Nothing yet | No |
+| 7c Review loop | `cves review build` → look → fix → re-render → again (§4b) | Answer the REVIEW.md rubric from the images; fix until 0 FAIL and no high findings (max 3 rounds); `cves review signoff` | Nothing until it is signed off | No |
 | 8a Vibe | - | Turn notes into `edit.yaml` changes | MP4 + the QC summary | Waits for notes |
 | 8b Control | `cves export resolve` / `cves export kdenlive` | Drive the editor | The project, plus `CONTROL.md` | Waits for the user |
 
@@ -94,11 +96,42 @@ Before you fill `edit.yaml`, write `PROJECT/Edit/DIRECTION.md` (`knowledge-base/
 
 Tick `knowledge-base/CHECKLISTS.md` for each stage as you finish it. Any "no" is fixed before the next stage, or logged with a reason.
 
+### 2b. Treatments (after the edit plan, when the brief is open or creative)
+Use `docs/TREATMENTS.md`. When the brief leaves the look open ("make it pop", "try something", a launch, a new client
+with no inspirations or brand look), offer 2-3 treatments as proxies instead of one finished cut:
+1. `cves treatments list`: the built-ins (`punchy`, `cinematic`, `minimal`) and any `PROJECT/treatments/*.yaml`; a
+   learned `treatments.prefer` for this client or goal comes first. Pick 2-3 that serve `DIRECTION.md` (a quiet brand
+   film does not need `punchy`). For a client-specific take, write `PROJECT/treatments/<name>.yaml` (style keys of
+   `default.yaml` only + `structure:` hints).
+2. `cves treatments make [a,b,c]`, read the printed changes and metrics (cuts, caption style, transitions, punch-ins).
+3. `cves treatments render` (proxies: half size, fast encode, plates reused), then `cves treatments compare`.
+4. Look at `Edit/treatments/compare/sheet.jpg` once. The rows must read as clearly different and each must be tasteful
+   (legible captions, nothing cramped, no effect soup). Fix a weak one in its treatment file and `make` / `render` it again.
+5. Show the user the sheet and `compare.mp4` with one line per treatment (its label + summary). On their choice:
+   `cves treatments pick <name>` (backs up `edit.yaml`, sets the treatment style layer, journals the choice for
+   `cves learn`), then continue at step 6 (`cves build`).
+Skip it when the brief, the inspirations or the brand already fix the look: build one plan well.
+
 ### Motion pieces (`m_*` templates)
-The motion layer (`docs/MOTION.md`) gives senior-grade animation: kinetic titles, glass cards, stat counters, list builds, lower thirds, quotes, highlight sweeps, progress bars, map-pin callouts, logo stings, split reveals, before/after, steps, bar charts, CTAs. `cves motion list` lists them; `/cves:motion` previews one.
+The motion layer (`docs/MOTION.md`) gives senior-grade animation (30 pieces): kinetic titles, glass cards, stat counters, list builds, lower thirds, quotes, highlight sweeps, progress bars, map-pin callouts, logo stings, split reveals, compare, steps, bar charts, CTAs, plus map routes, timelines, before/after sliders, comment pops, notification stacks, price tags, rating stars, checklist ticks, tickers, countdowns, quote-with-portrait cards, karaoke word reveals, spec callouts, three-up grids and a follow / subscribe end card (`m_follow_card_end`). `cves motion list` lists them; `/cves:motion` previews one.
 - **When:** the beat carries one idea that motion explains better than the face: a number (`m_stat_counter`), a list or steps, a contrast (`m_compare`, `m_split_reveal`), a name (`m_lower_third` in `chest:`), a place (`m_callout`), the offer (`m_cta`), the brand (`m_logo_sting` as `end_card`).
 - **How to pick:** the piece whose structure matches the line (one number, one list, one quote...), its copy taken from `words.json`, its `at` on the keyword. Over A-roll use `chest:` (it exits by itself before the shot ends); full-screen use `cutaways:`; behind the presenter use the `_roto` variant.
+- **Craft moves** (`docs/MOTION.md` "Craft"): text behind the speaker (`roto:` `text_behind`, tracked to the face, occluded by the head) for the hook's one punch word; a speed ramp (`ramp:` on a `broll:` shot) to land a reveal; a camera move (`camera:` push / pull / pan / handheld drift, 2.5D with `depth:` on a still) so a still or a static clip breathes; a match cut (`match:` on the incoming shot) when two shots share a shape; one or two transition kinds (`whip_pan`, `zoom_through`, `mask_wipe`, `luma_fade`, `glitch_lite`, `light_leak`, `dip`) where the story turns, never on every cut. Each has a reason in `DIRECTION.md`; they count against `creative.craft_per_30s` and `creative.transition_kinds_max`, and render downgrades transitions closer than `craft.transitions.min_gap_s` to cuts (it prints each one: fix the plan rather than fight it).
 - **Restraint:** at most one hero motion moment (meta `hero: true`: kinetic title, stat, logo sting, split reveal, CTA) per ~8-10 s unless the style says more (`motion.hero_min_gap_s`; render warns). Supporting pieces stay quiet. Never stack two pieces on one frame. The style's `motion.energy` sets the pace; don't fight it per piece.
+
+### Sound (`docs/SOUND.md`)
+Cut sound as carefully as picture. The engine does the placing; you make the choices and listen.
+- **Story beats drive the music.** Tag clips `beat:` H / P / A / PR / O / C in `selects.yaml` (or set `music.hook_cut` / `turn_cut` / `drop_cut`). With `music.sync: drop` (or cuts / full), the drop lands on the payoff, and the drop whose build starts on the turn is preferred. `cves beats` prints the music sections (intro / build / drop / body / break / outro) against the hook, the turn and the payoff.
+- **Accents are automatic and budgeted.** `cves mix` adds:
+  - a riser that resolves on the payoff;
+  - a riser into or out of the hook;
+  - a downbeat hit on the payoff;
+  - impacts on reveals that have no low hit of their own.
+
+  It adds no more than `creative.sound_accents_per_30s`, and only on picture events. Read `Edit/mix.json accents` to see what was placed or skipped and why. Turn them off per video with `sfx: {auto: false}`.
+- **Choose sounds by role, not by file.** In `sfx.extra`, write `@impact:hard`, `@whoosh:soft`, `@riser`, `@pop`, `@ui`, `@transition` or `@ambience`. `cves sfx list` shows the bank. When a hero moment needs a real recording, run `cves sfx fetch "<query>" --category <c> --to project` (CC0 only, credited automatically), then listen with `earshot describe` before using it.
+- **Ducking follows the voice** (`mix.duck_mode: envelope`): the bed breathes between phrases. Use `gate` only if a client asks for the old fixed dips.
+- **QC:** SND-32 checks that each riser resolves on its target; SND-33 checks that the drop section sits on the payoff (both WARN for now). Before you describe the mix to anyone, listen with `earshot timeline Edit/mix.wav` around the payoff.
 
 ## 3. Keep it cheap
 Images cost far more than text. Work from text:
@@ -113,7 +146,8 @@ Before you show the user **any** render, MP4 or exported project:
 1. Run `cves qc` on the final file.
 2. Read `PROJECT/Edit/QC-REPORT.txt`. For every **FAIL**, fix the cause in `edit.yaml` (or the selects), re-render what changed, and run `cves qc` again. Repeat until there are **0 FAILs**.
 3. Do the one-contact-sheet QA pass with `knowledge-base/QA-REVIEW.md`, using the critique pack (§4a): its contact sheet is that one image.
-4. Only then deliver: the file path, the 2-3 line QC summary (passes, WARNINGs with timecodes) and anything you couldn't fix.
+4. Run the review loop (§4b) until QC has 0 FAIL and there are no high findings, and sign it off.
+5. Only then deliver: the file path, the 2-3 line QC summary (passes, WARNINGs with timecodes) and anything you couldn't fix.
 
 If a FAIL can't be fixed in `edit.yaml` (it needs a pickup shot, client proof, or an engine bug fix), stop and tell the user exactly that. Don't send the cut "for now". RULEBOOK §0.10: objective faults must never reach the user. The moodboard (step 5) is the only exception, because it is a plan and not a cut; still run the pre-render gates on `edit.yaml` first.
 
@@ -126,6 +160,24 @@ QC proves nothing is wrong; the critique asks whether it is good. After QC shows
 3. Fix every line below 7 that `edit.yaml` can fix, re-render what changed, `cves qc` to 0 FAIL, and critique again. Report what can't be fixed.
 4. Log your scores: `cves learn rate <version> <overall> --by claude --scores hook=..,story=..,...`. Your self-ratings are compared with the user's over time.
 See `/cves:critique`.
+
+### 4b. Review loop: watch the render before the owner does
+The critique judges the plan; the review watches the render (`docs/REVIEW.md`, `/cves:review`). The loop, every time a cut
+is about to reach the owner (first cut and every revision):
+
+**render → qc → critique → review → look and fix → re-render**, until **0 FAIL and no high findings**, max **3 rounds**.
+
+1. `cves build` (render, mix, encode, QC), `cves qc` to 0 FAIL as far as you can, `cves critique`.
+2. `cves review build`. Read `Edit/review/rNNN/REVIEW.md`, then look with the Read tool: `index.jpg`, every flagged
+   `cuts/cut_NN.jpg` and a few unflagged ones, `hook.jpg`, `payoff.jpg`, `endcard.jpg`. Answer the rubric (yes / no,
+   timecode, fix). Findings are hints; you judge, and you say why you keep anything flagged.
+3. `cves review apply` for the safe patches; fix the rest in `edit.yaml` by hand; re-render only what changed.
+4. Back to 1. Rebuilding the pack for an unchanged master reuses the round; round 3 prints "round cap reached".
+5. Sign off, always: `cves review signoff --verdict ship --notes "<what is still not perfect>"`, or `--verdict revise
+   --notes "<what blocks it>"` and tell the user what you need. The journal keeps the verdict and every open finding.
+
+Never claim how audio sounds: read `audio.json` (and the earshot summary when it ran). Never loosen a QC gate or a
+`review.*` threshold to end the loop.
 
 ## 5. Modes
 Ask once per project which mode the user wants, if they haven't said. The default is **vibe**.

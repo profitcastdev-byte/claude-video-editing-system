@@ -66,7 +66,8 @@ def shots(E, fps, S=None, pr=None):
         out.append({"id": str(x.get("id") or f"b{j + 1:02d}"), "ref": ref, "start": a, "end": b, "in": float(x.get("in", 0) or 0),
                     "speed": float(x.get("speed", 1) or 1), "framing": "fit" if fr == "fit" else "fill", "kenburns": kb,
                     "anchor": x.get("anchor"), "after": x.get("after", "hold"), "transition": x.get("transition", "cut"),
-                    "audio": bool(x.get("audio")), "gain": x.get("gain"), "snap": x.get("snap"), "index": j})
+                    "audio": bool(x.get("audio")), "gain": x.get("gain"), "snap": x.get("snap"), "index": j,
+                    "ramp": x.get("ramp"), "camera": x.get("camera"), "match": x.get("match"), "out": x.get("out"), "depth": x.get("depth")})
     out.sort(key=lambda s: s["start"])
     return out
 
@@ -75,6 +76,8 @@ def shot_params(sh):
     p = {"asset": sh["ref"], "in": sh["in"], "speed": sh["speed"], "framing": sh["framing"], "after": sh["after"], "name": f"broll.{sh['id']}"}
     if sh.get("kenburns"): p["kenburns"] = sh["kenburns"]
     if sh.get("anchor"): p["anchor"] = sh["anchor"]
+    for k in ("ramp", "camera", "out", "depth"):          # motion craft (docs/MOTION.md "Craft")
+        if sh.get(k) is not None: p[k] = sh[k]
     if sh.get("audio"):
         p["audio"] = True
         if sh.get("gain") is not None: p["gain"] = sh["gain"]
@@ -84,13 +87,25 @@ def cutaways(shs, aroll):
     """shots -> Timeline cutaway entries (flagged broll: True). On the aroll spine they snap to segment boundaries
     like any cutaway unless the shot says snap: false; on the other spines they never snap."""
     out = []
-    for sh in shs:
-        out.append({"id": sh["id"], "template": "broll_shot", "start": sh["start"], "end": sh["end"], "params": shot_params(sh),
+    for j, sh in enumerate(shs):
+        p = shot_params(sh); prev = shs[j - 1] if j else None
+        if sh.get("match") and prev is not None and abs(prev["end"] - sh["start"]) < 1e-6:     # match cut: line up on the outgoing shot
+            p["match"] = sh["match"] if isinstance(sh["match"], dict) else {"mode": sh["match"] if isinstance(sh["match"], str) else None}
+            p["match_prev"] = {"params": shot_params(prev), "start": prev["start"], "end": prev["end"]}
+        out.append({"id": sh["id"], "template": "broll_shot", "start": sh["start"], "end": sh["end"], "params": p,
                     "in": sh["transition"], "out": "cut", "broll": True,
                     "snap": (sh["snap"] if sh["snap"] is not None else True) if aroll else False})
     return out
 
-def tiles(shs, T, fps):
+def _shot_out(sh, dur, S=None):
+    """source seconds where a shot ends: its explicit out, else in + what its speed (or its ramp) consumes"""
+    if sh.get("out") is not None: return float(sh["out"])
+    if sh.get("ramp"):
+        from . import craft as CR
+        return sh["in"] + CR.ramp_span(dur, sh["ramp"], S, sh["speed"])
+    return sh["in"] + dur * sh["speed"]
+
+def tiles(shs, T, fps, S=None):
     """picture segments of a non-aroll timeline: one per shot plus 'gap' segments where nothing is scheduled.
     Returns [{id, kind: broll|gap, f0, n, t0, t1, in, out, src, clip}]"""
     segs, f = [], 0; N = int(round(T * fps)); k = 0
@@ -101,7 +116,7 @@ def tiles(shs, T, fps):
         if a > f: segs.append({"id": f"gap{k}", "kind": "gap", "f0": f, "n": a - f}); k += 1
         if b > a:
             segs.append({"id": sh["id"], "kind": "broll", "f0": a, "n": b - a, "src": sh["ref"], "clip": sh["id"],
-                         "in": round(sh["in"], 5), "out": round(sh["in"] + (b - a) / fps * sh["speed"], 5)})
+                         "in": round(sh["in"], 5), "out": round(_shot_out(sh, (b - a) / fps, S), 5)})
             f = b
     if f < N: segs.append({"id": f"gap{k}", "kind": "gap", "f0": f, "n": N - f})
     for s in segs:

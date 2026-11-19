@@ -24,8 +24,14 @@
   cves doctor                                           check tools, models, GPU backend, fonts
   cves learn note|rate|approve|reject|results|mine|list|show|promote|forget|study ...   self-learning (docs/LEARNING.md)
   cves critique [vNNN|master]                           review pack: contact sheet + energy timeline + CRITIQUE.md rubric
+  cves review build [vNNN|master] | apply [--only F01,F03] | signoff --verdict ship|revise --notes "..." | show
+                                                        render review loop: cut strips, hook, payoff, end card, audio -> findings + REVIEW.md (docs/REVIEW.md)
+
+  cves treatments list|make|render|compare|pick ...      creative treatments as fast proxies, compared, one picked (docs/TREATMENTS.md)
 
   cves motion list | preview <piece> [--params JSON] [--size WxH] [--out f.png|f.mp4]   HTML motion pieces (docs/MOTION.md)
+
+  cves sfx list|fetch|add|check ...                     the SFX bank: by category + intensity; fetch = CC0 from Openverse / Freesound (docs/SOUND.md)
 
   -- formats + spines (docs/FORMATS.md) --
   cves ingest                                           on a voiceover spine: tighten + transcribe the VO; music / broll: edl.json (rate, canvas)
@@ -75,6 +81,12 @@ def main(argv=None):
     lrn = sp.add_parser("learn", help="note | rate | approve | reject | results | journal | mine | list | show | promote | forget | study (docs/LEARNING.md)", add_help=False); lrn.add_argument("rest", nargs=argparse.REMAINDER)
     crq = sp.add_parser("critique", help="[vNNN|master]: contact sheet + energy timeline + CRITIQUE.md rubric -> Edit/critique/"); crq.add_argument("which", nargs="?", default="master")
     # ---- end WS E ----
+    # ---- WS F: review loop (docs/REVIEW.md) ----
+    rv = sp.add_parser("review", help="build [vNNN|master] | apply | signoff --verdict ship|revise --notes ... | show (render review pack + findings)")
+    rv.add_argument("action", choices=["build", "apply", "signoff", "show"]); rv.add_argument("which", nargs="?", default=None, help="build: vNNN or master (default)")
+    rv.add_argument("--only", help="apply: comma list of finding ids (default: every safe patch)"); rv.add_argument("--dry-run", action="store_true")
+    rv.add_argument("--verdict", choices=["ship", "revise"]); rv.add_argument("--notes", default=""); rv.add_argument("--json", action="store_true")
+    # ---- end WS F ----
     # ---- formats + spines (WS C, docs/FORMATS.md) ----
     ac = sp.add_parser("autocut", help="[PROJECT]: propose a broll: track whose cuts land on the music grid (Edit/beats.json)")
     ac.add_argument("dir", nargs="?"); ac.add_argument("--every", choices=["beats", "downbeats", "bars"], help="grid (default: style autocut.every)")
@@ -84,9 +96,16 @@ def main(argv=None):
     ac.add_argument("--apply", action="store_true", help="write the track into edit.yaml broll: (backup kept); else print it")
     ac.add_argument("--json", action="store_true")
     # ---- end formats + spines ----
+    # ---- WS G: treatments (docs/TREATMENTS.md) ----
+    trt = sp.add_parser("treatments", help="list | make [NAMES] | render [NAMES] [--proxy|--full] | compare [NAMES] | pick NAME (docs/TREATMENTS.md)", add_help=False)
+    trt.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- end WS G ----
+    # ---- WS H (senior sound, docs/SOUND.md): the SFX bank ----
+    sfx_ = sp.add_parser("sfx", help="list | fetch | add | check: the SFX bank (manifest, CC0 only; docs/SOUND.md)", add_help=False); sfx_.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- end WS H ----
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
-        if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion"): a.rest = list(getattr(a, "rest", [])) + extra
+        if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion", "sfx", "treatments"): a.rest = list(getattr(a, "rest", [])) + extra
         else: ap.error("unrecognized arguments: " + " ".join(extra))
 
     if a.cmd == "new":
@@ -105,8 +124,12 @@ def main(argv=None):
         from . import motion; sys.exit(motion.main(list(a.rest) + (["--project", a.project] if a.project and a.rest and a.rest[0] == "preview" else [])))
     if a.cmd == "music":     # Openverse search/download (licence-checked, credits logged); ElevenLabs / Magnific hand-off
         from . import music; sys.exit(music.main(a.rest))
+    if a.cmd == "sfx":       # WS H: SFX bank list / fetch (Openverse, Freesound; CC0 only) / add / check
+        from . import sfx; sys.exit(sfx.main(a.rest, a.project))
     if a.cmd == "learn":     # WS E: journal notes / ratings / results; mine, promote, study (no project needed for mine/list/promote)
         from . import learn; sys.exit(learn.main(a.rest, a.project))
+    if a.cmd == "treatments":    # WS G: creative treatments (proxies, comparison sheet, pick -> edit.yaml + journal)
+        from . import treatments; sys.exit(treatments.main(a.rest, a.project))
     if a.cmd == "export" and a.target == "selftest":     # synthetic layers, no project needed
         from .export.__main__ import main as xmain; sys.exit(xmain(["selftest"] + list(a.rest)))
     if a.cmd == "beats" and a.dir: a.project = a.dir
@@ -128,6 +151,32 @@ def main(argv=None):
         for n, u, b, s in r["budget"]:
             if s == "OVER": print(f"  restraint budget OVER: {n} {u} > {b}")
         return
+    # ---- WS F: review loop (docs/REVIEW.md) ----
+    if a.cmd == "review":
+        from . import review as RV
+        if a.action == "build":
+            r = RV.build(pr, a.which); c = r["counts"]
+            print(f"review round {r['round']}/{r['max_rounds']} -> {r['dir']}\n  {c['high']} high, {c['med']} med, {c['low']} low; QC FAIL {r['qc_fail']}")
+            for x in r["findings"]:
+                if x["severity"] != "low": print(f"  {x['id']} {x['severity']:4s} {'' if x['t'] is None else '%.2fs' % x['t']:>7s} {x['kind']:18s} {x['message'][:140]}")
+            print(f"  read {r['md']} and look at the images (index.jpg first)")
+            if r["cap_reached"]: print(f"  ROUND CAP REACHED ({r['round']}/{r['max_rounds']}): last round of this loop; sign off with `cves review signoff --verdict ship|revise --notes ...`")
+            ready = c["high"] == 0 and r["qc_fail"] == 0
+            print("  ready to show the owner" if ready else "  NOT ready: fix (`cves review apply` for safe patches), re-render, `cves review build` again")
+        elif a.action == "apply":
+            r = RV.apply(pr, a.only, a.dry_run)
+            for x in r["applied"]: print(f"  {'would apply' if a.dry_run else 'applied'} {x['id']} {x['kind']}: " + "; ".join(f"{c['path']} {c['old']} -> {c['new']}" for c in x["changes"]))
+            if r["skipped_unsafe_or_failed"]: print(f"  not applied (unsafe: fix by hand, or failed): {', '.join(r['skipped_unsafe_or_failed'])}")
+            if not r["applied"]: print("  no safe patch to apply")
+            elif not a.dry_run: print(f"  edit.yaml: {r['how']}; backup {r['backup']}\n  next: `cves build`, `cves critique`, `cves review build`")
+        elif a.action == "signoff":
+            if not a.verdict: raise SystemExit("cves review signoff needs --verdict ship|revise and --notes \"...\"")
+            r = RV.signoff(pr, a.verdict, a.notes)
+            print(f"signed off round {r['round']} (loop {r['loop']}): {r['verdict']}; {len(r['open'])} open high/med finding(s) recorded in the journal")
+            for w in r["warnings"]: print("  WARNING:", w)
+        else: print(RV.show(pr, a.json))
+        return
+    # ---- end WS F ----
     if a.cmd == "validate":
         from . import schema; e_, w_ = schema.validate(pr)
         print(json.dumps({"errors": e_, "warnings": w_}, indent=1) if a.json else schema.report(e_, w_)); sys.exit(1 if e_ else 0)

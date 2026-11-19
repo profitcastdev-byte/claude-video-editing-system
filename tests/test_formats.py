@@ -34,14 +34,27 @@ def test_safe_zones_follow_the_aspect():
 
 
 def test_fixed_template_fits_a_landscape_canvas():
-    """cutaways.py is a fixed 1080x1920 layout: on 16:9 it is fitted (never stretched) into the safe zone"""
-    G.apply_style(STY.load(), canvas=(1920, 1080)); ctx = {"start": 0.0, "end": 2.0, "fps": 30}
-    fn = TPL.get("stat")[0]; els = fn(1.9, {"value": 90, "suffix": "%", "label": "keep watching", "count": [0.1, .6]}, ctx)
-    assert els and all(el.im.size == (1920, 1080) for el in els)
-    z = G.safe(); boxes = [el.im.getbbox() for el in els if el.im.getbbox() and not el.id.endswith(".glow")]
-    for b in boxes: assert z[0] - 2 <= b[0] and b[2] <= z[2] + 2 and z[1] - 2 <= b[1] and b[3] <= z[3] + 2, (b, z)
-    a, _, _ = TPL._fit_for("stat", TPL.REGISTRY["stat"][0], {"value": 90, "suffix": "%", "label": "keep watching", "count": [0.1, .6]}, ctx)
-    assert 0 < a <= 1.0                                                       # one uniform scale: no stretch, never upscaled
+    """a third-party module with a hard-coded 1080x1920 layout (DESIGN = True) is fitted (never stretched) into the safe
+    zone on 16:9. (The built-in v0.2 cutaways are relative now: tests/test_weak_spots.py)"""
+    import types
+    from PIL import ImageDraw
+    from cves.templates import El
+    def box(t, p, ctx):
+        im = G.new(); ImageDraw.Draw(im).rectangle((140, 600, 940, 1300), fill=(255, 255, 255, 255)); return [El(im, "fx.box", "cutaway")]
+    mod = types.ModuleType("cves_test_fixed"); mod.T = {"_fixed_box": (box, lambda p, ctx: [])}; mod.DESIGN = True; mod.KIND = "cutaway"
+    TPL._register(mod, "test")
+    try:
+        assert TPL.LAYOUT["_fixed_box"] == "fixed"
+        G.apply_style(STY.load(), canvas=(1920, 1080)); ctx = {"start": 0.0, "end": 2.0, "fps": 30}
+        els = TPL.get("_fixed_box")[0](1.0, {}, ctx)
+        assert els and all(el.im.size == (1920, 1080) for el in els)
+        z = G.safe(); b = els[0].im.getbbox()
+        assert z[0] - 2 <= b[0] and b[2] <= z[2] + 2 and z[1] - 2 <= b[1] and b[3] <= z[3] + 2, (b, z)
+        assert abs((b[2] - b[0]) / (b[3] - b[1]) - 800 / 700) < .03                 # one uniform scale: no stretch
+        a, _, _ = TPL._fit_for("_fixed_box", box, {}, ctx)
+        assert 0 < a <= 1.0                                                       # never upscaled
+    finally:
+        for d in (TPL.REGISTRY, TPL.KIND, TPL.SOURCE, TPL.LAYOUT, TPL.RASTER): d.pop("_fixed_box", None)
 
 
 def _probe_canvas(_): return (G.W, G.H)

@@ -19,6 +19,10 @@ S.get("captions.style", "word_reveal")   # dotted lookup with a default
 3. `~/.cves/taste/learned.yaml`, the personal learned layer (`$CVES_TASTE`);
 4. the preset named by `edit.yaml style.preset`;
 5. `PROJECT/Edit/style.yaml`, written by `cves inspire`;
+   - the `style:` mapping of `PROJECT/Edit/treatment.yaml`, the **treatment layer** (written by `cves treatments pick`;
+     inside a treatment folder `Edit/treatments/<name>/` by `cves treatments make`). It sits after inspire and before
+     Brand and `edit.yaml`, so brand rules and per-video overrides still win over a treatment. `S["_sources"]` shows
+     `treatment:<name>`. Treatment files may hold only keys of `default.yaml` ([TREATMENTS.md](TREATMENTS.md));
 6. `PROJECT/Brand/style.yaml`;
 7. inline keys under `edit.yaml style:`.
 
@@ -74,14 +78,19 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `edit.yaml` | Claude / human | the edit (cutaways, roto, chest, end_card, captions, music, sfx, assets, variants) |
 | `assets.json` | `cves assets` | registry: id → path, kind, source (file/magnific/elevenlabs/stock/url), prompt, licence, sha256 |
 | `stems/guide.wav` | mix | only with `music.slot: platform`: the guide the edit is cut to (reference track or click track), never mixed into the master ([VIRAL.md](VIRAL.md) §4) |
-| `beats.json` | `cves beats` | music analysis in track seconds: tempo, beats, downbeats, bars, sections, energy, drop candidates, last sync plan ([MUSIC.md](MUSIC.md)) |
+| `beats.json` | `cves beats` | music analysis in track seconds: tempo, beats, downbeats, bars, sections, phrases (intro / build / drop / body / break / outro), energy, drop candidates, last sync plan ([MUSIC.md](MUSIC.md), [SOUND.md](SOUND.md)) |
+| `mix.json` | `cves mix` | master gain, cue count, music placement (+ `sections`, `story` alignment), automatic `accents` (placed / skipped + why), `duck` settings ([SOUND.md](SOUND.md)) |
 | `timeline.json` | render | resolved timeline (spine, zoom, cutaways incl. `broll` shots, transitions, fps_rational, size, segments with `kind`) |
 | `IMPORT-REPORT.md` | `cves import-edits` | editor changes mapped onto edit.yaml / selects.yaml (backups `*.bak-<time>`), and what could not be mapped. `Export/control/layers.json` (schema in CONTROL-MODE.md §3) is the reference it compares against |
 | `elements.jsonl` | render | one record per drawn element per frame (id, role, bbox, text, t_key, asset, font) |
 | `QC-REPORT.txt` / `qc.json` | `cves qc` | gate results; `qc.json` is machine-readable and carries the hash of the file it judged |
-| `journal.jsonl` | `cves` (build, encode, qc, deliver, import-edits, critique) + `cves learn` | append-only events `{t, event, cves, style_hash, ...}` for self-learning ([LEARNING.md](LEARNING.md)); `journal.last_edit.yaml` is the edit.yaml of the last build |
+| `journal.jsonl` | `cves` (build, encode, qc, deliver, import-edits, critique, review, treatments make / render / compare / pick) + `cves learn` | append-only events `{t, event, cves, style_hash, ...}` for self-learning ([LEARNING.md](LEARNING.md)); `journal.last_edit.yaml` is the edit.yaml of the last build |
 | `DIRECTION.md` | Claude | creative direction: concept, arc, the one signature moment, motif, what we will not do (knowledge-base/CREATIVE.md) |
+| `treatment.yaml` | `cves treatments pick` | the picked treatment (`name`, `label`, `style:` = the treatment style layer, `structure:` hints); the old one is kept as `treatment.yaml.bak-<time>` |
+| `treatments/<name>/` | `cves treatments make` / `render` | one treatment: `edit.yaml` (the adapted plan, `treatment: <name>`), `treatment.yaml`, `plan.json` (changes + metrics: cuts, caption style, transitions, punch-ins), `proxy.mp4`; its own `timeline.json`, `mix.wav`, `stems/`, `exposure.json`, `beats.json`. A `project.Variant` view: plates, mattes, faces, words and voice are read from `Edit/`, never rebuilt |
+| `treatments/compare/` | `cves treatments compare` | `sheet.jpg` (rows = treatments, columns = the same timecodes, labelled), `compare.mp4`, `compare.json` |
 | `critique/` | `cves critique` | `contact_sheet.jpg`, `timeline.png`, `critique.json`, `CRITIQUE.md` (rubric Claude fills) |
+| `review/` | `cves review` | `state.json` (rounds of the current loop, closed loops, capped at style `review.max_rounds`); one never-overwritten `rNNN/` per round: `cuts/cut_NN.jpg`, `index.jpg`, `hook.jpg`, `payoff.jpg`, `endcard.jpg`, `cuts.json`, `audio.json`, `findings.json` (`[{id, severity: high\|med\|low, t, kind, message, patch?}]`, `patch = {set: {edit.yaml path: value}, append: {...}, safe}`), `REVIEW.md` (rubric Claude answers), `applied.json`, `signoff.json` ([REVIEW.md](REVIEW.md)) |
 
 Client folders live outside the repo. Their root is `$CVES_CLIENTS`, else the `clients_root` config key, else `~/CVES Projects`.
 
@@ -96,12 +105,15 @@ A template is a `T = {name: (render, cues)}` dict inside any module:
 Templates are auto-discovered.
 
 - **Layout on any canvas.** Lay out from `G.W` / `G.H` / `G.safe()` and treat px values as px at a 1080 short side. The
-  registry wraps every template (`templates.get`): relative templates (default) draw in a same-aspect canvas with a 1080
-  short side and are scaled by `G.U`; `NATIVE = True|{names}` modules draw on the canvas and scale px themselves;
-  `DESIGN = True` modules (hard-coded 1080×1920) are fitted per instance into the safe zone. Identity at 1080×1920.
+  registry wraps every template (`templates.get`): relative templates (default) lay out in a same-aspect canvas with a
+  1080 short side and are rasterised at the real canvas (`G.set_raster`: `G.layer` scales coordinates, type and strokes by
+  `G.R` = `G.U`; layers are `G.PW × G.PH`; pixel work on a layer uses its own size and `G.px()`); `RASTER = False|{names}`
+  modules are drawn at the layout size and scaled by `G.U` instead; `NATIVE = True|{names}` modules draw on the canvas and
+  scale px themselves; `DESIGN = True` modules (hard-coded 1080×1920, third-party only) are fitted per instance into the
+  safe zone. Identity at 1080×1920.
 - `render(t, params, ctx) -> list[El]`. `ctx` has `start`, `end`, `resolve` (asset id or path resolver: `edit.yaml assets:` / `Edit/assets.json` first, then project- and repo-relative paths), `fps` (quantise animation starts: `round(t * fps) / fps`) and `S` (the style profile). On A-roll it also has `chin`, the smoothed chin y on the canvas. Templates listed in `render.NEEDS_AROLL` (kind `media`, or a module-level `NEEDS_AROLL = {names}` / `True`) also get `aroll = (graded RGB float HxWx3, matte float HxW)`: the A-roll frame under the cutaway, framed as the A-roll shot; no other template pays for it.
 - `cves render --only` / `Timeline.frames_for(spec)` accept cutaway, segment, `roto.N`, `chest.N`, `end_card` ids, `12.5-14.0` (seconds), `300-420` (frames, inclusive) and comma lists.
-- `cues(params, ctx) -> list[(t, sfx_name, gain_db, kw)]`.
+- `cues(params, ctx) -> list[(t, sfx_name, gain_db, kw)]`. `sfx_name` is a bank id / file name, or `@category[:intensity]` (resolved from the SFX bank manifest, [SOUND.md](SOUND.md) §4).
 - **Kind.** Set it per module with `KIND = "cutaway"|"roto"|"chest"|"end"|"media"|"overlay"`, or per template with `KINDS = {name: kind}`.
 - **El(im, id, role, text=, t_key=, asset=, font=).** The `id` must be stable across frames; the QC gates track elements by `id`.
 - **Fonts and colours.** Templates read colours and fonts through `gfx` (`G.MINT` is the accent slot, `G.font(...)`). They never use literal hex values.

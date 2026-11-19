@@ -14,7 +14,7 @@ in the [key reference](#key-reference) below.
 
 ## Merge order
 
-`style.load(pr)` merges up to eight layers. A later layer wins, key by key (nested mappings merge; lists and scalars replace):
+`style.load(pr)` merges up to nine layers. A later layer wins, key by key (nested mappings merge; lists and scalars replace):
 
 | # | layer | written by | typical content |
 |---|---|---|---|
@@ -24,6 +24,7 @@ in the [key reference](#key-reference) below.
 | 3 | `~/.cves/taste/learned.yaml` (personal learned) | `cves learn promote` (a person approves) | your taste; may hold `client:<name>` sections |
 | 4 | `engine/cves/styles/<preset>.yaml`, named by `edit.yaml style: {preset: <name>}` | a person | a reusable house look, e.g. `profitcast-dark` |
 | 5 | `PROJECT/Edit/style.yaml` | `cves inspire` | the look measured from the client's reference edits, with `_evidence` |
+| 5b | `PROJECT/Edit/treatment.yaml` (its `style:` mapping) | `cves treatments pick` (in a treatment folder: `make`) | the creative treatment: caption preset, transition family, grade, energy, bed ([TREATMENTS.md](TREATMENTS.md)); `_sources` shows `treatment:<name>` |
 | 6 | `PROJECT/Brand/style.yaml` | the client / a person | brand tokens: logo colours, fonts |
 | 7 | `edit.yaml style:` (keys other than `preset`) | Claude / a person | per-video overrides |
 
@@ -39,7 +40,8 @@ QC recomputes the zone from the profile's fractions on the real frame size.
 `S["_sources"]` lists the layers that were found, e.g. `["default", "learned:personal", "preset:profitcast-dark", "inspire", "edit.yaml"]`.
 Keys that start with `_` (`_evidence`, `_inspire`) are notes: the engine never reads them.
 
-So the measured look (3) beats the house preset (2), and the brand (4) and the edit (5) beat the measurement. To keep a
+So the measured look (5) beats the house preset (4), a treatment (5b) beats the measurement, and the brand (6) and the edit
+(7) beat both: brand rules always win over a treatment. To keep a
 preset value that inspire measured differently, set it again in `Brand/style.yaml` or `edit.yaml style:`, or delete the key
 from `Edit/style.yaml`.
 
@@ -178,6 +180,7 @@ graphics gets gates that match:
 | `framing.extreme_max` | FRAME-09 extreme punch-ins |
 | `sound.master_lufs`, `sound.true_peak` | SND-01, SND-02 |
 | `sound.bed_lu` (or `edit.yaml music.bed_lu`) | SND-04 music + SFX bed vs voice |
+| `sound.phrase_tolerance_s` | SND-33 drop section vs the payoff (WARN-only) |
 | `canvas.size` (or `platform.size`), `platform.safe_zone` / `canvas.safe_zones`, `platform.margin`, `platform.duration` | DEL-01, PLAT-01/02, DEL-04 |
 | `platform.target` (styles/platforms.yaml) | PLAT-02 safe zone and caption line, RET-30 duration band, SND-01/02 loudness |
 | `structure.hook_change_s`, `retention.hook_subject_s` | RET-24 hook change, RET-25 hook text / subject (viral) |
@@ -351,11 +354,21 @@ project.size` wins over it.
 
 | key | default | meaning |
 |---|---|---|
-| `transitions.in` | `cut` | default transition into a cutaway: cut / whip / glitch / fade |
+| `transitions.in` | `cut` | default transition into a cutaway: cut / whip / glitch / fade, or a craft kind (whip_pan / zoom_through / mask_wipe / luma_fade / glitch_lite / light_leak / dip; look in `craft.transitions`) |
 | `transitions.out` | `cut` | default transition out of a cutaway |
 | `transitions.whip_s` | `0.15` | whip half-duration either side of the cut, s |
 | `transitions.glitch_s` | `0.1` | glitch half-duration, s |
 | `transitions.fade_s` | `0.2` | fade (dip to black) half-duration, s |
+| `transitions.whip_pan_s` | `0.2` | whip pan (directional smear) half-duration, s |
+| `transitions.zoom_through_s` | `0.22` | zoom-through half-duration, s |
+| `transitions.mask_wipe_s` | `0.3` | mask wipe half-duration, s |
+| `transitions.luma_fade_s` | `0.3` | luma fade (shadows out first, highlights in first) half-duration, s |
+| `transitions.glitch_lite_s` | `0.07` | glitch-lite (RGB split + a few slices, no scanlines) half-duration, s |
+| `transitions.light_leak_s` | `0.35` | procedural light leak half-duration, s |
+| `transitions.dip_s` | `0.25` | dip to colour (`craft.transitions.dip_color`) half-duration, s |
+
+QC reads the same `transitions.<kind>_s` windows to exempt transition frames (MOT-12, the A-roll pass), so the window it
+skips is the one the renderer drew.
 
 #### `framing`
 
@@ -397,8 +410,43 @@ pacing rules the QC gates enforce; null = not enforced for this client
 | `sound.transition_sfx.glitch` | `swipe` | cue for a glitch |
 | `sound.transition_sfx.cut` |  | cue for a hard cut (null = none) |
 | `sound.transition_sfx.fade` |  | sound per transition kind (null = none); a whoosh is placed by its peak on the cut (SND-08) |
+| `sound.transition_sfx.whip_pan` | `whoosh` | cue for a whip pan (craft) |
+| `sound.transition_sfx.zoom_through` | `whoosh` | cue for a zoom-through |
+| `sound.transition_sfx.mask_wipe` | `swipe` | cue for a mask wipe |
+| `sound.transition_sfx.glitch_lite` |  | cue for a glitch-lite (null = none) |
+| `sound.transition_sfx.luma_fade` |  | cue for a luma fade (null = none) |
+| `sound.transition_sfx.light_leak` |  | cue for a light leak (null = none) |
+| `sound.transition_sfx.dip` |  | cue for a dip to colour (null = none) |
 | `sound.repeat_pitch_st` | `1` | SND-09: an identical back-to-back cue is pitched +/- this many semitones (alternating, deterministic) |
 | `sound.repeat_gain_db` | `1.5` | ... and its gain moved by -/+ this much |
+| `sound.phrase_tolerance_s` | `0.05` | SND-33: the drop section must start this close to the payoff, s |
+| `sound.accents` |  | automatic risers / impacts on the story moments ([SOUND.md](SOUND.md)); budget `creative.sound_accents_per_30s` |
+| `sound.accents.enabled` | `true` | false (or edit.yaml `sfx.auto: false`) = no automatic accents |
+| `sound.accents.reveals` | `true` | also an impact on reveal cues that carry no low hit of their own |
+| `sound.accents.riser_gain_db` | `-14` | riser level, dB (`sound.sfx_offset_db` applies on top) |
+| `sound.accents.impact_gain_db` | `-11` | impact level, dB (a tagged hero: no offset) |
+| `sound.accents.riser_min_s` | `0.8` | shortest riser; a target with less room before it gets none |
+| `sound.accents.riser_max_s` | `2.2` | longest riser picked from the bank |
+| `sound.accents.riser_tail_max_s` | `0.1` | only risers that resolve: their peak is at most this far from their end |
+| `sound.accents.impact_max_s` | `2.0` | an impact longer than this is trimmed to it, s |
+| `sound.accents.impact_attack_max_s` | `0.03` | only punchy impacts: onset to peak within this, s (a slow swell is not a hit) |
+| `sound.accents.min_gap_s` | `0.3` | a riser starts at least this long after the accent before it |
+| `sound.accents.payoff_riser` | `medium` | intensity (soft / medium / hard) of the riser into the payoff |
+| `sound.accents.payoff_impact` | `hard` | intensity of the downbeat hit on the payoff |
+| `sound.accents.hook_riser` | `soft` | intensity of the riser into / out of the hook |
+| `sound.accents.reveal_impact` | `medium` | intensity of the impact on other reveals |
+
+#### `mix`
+
+how the music sits under the voice ([SOUND.md](SOUND.md))
+
+| key | default | meaning |
+|---|---|---|
+| `mix.duck_mode` | `envelope` | envelope (the music gain follows the voice RMS envelope) / gate (the v0.3 fixed dips) |
+| `mix.duck_attack_ms` | `40` | envelope: how fast the music dips when a syllable starts |
+| `mix.duck_release_ms` | `auto` | envelope: how fast it comes back; auto = 1.25 x the measured syllable period, within `mix.duck_release_range_ms` |
+| `mix.duck_release_range_ms` | `[250, 400]` | clamp for the auto release, ms |
+| `mix.duck_range_db` | `30` | envelope: voice this far under its loud level does not duck; full depth (`sound.duck_voice_band_db` / `duck_other_db`) from 6 dB under it |
 
 #### `music`
 
@@ -422,6 +470,15 @@ beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these pe
 | `music.min_aroll_s` | `0.5` | a moved cutaway edge never leaves an A-roll piece shorter than this |
 | `music.sfx_snap` | `["whoosh", "hit", "boom", "riser"]` | full mode: cues whose name contains one of these are nudged to the beat |
 | `music.sfx_snap_max_f` | `1` | full mode: max nudge in frames (SND-07 keeps every SFX within 1 frame of its picture event) |
+| `music.phrase_align` | `true` | drop / cuts / full: prefer the drop whose build starts on the story turn (sections: intro / build / drop / body / break / outro) |
+| `music.phrase_min_bars` | `2` | a music section is at least this many bars |
+| `music.build_min_rise_db` | `2.0` | a build rises at least this much into its drop |
+| `music.build_step_db` | `1.0` | ... and each of its bars at least this much over the bar before |
+| `music.phrase_turn_weight` | `1.0` | drop pick: score points lost per bar between the build start and the turn |
+| `music.hook_beats` | `["H"]` | story beats of the hook (riser into / out of it) |
+| `music.turn_beats` | `["P", "A"]` | story beats of the turn (the build should start here); default: the end of the hook |
+| `music.hook_cut` | `0` | cut s of the hook when > 0 (else from `music.hook_beats`) |
+| `music.turn_cut` | `0` | cut s of the turn when > 0 (else from `music.turn_beats`) |
 
 #### `rhythm`
 
@@ -614,6 +671,7 @@ how any footage is conformed to the master canvas (docs/INGEST.md)
 | `ingest.hdr` |  | HDR -> SDR tone mapping |
 | `ingest.hdr.tonemap` | `hable` | HDR (PQ / HLG) -> SDR BT.709 operator: hable / mobius / reinhard / clip |
 | `ingest.hdr.npl` | `100` | nominal peak luminance (nits) used to linearise |
+| `ingest.hdr.broll` | `true` | HDR B-roll and media clips (`broll:`, `video_broll`, `screen_rec`, `pip` / `split` panes, `overlay_render`) go through the same tonemap once, into `Edit/conform/<name>-<key>.sdr.mkv` (FORMATS.md §5); `false` = decode them as they are |
 | `ingest.whisper` |  | long-audio transcription chunking |
 | `ingest.whisper.chunk_over_s` | `600` | audio longer than this is transcribed in chunks split on silences |
 | `ingest.whisper.chunk_s` | `300` | longest chunk, seconds |
@@ -659,3 +717,113 @@ advisory (not a QC gate). Per-30 s budgets give a video shorter than 30 s one fu
 | `creative.transition_kinds_max` | `2` | distinct transition kinds in one video, cut not counted |
 | `creative.motion_pieces_per_30s` | `6` | animated graphics (cutaways, roto, chest, motion pieces, end card) per 30 s |
 | `creative.accent_colors_max` | `1` | accent colours beyond the text colour and the stage |
+| `creative.sound_accents_per_30s` | `3` | automatic risers + impacts (`sound.accents`) per 30 s of runtime (a shorter video still gets one 30 s allowance) |
+| `creative.craft_per_30s` | `4` | craft moves (speed ramps, camera moves, match cuts, text behind the speaker) per 30 s; `cves render` warns and `cves critique` reports it |
+
+#### `review`
+
+`cves review` ([REVIEW.md](REVIEW.md)): what goes into the render review pack and the thresholds of its machine findings.
+The review reads QC and the critique, it never re-runs a gate; these keys only tune the cut-local and sound detectors that
+no gate covers, and the loop cap.
+
+| key | default | meaning |
+|---|---|---|
+| `review.max_rounds` | `3` | review rounds per loop; at the cap `cves review build` says so and refuses a 4th round until Claude signs off (`ship` / `revise`) and records what is still wrong |
+| `review.cut_offsets` | `[-2, -1, 0, 1, 2]` | frames shown around every cut in `cuts/cut_NN.jpg` (0 = first frame of the incoming shot) |
+| `review.hook_s` | `3.0` | length of the hook strip (`hook.jpg`), s; also the hook section of the loudness report |
+| `review.hook_fps` | `10` | frames per second sampled into the hook strip |
+| `review.payoff_frames` | `6` | frames sampled across the payoff window (`structure.payoff_window`) before the end card |
+| `review.black_luma` | `18` | a frame within 2 of a cut darker than this (mean luma 0-255) between brighter shots is a black flash (high) |
+| `review.flash_delta` | `60` | a frame within 2 of a cut this much brighter than both shots is a white flash (high) |
+| `review.glitch_ratio` | `0.35` | one-frame glitch: frames -1 and +1 differ by less than this share of the steps into and out of the frame (high) |
+| `review.freeze_ratio` | `0.15` | a frame step at a cut below this share of the local motion is a duplicate frame / freeze (med) |
+| `review.freeze_motion` | `1.0` | local mean abs frame step (0-255) below which a shot counts as static (no freeze check) |
+| `review.luma_jump` | `45` | mean-luma step across a hard cut that reads as a flash (low; med above 1.5x between footage shots); a transition covers it |
+| `review.caption_near_f` | `2` | a caption that changes 1..this many frames from a cut (not on it) is flagged (med at 1 frame, low at 2) |
+| `review.min_shot_f` | `3` | a shot shorter than this many frames reads as a glitch (med) |
+| `review.click_ratio` | `4.0` | audio pop: sharpest sample step (2nd difference) within a frame of a cut vs the p99.5 in the 0.3 s around it (med; high above 2x) |
+| `review.click_floor_db` | `-45` | ... unless the audio there peaks below this (dBFS) |
+| `review.vmr_min_db` | `6.0` | vocal-to-music ratio in the 1-4 kHz speech band (400 ms windows over speech, from the stems) under which music masks the voice |
+| `review.mask_share` | `0.1` | share of speech windows under `vmr_min_db` that makes a finding (high when the p10 is below 0 dB) |
+| `review.bed_step_max_db` | `6.0` | largest `music.bed_lu` cut the safe masking patch makes |
+| `review.silence_db` | `-50` | master 50 ms windows quieter than this (dBFS) count as silence |
+| `review.silence_s` | `0.6` | a silent gap inside the body longer than this is reported (low; skipped when QC RET-31 already reports dead air) |
+| `review.section_jump_lu` | `6.0` | hook / body / payoff loudness differing by more than this (LU) is flagged (low) |
+| `review.end_card_min_s` | `1.0` | an end card shorter than this cannot be read; safe patch: `end_card.duration` = this (PLAT-11 caps it at 3 s) |
+| `review.end_tail_db` | `-30` | master level in its last 50 ms above this (dBFS) = audio cut off at the end, not faded or ended on a hit (low) |
+| `review.earshot` | `auto` | `auto` runs `earshot measure --json --light` on the master when earshot is installed (`audio.json` `earshot`); `off` skips it |
+| `review.earshot_timeout_s` | `180` | give up on earshot after this long; the pack is written without it |
+
+#### `treatments`
+
+`cves treatments` ([TREATMENTS.md](TREATMENTS.md)): 2-3 creative takes on one plan, rendered as fast proxies and compared.
+
+| key | default | meaning |
+|---|---|---|
+| `treatments.offer` | `[punchy, cinematic, minimal]` | treatments `make` builds when none are named; the project's own `treatments/*.yaml` are added |
+| `treatments.prefer` | `null` | the treatment offered first; `cves learn mine` proposes it per goal / client from past `pick`s |
+| `treatments.proxy_scale` | `0.5` | proxy renders at this fraction of the canvas (even-rounded); plates and mattes are resized as they decode, never re-ingested |
+| `treatments.proxy_preset` | `veryfast` | x264 preset of proxy encodes (delivered files keep `delivery.video`) |
+| `treatments.proxy_crf` | `26` | x264 crf of proxy encodes |
+| `treatments.compare_points` | `6` | timecodes on the comparison sheet, the same in every treatment |
+| `treatments.compare_thumb` | `360` | sheet thumbnail height (portrait) or width (landscape), px |
+| `treatments.compare_max_s` | `12` | seconds of each treatment in the comparison MP4 |
+| `treatments.compare_layout` | `stacked` | `stacked` (side by side, or one above the other on landscape; audio of the first) or `sequential` (one after another, each with its own sound) |
+
+#### `craft`
+
+Motion craft (docs/MOTION.md "Craft"): text behind the speaker, speed ramps, camera moves, match cuts and the transition
+library. Every move counts against the `creative` budget; transitions are also rate-limited at render.
+
+| key | default | meaning |
+|---|---|---|
+| `craft.behind.size` | `300` | `text_behind` type size, px at a 1080 short side (shrinks to fit `max_width`) |
+| `craft.behind.weight` | `xb` | font weight slot (m / sb / b / xb) |
+| `craft.behind.tracking` | `-4` | tracking, px at a 1080 short side |
+| `craft.behind.case` | `upper` | upper / as_is |
+| `craft.behind.max_width` | `0.92` | widest line, fraction of the safe-zone width |
+| `craft.behind.max_lines` | `2` | lines the text may wrap to |
+| `craft.behind.position` | `above` | above (the head covers the lower `overlap` of the type) / behind (centred on the eyes) / low (behind the shoulders) |
+| `craft.behind.overlap` | `0.42` | fraction of the cap height the head covers in `above` |
+| `craft.behind.one_line_min` | `0.42` | keep the text on one line when it fits at >= this fraction of `size` (no orphan word on its own line), else wrap |
+| `craft.behind.track` | `0.6` | how much of the head's motion the type follows: 0 locked at its entry, 1 glued |
+| `craft.behind.smooth_frames` | `9` | face-landmark smoothing radius, frames (triangular window) |
+| `craft.behind.color` | `text` | type colour (palette slot or hex) |
+| `craft.behind.accent` | `accent` | colour of `*starred*` words |
+| `craft.behind.entry` | `rise` | rise (the letters rise out from behind the head) / slam (whole on its first frame, oversized, settling: a hard visual event) |
+| `craft.behind.entry_s` | `0.5` | entry length, s |
+| `craft.behind.exit_s` | `0.25` | exit length (ends 0.25 s before the shot by default) |
+| `craft.behind.no_matte` | `above` | no subject matte: above (lift the type clear above the head) / front (keep it, with a legibility bed) |
+| `craft.behind.sfx` | `lowhit` | entry cue (null = none) |
+| `craft.behind.bed` | `false` | draw a legibility bed under the type (always on with no matte and `no_matte: front`); prefer a colour that reads on the wall |
+| `craft.ramp.default` | `slam` | preset used by `ramp: {}` |
+| `craft.ramp.presets` |  | `[shot fraction, speed]` keys per preset, eased between (add your own) |
+| `craft.ramp.presets.slam` | `[[0, 1], [0.35, 1], [0.5, 0.22], [0.82, 0.22], [1, 1]]` | real time, a hard slow-down through the middle, back to real time |
+| `craft.ramp.presets.punch_in` | `[[0, 2.4], [0.4, 2.4], [0.6, 0.35], [1, 0.35]]` | fast in, then slow-motion to the end |
+| `craft.ramp.presets.ease_out` | `[[0, 1], [1, 0.3]]` | a gentle slow-down |
+| `craft.ramp.presets.speed_up` | `[[0, 0.5], [0.6, 0.5], [1, 2.5]]` | slow, then a speed-up into the next cut |
+| `craft.ramp.presets.hold` | `[[0, 1], [0.4, 0.08], [0.75, 0.08], [1, 1]]` | a near freeze in the middle |
+| `craft.ramp.ease` | `inOutCubic` | the curve between keys (motion-runtime names) |
+| `craft.ramp.blend` | `auto` | auto (= blend) / blend (crossfade neighbours when slow, shutter average when fast) / nearest |
+| `craft.ramp.shutter` | `0.5` | blend window on fast sections, fraction of an output frame |
+| `craft.ramp.min_speed` | `0.08` | floor of the speed curve (the remap stays strictly increasing) |
+| `craft.ramp.audio` | `mute` | a ramped shot's own sound: mute / pitch (tape varispeed) |
+| `craft.camera.move` | `none` | default move: none / push / pull / pan_left / pan_right / pan_up / pan_down / drift |
+| `craft.camera.amount` | `0.08` | zoom change (push / pull) or travel zoom (pans) |
+| `craft.camera.ease` | `inOutSine` | move curve |
+| `craft.camera.drift_u` | `0.5` | handheld drift amplitude, u (1 % of the short side) |
+| `craft.camera.drift_hz` | `0.3` | handheld drift speed |
+| `craft.camera.drift_rot` | `0.25` | handheld roll, degrees |
+| `craft.camera.parallax` | `0.5` | 2.5D: the foreground moves (1 + parallax) x the background (stills with `depth:`) |
+| `craft.camera.depth_split` | `0.5` | depth / matte value above which a pixel is foreground |
+| `craft.match.mode` | `saliency` | match-cut shape: saliency (spectral residual) / centroid (the bright, high-contrast shape) |
+| `craft.match.scale_range` | `[1.0, 1.6]` | scale applied to the incoming shot (>= 1: the fill crop never shows an edge) |
+| `craft.match.settle_s` | `0.0` | 0 holds the alignment; > 0 eases back to the shot's own framing over this long |
+| `craft.transitions.min_gap_s` | `1.5` | a non-cut transition this close to the previous kept one becomes a cut |
+| `craft.transitions.enforce` | `true` | apply that rate limit and `creative.transition_kinds_max` at render |
+| `craft.transitions.whip_dir` | `left` | whip_pan direction: left / right / up / down |
+| `craft.transitions.wipe_shape` | `bar` | mask_wipe shape: bar (diagonal) / circle / matte (A-roll: the background goes first, the subject last) |
+| `craft.transitions.wipe_color` | `accent` | mask_wipe fill: palette slot, stage, black, white or hex |
+| `craft.transitions.dip_color` | `stage` | dip / luma_fade colour |
+| `craft.transitions.leak_color` | `gold` | light_leak tint (procedural, no media) |
+| `craft.transitions.leak_strength` | `0.55` | light_leak screen-blend strength at the cut |

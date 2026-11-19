@@ -21,5 +21,7 @@ Target: `$ARGUMENTS` (default `master`, the file `cves qc` last judged). Rules: 
 4. Fix every line below 7 that can be fixed in `edit.yaml` (re-render only what changed, `cves qc` to 0 FAIL, critique again). Anything that needs a pickup, proof or a new template: say so.
 5. Log it: `cves learn rate <version> <overall> --by claude --why "<one line>" --scores hook=..,story=..,pacing=..,aesthetics=..,motion=..,sound=..,creativity=..,restraint=..,platform=..,brand=..`.
 
+Next: the review loop (`/cves:review`): it watches the render itself, cut by cut.
+
 ## Show the user
 Nothing from the critique by default: show the MP4 as the skill says, with one line on what the critique changed. Show `CRITIQUE.md` if the user asks why something was done.

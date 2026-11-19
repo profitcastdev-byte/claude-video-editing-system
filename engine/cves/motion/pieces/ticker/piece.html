@@ -1,0 +1,62 @@
+<div class="safe" id="root">
+  <div class="bands" id="bands"></div>
+</div>
+<style>
+  #root { display: flex; flex-direction: column; justify-content: center; }
+  #root.top { justify-content: flex-start; padding-top: var(--s-4); }
+  #root.bottom { justify-content: flex-end; padding-bottom: var(--s-4); }
+  .bands { position: relative; display: flex; flex-direction: column; gap: calc(var(--u) * 1.6); transform-origin: center center; }
+  .band { position: relative; overflow: hidden; border-radius: calc(var(--r-s) * 0.6);
+          -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
+          mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
+          box-shadow: 0 calc(var(--u) * 1.4) calc(var(--u) * 4) rgb(0 0 0 / 0.35); }
+  .band.a { background: linear-gradient(180deg, var(--accent), var(--accent-dark)); color: var(--bg); }
+  .band.b { background: rgb(var(--card-rgb) / 0.94); color: var(--text); border-top: max(1px, calc(var(--u) * 0.12)) solid rgb(var(--text-rgb) / 0.12); }
+  .track { display: flex; white-space: nowrap; width: max-content; will-change: transform; }
+  .set { display: flex; align-items: center; flex: none; }
+  .it { font-size: var(--t-4); font-weight: 800; letter-spacing: -0.01em; text-transform: uppercase; padding: calc(var(--u) * 2.4) 0; line-height: 1; }
+  .band.b .it { font-weight: 700; }
+  .mk { font-size: var(--t-2); padding: 0 calc(var(--u) * 3.2); line-height: 1; opacity: 0.9; }
+  .band.a .mk { color: var(--bg); opacity: 0.55; }
+  .band.b .mk { color: var(--accent); }
+  @media (min-aspect-ratio: 1/1) { .it { font-size: var(--t-4); padding: calc(var(--u) * 2) 0; } }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let root, bands, rows = [], tl, tilt;
+  C.piece({
+    setup(P, ctx) {
+      root = document.getElementById('root'); bands = document.getElementById('bands');
+      if (P.position === 'top' || P.position === 'bottom') root.classList.add(P.position);
+      const items = (P.items || []).map((x) => C.plain(typeof x === 'string' ? x : x.text || ''));
+      const n = Math.max(1, Math.min(2, +P.rows || 2)); tilt = C.clamp(+(P.tilt ?? -2.5), -6, 6);
+      for (let r = 0; r < n; r++) {
+        const list = r ? items.slice().reverse() : items;
+        const band = C.el('div', 'band ' + (r ? 'b' : 'a'), bands); band.dataset.text = list.join(' · ');
+        const track = C.el('div', 'track', band);
+        const mkSet = () => { const s = C.el('div', 'set', track); list.forEach((x) => { C.el('span', 'it', s, x); C.el('span', 'mk', s, P.mark || '✦'); }); return s; };
+        const first = mkSet(); const sw = first.getBoundingClientRect().width;
+        const copies = Math.max(2, Math.ceil((ctx.w * 2) / Math.max(1, sw)) + 1);
+        for (let k = 1; k < copies; k++) mkSet();
+        rows.push({ band, track, sw, dir: r ? 1 : -1, phase: r ? sw * 0.37 : 0 });
+      }
+      tl = C.timeline().at('open0', 0, D(0.55)).at('open1', D(0.14), D(0.55)).at('ramp', 0, D(0.9));
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), v = (+P.speed || 14) * u, ramp = tl.end('ramp');
+      // constant speed after an eased (quadratic) start: distance is the integral of a speed that ramps 0 -> v over `ramp`
+      const dist = t < ramp ? v * t * t / (2 * ramp) : v * (t - ramp / 2);
+      C.set(bands, { r: tilt * (0.6 + 0.4 * tl.p('open0', t)), o: 1 - ex, y: ex * 2 * u });
+      rows.forEach((x, i) => {
+        const po = tl.p('open' + i, t, C.MOVE);
+        // the band wipes open from its leading edge, the text glides in with it
+        x.band.style.clipPath = i ? `inset(0 0 0 ${((1 - po) * 100).toFixed(2)}%)` : `inset(0 ${((1 - po) * 100).toFixed(2)}% 0 0)`;
+        x.band.style.opacity = tl.raw('open' + i, t) > 0 ? '1' : '0';
+        const off = ((x.phase + dist) % x.sw + x.sw) % x.sw;
+        x.track.style.transform = `translate3d(${(x.dir < 0 ? -off : off - x.sw).toFixed(2)}px, 0, 0)`;
+      });
+    },
+    cues() { C.cue(0, 'whoosh', -24, { trim: [0, 0.5] }); },
+  });
+})();
+</script>

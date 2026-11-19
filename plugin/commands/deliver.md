@@ -10,6 +10,7 @@ Arguments: `$ARGUMENTS`. The full reference is `docs/DELIVERY.md`.
 
 ## Before
 - `cves qc` must show **0 FAIL** on the current master. `Edit/qc.json` carries the sha256 of the file QC judged. If you re-encoded after QC, run `cves qc` again: delivery refuses a stale stamp.
+- The review loop (`/cves:review`) is signed off for this master: no high findings left, or the sign-off notes say why (`cves review show`).
 - Do not copy, move or upload anything out of `Export/` yourself. The plugin hook denies it unless QC is clean, and `cves deliver` is the only supported path.
 - Never run `cves deliver --force-unchecked`. The hook blocks it while QC is not clean. Only a human may force an unchecked delivery, from their own terminal. It is marked in the manifest.
 
