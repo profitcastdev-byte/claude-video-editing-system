@@ -152,6 +152,7 @@ def facts(pr):
     f["transition_kinds"] = sorted({str(t.get("kind")) for t in tr if isinstance(t, dict) and t.get("kind")})
     tl = pr.json("timeline.json") or {}
     if tl.get("frames") and tl.get("fps"): f["duration_s"] = round(tl["frames"] / tl["fps"], 2)
+    f["treatment"] = E.get("treatment")          # `cves treatments pick` (docs/TREATMENTS.md)
     f["style_sources"] = S.get("_sources")
     return f
 
@@ -211,6 +212,11 @@ def on_deliver(pr, man):
 def on_import(pr, E0, rep, dry_run=False):
     if dry_run: return
     append(pr, "import-edits", changes=diff(E0, rep.get("edit") or {}), applied=rep.get("applied"), not_mapped=len(rep.get("not_mapped") or []))
+
+@_safe
+def on_treatment_pick(pr, name, **data):
+    """`cves treatments pick`: which treatment won, out of which, for which goal / client (mined into treatments.prefer)"""
+    append(pr, "treatment-pick", treatment=name, **data)
 
 @_safe
 def on_critique(pr, version, video):
@@ -491,6 +497,33 @@ def note_clusters(data):
         out.append(c)
     return out
 
+def treatment_picks(data):
+    """(d) the treatment people pick (`cves treatments pick`), per client and per goal: the same treatment chosen >= 2 times
+    and in >= 60 % of that scope's picks -> a `treatments.prefer` style candidate for that scope"""
+    groups = {}
+    for info, events in data:
+        for i, e in enumerate(events):
+            if e.get("event") != "treatment-pick" or not e.get("treatment"): continue
+            for dim in ("client", "goal"):
+                val = e.get(dim) if e.get(dim) is not None else info.get(dim)
+                if val is None or (dim == "goal" and not val): continue
+                groups.setdefault((dim, str(val)), []).append({"info": info, "ref": f"{info['ref']}#{i}", "t": e["treatment"], "of": e.get("offered") or []})
+    out = []
+    for (dim, val), picks in groups.items():
+        counts = {}
+        for p in picks: counts[p["t"]] = counts.get(p["t"], 0) + 1
+        best, n = max(counts.items(), key=lambda kv: (kv[1], kv[0]))
+        share = n / len(picks)
+        if n < 2 or share < .6: continue
+        scope = f"{dim}:{val}"; dirs = {p["info"]["dir"] for p in picks}
+        stmt = f"treatment `{best}` picked {n} of {len(picks)} times for {scope} across {len(dirs)} edit(s)"
+        public = f"treatment `{best}` picked {n} of {len(picks)} times for {'a client' if dim == 'client' else scope}"
+        out.append({"id": _cid("treatment", dim, val, best), "kind": "treatment", "type": "style", "statement": stmt, "public": public,
+                    "scope": scope, "evidence": [f"{p['ref']} ({p['t']} of {', '.join(p['of'])})" for p in picks],
+                    "n": len(picks), "effect": None, "confidence": round(min(.9, .3 + .15 * n) * share, 2),
+                    "change": {"key": "treatments.prefer", "value": best}})
+    return out
+
 def _status_maps():
     rej = {r["id"] for r in _read_jsonl(_tp("rejected.jsonl"))}
     prom = {}
@@ -512,7 +545,7 @@ def mine(root=None, quiet=False):
     data = load_all(root); report = [f"mined {len(data)} project journal(s) under {root}"]
     rows = versions_table(data)
     report.append(f"{len(rows)} version(s) with decisions; {sum(1 for r in rows if r['outcome'])} with outcomes")
-    cands = corrections(data) + correlations(rows, report) + note_clusters(data)
+    cands = corrections(data) + correlations(rows, report) + note_clusters(data) + treatment_picks(data)
     st = _read_json(_tp("study.json"))
     if st: cands += study_candidates(st, report)
     cal = [(statistics.mean(r["claude"]), r["outcome"]["rating"]) for r in rows if r["claude"] and r["ratings"]]

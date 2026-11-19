@@ -260,3 +260,13 @@ creative:                     # restraint budget (knowledge-base/CREATIVE.md); `
   transition_kinds_max: 2     # distinct transition kinds in one video (cut not counted)
   motion_pieces_per_30s: 6    # animated graphics (cutaways, roto, chest, motion pieces, end card) per 30 s of runtime
   accent_colors_max: 1        # accent colours beyond the text colour and the stage (colour discipline)
+treatments:                   # `cves treatments` (docs/TREATMENTS.md): creative alternatives of one plan, compared as fast proxies
+  offer: [punchy, cinematic, minimal]   # treatments `make` builds when none are named (PROJECT/treatments/*.yaml are added)
+  prefer: null                # the treatment offered first; `cves learn mine` proposes it per goal / client from past picks
+  proxy_scale: 0.5            # proxy renders: fraction of the canvas (even-rounded); plates and mattes are resized, never re-ingested
+  proxy_preset: veryfast      # x264 preset of proxy encodes (delivery encodes keep `delivery.video`)
+  proxy_crf: 26               # x264 crf of proxy encodes
+  compare_points: 6           # timecodes on the comparison sheet (the same ones in every treatment)
+  compare_thumb: 360          # sheet thumbnail height (portrait) or width (landscape), px
+  compare_max_s: 12           # length of each treatment in the comparison MP4, s
+  compare_layout: stacked     # stacked (side by side / one above the other, audio of the first) | sequential (one after another, own sound)

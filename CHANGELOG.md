@@ -3,6 +3,18 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Added
+- **Treatments** (`cves treatments list|make|render|compare|pick`, workstream G of v0.4, docs/TREATMENTS.md): 2-3 distinct creative takes on one approved edit plan. Built-ins `punchy`, `cinematic` and `minimal` (`engine/cves/styles/treatments/`); `PROJECT/treatments/*.yaml` add or override them. Each is a style overlay (keys of `default.yaml` only) plus structure hints that `make` applies to a copy of the plan in `Edit/treatments/<name>/`: cut density (B-roll shots split into wide + punch-in, or merged into holds within `grammar.max_shot_s`; drawn cutaways capped by information value), a punch-in on a key word (`aroll.snap`, CUT-05-safe), the transition family (cutaways, B-roll entries at sentence starts, explicit transitions, end card), the caption preset (per-video caption look keys give way), roto kept or dropped, the music bed, drawn `stat` / `checklist` swapped for `m_stat_counter` / `m_list_build` with mapped params, and slow pushes on B-roll. `plan.json` records every change and the plan metrics (cuts, mean shot, caption style, transitions, punch-ins, graphics, bed, motion energy).
+- **Treatment style layer**: `Edit/treatment.yaml` (`style:`) merges after inspire and before Brand and `edit.yaml`, so brand rules still win (docs/CONTRACTS.md §1, docs/STYLE.md). `_sources` shows `treatment:<name>`; `cves validate` checks its keys; `edit.yaml treatment:` names the plan's treatment.
+- **Proxy renders**: `cves treatments render` renders each treatment at `treatments.proxy_scale` (0.5) through the normal renderer (`render.render(..., proxy=)`: timeline and exposure planned at full size, then the canvas and face tracks scaled; existing plates and mattes resized as they decode, never re-ingested) and encodes with `encode.proxy_video_args` (x264 `veryfast`, crf 26). Full-quality renders and encodes are unchanged. A treatment folder is a `project.Variant` (its own plan and outputs, the project's ingest artefacts).
+- **Comparison**: `cves treatments compare` writes `Edit/treatments/compare/sheet.jpg` (rows = treatments with their label and metrics, columns = the same timecodes, labelled), `compare.mp4` (stacked, or `--sequential` with each treatment's own sound) and `compare.json`.
+- **Pick + learning**: `cves treatments pick <name>` promotes the treatment's plan to `Edit/edit.yaml` (backup `edit.yaml.bak-<time>`), its layer to `Edit/treatment.yaml`, and journals a `treatment-pick` event (choice, offered, goal / client / platform, metrics, diff). `cves learn mine` proposes `treatments.prefer` per client or goal from repeated picks; build facts now include the treatment.
+- **Style keys** `treatments.offer`, `prefer`, `proxy_scale`, `proxy_preset`, `proxy_crf`, `compare_points`, `compare_thumb`, `compare_max_s`, `compare_layout` (default.yaml, docs/STYLE.md).
+- **Plugin**: `/cves:treatments`; the `video-editor` skill offers 2-3 treatments as proxies after the edit plan when the brief is open or creative (step 5b, §2b).
+- `tests/test_treatments.py`: built-ins valid, layer order, measurably different plans on the vertical A-roll and landscape voiceover demos, project overrides, pick promotes + journals + mines, proxies at half size, the comparison sheet.
+
 ## [0.3.0] - 2026-11-19
 CVES becomes a senior editor for any video: motion design, inspirations it can hear and feel, any frame size and spine, viral mode, and a learning loop a person stays in charge of.
 

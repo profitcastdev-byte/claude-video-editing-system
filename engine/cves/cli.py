@@ -25,6 +25,8 @@
   cves learn note|rate|approve|reject|results|mine|list|show|promote|forget|study ...   self-learning (docs/LEARNING.md)
   cves critique [vNNN|master]                           review pack: contact sheet + energy timeline + CRITIQUE.md rubric
 
+  cves treatments list|make|render|compare|pick ...      creative treatments as fast proxies, compared, one picked (docs/TREATMENTS.md)
+
   cves motion list | preview <piece> [--params JSON] [--size WxH] [--out f.png|f.mp4]   HTML motion pieces (docs/MOTION.md)
 
   -- formats + spines (docs/FORMATS.md) --
@@ -84,9 +86,13 @@ def main(argv=None):
     ac.add_argument("--apply", action="store_true", help="write the track into edit.yaml broll: (backup kept); else print it")
     ac.add_argument("--json", action="store_true")
     # ---- end formats + spines ----
+    # ---- WS G: treatments (docs/TREATMENTS.md) ----
+    trt = sp.add_parser("treatments", help="list | make [NAMES] | render [NAMES] [--proxy|--full] | compare [NAMES] | pick NAME (docs/TREATMENTS.md)", add_help=False)
+    trt.add_argument("rest", nargs=argparse.REMAINDER)
+    # ---- end WS G ----
     a, extra = ap.parse_known_args(argv)
     if extra:   # flags meant for the tool behind doctor / music / export pass straight through
-        if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion"): a.rest = list(getattr(a, "rest", [])) + extra
+        if a.cmd in ("doctor", "music", "export", "assets", "learn", "motion", "treatments"): a.rest = list(getattr(a, "rest", [])) + extra
         else: ap.error("unrecognized arguments: " + " ".join(extra))
 
     if a.cmd == "new":
@@ -107,6 +113,8 @@ def main(argv=None):
         from . import music; sys.exit(music.main(a.rest))
     if a.cmd == "learn":     # WS E: journal notes / ratings / results; mine, promote, study (no project needed for mine/list/promote)
         from . import learn; sys.exit(learn.main(a.rest, a.project))
+    if a.cmd == "treatments":    # WS G: creative treatments (proxies, comparison sheet, pick -> edit.yaml + journal)
+        from . import treatments; sys.exit(treatments.main(a.rest, a.project))
     if a.cmd == "export" and a.target == "selftest":     # synthetic layers, no project needed
         from .export.__main__ import main as xmain; sys.exit(xmain(["selftest"] + list(a.rest)))
     if a.cmd == "beats" and a.dir: a.project = a.dir
