@@ -3,6 +3,13 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Added
+- **Review loop** (`cves review build|apply|signoff|show`, workstream F, docs/REVIEW.md): Claude watches the render, not the plan. `cves review build [vNNN|master]` writes a never-overwritten review pack per round, `Edit/review/rNNN/`: one contact image per cut (frames -2..+2, the cut frame and flagged frames marked) plus an index sheet, the hook at 10 fps for its first 3 s, the payoff window and the end card; `audio.json` (BS.1770 loudness per section, vocal-to-music ratio in the speech band from the stems, clicks at every cut, silence gaps, end tail, `earshot measure` when installed); `findings.json` (`{id, severity, t, kind, message, patch?}`) and `REVIEW.md` with a rubric Claude answers by looking. Detectors: black / white / one-frame flashes at cuts, duplicate frames, luma jumps across hard cuts, captions changing 1-2 frames off a cut, micro shots, audio pops at cuts, music masking the voice, a dead hook (`structure.hook_change_s`), a short end card, section level steps, silence, a cut-off audio tail. QC FAIL / WARN gates and the critique's restraint budget become findings (read, not re-measured). Cuts are refined to the frame where the picture really changes (`cuts.json` records the offset).
+- `cves review apply` applies only the safe patches (`music.bed_lu`, `end_card.duration`), keeps comments when the text patch verifies, backs up `edit.yaml` and records what it applied; `cves review signoff --verdict ship|revise --notes` journals the verdict and every finding still open. Loops are capped at `review.max_rounds` (3) in `Edit/review/state.json`: round 3 says the cap is reached, a 4th round is refused until the sign-off.
+- Journal events `review`, `review-apply`, `review-signoff` (docs/LEARNING.md); style section `review:` (25 keys, docs/STYLE.md); `/cves:review` and the review loop in the `video-editor` skill (render → qc → critique → review → fix → re-render, until 0 FAIL and no high findings, before the owner sees a cut); `tests/test_review.py` with seeded defects.
+
 ## [0.3.0] - 2026-11-19
 CVES becomes a senior editor for any video: motion design, inspirations it can hear and feel, any frame size and spine, viral mode, and a learning loop a person stays in charge of.
 

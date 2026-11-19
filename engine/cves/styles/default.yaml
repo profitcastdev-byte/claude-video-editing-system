@@ -260,3 +260,29 @@ creative:                     # restraint budget (knowledge-base/CREATIVE.md); `
   transition_kinds_max: 2     # distinct transition kinds in one video (cut not counted)
   motion_pieces_per_30s: 6    # animated graphics (cutaways, roto, chest, motion pieces, end card) per 30 s of runtime
   accent_colors_max: 1        # accent colours beyond the text colour and the stage (colour discipline)
+review:                       # `cves review` (docs/REVIEW.md): the render review pack, machine findings and the review loop
+  max_rounds: 3               # review rounds per loop; at the cap Claude must sign off (ship | revise) and record what is still wrong
+  cut_offsets: [-2, -1, 0, 1, 2]   # frames shown around every cut in cuts/cut_NN.jpg (0 = first frame of the incoming shot)
+  hook_s: 3.0                 # length of the hook strip (hook.jpg), s; also the hook section of the loudness report
+  hook_fps: 10                # frames per second sampled into the hook strip
+  payoff_frames: 6            # frames sampled across the payoff window (structure.payoff_window) before the end card
+  black_luma: 18              # a frame within 2 of a cut darker than this (mean luma 0-255) between brighter shots is a black flash
+  flash_delta: 60             # a frame within 2 of a cut this much brighter (mean luma) than both shots is a white flash
+  glitch_ratio: 0.35          # one-frame glitch: frame -1 vs +1 differ by less than this share of the steps into and out of the frame
+  freeze_ratio: 0.15          # a frame step at a cut below this share of the local motion is a duplicate frame (freeze)
+  freeze_motion: 1.0          # local mean abs frame step (0-255) below which a shot counts as static (no freeze check)
+  luma_jump: 45               # mean-luma step (0-255) across a hard cut that reads as a flash; a transition covers it
+  caption_near_f: 2           # a caption that changes 1..this many frames from a cut (not on it) is flagged
+  min_shot_f: 3               # a shot shorter than this many frames reads as a glitch, not a cut
+  click_ratio: 4.0            # audio: sharpest sample step within a frame of a cut vs the p99.5 around it that counts as a pop
+  click_floor_db: -45         # ... unless the audio there peaks below this (dBFS)
+  vmr_min_db: 6.0             # vocal-to-music ratio (1-4 kHz speech band, 400 ms windows over speech) under which music masks the voice
+  mask_share: 0.1             # share of speech windows under vmr_min_db that makes a finding
+  bed_step_max_db: 6.0        # largest music.bed_lu cut one safe patch makes
+  silence_db: -50             # master 50 ms windows quieter than this (dBFS) count as silence
+  silence_s: 0.6              # a silent gap inside the body longer than this is reported, s
+  section_jump_lu: 6.0        # hook / body / payoff loudness differing by more than this (LU) is flagged
+  end_card_min_s: 1.0         # an end card shorter than this cannot be read, s (safe patch: lengthen it)
+  end_tail_db: -30            # master level in its last 50 ms above this (dBFS) = audio cut off, not faded or ended on a hit
+  earshot: auto               # auto (run `earshot measure` on the master when installed) | off
+  earshot_timeout_s: 180      # give up on earshot after this long (the pack is written without it), s
