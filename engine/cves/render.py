@@ -507,6 +507,30 @@ def job_tail(only, out_dir, mode):
             for x in r: fh.write(json.dumps(x) + "\n")
     return len(fr)
 
+def media_refs(TL):
+    """every asset reference (id or path) the timeline's templates decode: `asset:` keys anywhere in their params"""
+    out = []
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k == "asset" and isinstance(v, str): out.append(v)
+                else: walk(v)
+        elif isinstance(o, list):
+            for v in o: walk(v)
+    for c in TL.cuts: walk(c.get("params") or {})
+    for k in ("chest", "roto"):
+        for r in (TL.E.get(k) or []) if hasattr(TL, "E") else []: walk(r.get("params") or {})
+    return sorted(set(out))
+
+def prepare_media(pr, TL):
+    """tonemap HDR video assets to SDR (ingest.sdr_source, the A-roll chain) before the workers start"""
+    from . import assets as AS, ingest as ING
+    from .templates.media import _is_still
+    for ref in media_refs(TL):
+        try: p = AS.resolve(pr, ref, strict=False) or (ref if os.path.isabs(ref) else pr.p(ref))
+        except SystemExit: continue
+        if p and os.path.isfile(p) and not _is_still(p): ING.sdr_source(p, TL.S, pr.e("conform"))
+
 def render(pr, only=None, out_dir=None, mode="final", workers=None):
     """only: None (everything), a frame list, or an `--only` spec string (ids / ranges, see Timeline.frames_for).
     Streams: each worker decodes one segment a frame at a time and writes frames + element records straight to disk;
@@ -515,6 +539,7 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None):
     TL = Timeline(pr)    # also computes + caches exposure gains before forking
     if isinstance(only, str): only = TL.frames_for(only)
     from . import motion as MOT; MOT.prerender(pr, TL)     # motion pieces (HTML) render their frames ONCE here, before the spawn pool: workers only read the cache
+    prepare_media(pr, TL)                                   # HDR B-roll / clips tonemapped to SDR once here, not raced by the workers
     for f in glob.glob(os.path.join(out_dir, "_log_*.jsonl")): os.remove(f)
     want = None if only is None else set(only)
     jobs = [(s["id"], None if want is None else sorted(f for f in range(s["f0"], s["f0"] + s["n"]) if f in want))

@@ -97,3 +97,49 @@ def test_4k_graphics_are_drawn_at_4k(size, name, params):
 def test_raster_scale_is_the_identity_at_1080():
     S = STY.load(); G.apply_style(S, canvas=(1080, 1920)); assert (G.PW, G.PH, G.R) == (1080, 1920, 1.0)
     G.apply_style(S, canvas=(1920, 1080)); assert (G.PW, G.PH, G.R) == (1920, 1080, 1.0)
+
+
+# ---------------------------------------------------------------- 3. HDR B-roll -> SDR, the A-roll way
+def _hdr_clip(path, trc):
+    """a synthetic 10-bit clip tagged BT.2020 + PQ (16) or HLG (18) in the H.264 VUI"""
+    subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25:duration=1", "-c:v", "libx264",
+                    "-profile:v", "high10", "-pix_fmt", "yuv420p10le", "-bsf:v", f"h264_metadata=colour_primaries=9:transfer_characteristics={trc}:matrix_coefficients=9",
+                    path], check=True)
+
+
+def _rgb_frames(path, vf=None, n=1):
+    w, h = 320, 180
+    out = subprocess.run([C.get("ffmpeg"), "-v", "error", "-i", path, "-frames:v", str(n), *(["-vf", vf + ",scale=out_color_matrix=bt709:out_range=pc,format=rgb24"] if vf else
+                          ["-vf", "scale=in_color_matrix=bt709:out_color_matrix=bt709:out_range=pc,format=rgb24"]), "-f", "rawvideo", "-"], capture_output=True, check=True).stdout
+    return np.frombuffer(out, np.uint8).reshape(n, h, w, 3)
+
+
+@pytest.mark.parametrize("trc,name", [(16, "smpte2084"), (18, "arib-std-b67")])
+def test_hdr_broll_is_tonemapped_like_aroll(demo_copy, trc, name):
+    from cves import ingest as ING, project
+    from cves.templates import media as M
+    if not (ING._has_filter("zscale") and ING._has_filter("tonemap")): pytest.skip("ffmpeg without zscale/tonemap (fallback path only)")
+    pr = project.Project(demo_copy); src = pr.p("Assets", f"hdr_{trc}.mp4"); _hdr_clip(src, trc)
+    P = ING.probe_file(src); assert P["hdr"] and P["color_transfer"] == name
+    S = STY.load(pr)
+    out = ING.sdr_source(src, S, pr.e("conform"))
+    assert out != src and out.startswith(pr.e("conform")) and ING.sdr_source(src, S, pr.e("conform")) == out      # cached
+    Q = ING.probe_file(out); assert not Q["hdr"] and Q["color_transfer"] == "bt709" and Q["color_primaries"] == "bt709"
+    assert M.Clip(out).n == M.Clip(src).n == 25
+    # the same chain as A-roll ingest: decoding the proxy == the original through ingest._tonemap_chain
+    ref = _rgb_frames(src, ING._tonemap_chain(P, S)[1])[0].astype(np.int16); got = _rgb_frames(out)[0].astype(np.int16)
+    assert np.abs(ref - got).mean() < 1.0
+    raw = _rgb_frames(src)[0].astype(np.int16); assert np.abs(raw - got).mean() > 5      # and it is not the untouched HDR signal
+    # what the templates decode (broll_shot / video_broll / pip panes all go through media_frame)
+    ctx = {"project": pr, "fps": 25, "S": S, "resolve": lambda x: x}
+    fr, _, _ = M.media_frame(0.4, {"asset": src}, ctx, 0.0)
+    assert np.abs(fr[..., :3].astype(np.int16) - M.Clip(out).frame(10)[..., :3]).mean() < .5
+    S2 = STY.Style({**S, "ingest": {**S["ingest"], "hdr": {**S["ingest"]["hdr"], "broll": False}}})
+    assert ING.sdr_source(src, S2, pr.e("conform")) == src                             # style ingest.hdr.broll: false
+
+
+def test_sdr_broll_is_left_alone(tmp_path):
+    from cves import ingest as ING
+    src = str(tmp_path / "sdr.mp4")
+    subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25:duration=0.4", "-pix_fmt", "yuv420p", src], check=True)
+    assert ING.sdr_source(src, STY.load(), str(tmp_path / "c")) == src and not os.path.exists(tmp_path / "c")
