@@ -16,6 +16,8 @@
   .card small { font-size: var(--t-1); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); line-height: 1; }
   .card b { font-size: var(--t-3); font-weight: 700; line-height: 1.1; }
   .card.r { text-align: left; } .card.l { text-align: right; }
+  .card.l small { margin-right: -0.14em; }          /* trailing tracking: the ink, not the advance, sits on the right edge */
+  .card b { overflow-wrap: normal; word-break: keep-all; text-wrap: balance; }
   @media (min-aspect-ratio: 1/1) { .card b { font-size: var(--t-4); } .card { padding: calc(var(--u) * 2) calc(var(--u) * 3); } }
 </style>
 <script>
@@ -62,7 +64,9 @@
         C.el('small', '', card, C.plain(c.title || '')); C.el('b', '', card, C.plain(c.value || ''));
         card.dataset.text = [C.plain(c.title || ''), C.plain(c.value || '')].filter(Boolean).join(' ');
         const room = side === 'left' ? edge.left - gap - sx0 : sx1 - edge.right - gap;
-        card.style.maxWidth = Math.max(minW, Math.min(room, sw * (land ? 0.3 : 0.46))) + 'px';
+        const maxW = Math.max(minW, Math.min(room, sw * (land ? 0.3 : 0.46))); card.style.maxWidth = maxW + 'px';
+        const bEl = card.querySelector('b'), pad = 2 * parseFloat(getComputedStyle(card).paddingLeft);
+        C.fit(bEl, maxW - pad, ctx.h * 0.3, 2, 0.6);         // a value never overflows its card, two lines at most
         const dot = C.el('div', 'dot', st); dot.style.left = px + 'px'; dot.style.top = py + 'px';
         const pulse = C.el('i', 'pulse', dot), core = C.el('i', 'core', dot);
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('pathLength', '1'); path.setAttribute('stroke-width', (0.36 * u).toFixed(2)); sv.appendChild(path);
