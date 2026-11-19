@@ -99,7 +99,7 @@ def text_behind(t, p, ctx):
         if pos == "behind": return fc["cx"], fc["eye_y"] + cap * .5 - (len(lines) - 1) * lead / 2
         if pos == "low": return fc["cx"], fc["chin"] + fc["h"] * .75
         if pos == "clear": return fc["cx"], fc["top"] - fc["h"] * .06
-        return fc["cx"], fc["top"] + cap * float(B("overlap", .3))
+        return fc["cx"], fc["top"] + cap * float(B("overlap", .42))
     ax0, ay0 = anchor(fa); ax1, ay1 = anchor(face) if face else (ax0, ay0)
     cx = ax0 + k_track * (ax1 - ax0); base = ay0 + k_track * (ay1 - ay0)       # baseline of the LAST line
     half = max(w for _, w in lines) / 2

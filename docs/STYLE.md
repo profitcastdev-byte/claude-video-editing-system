@@ -692,7 +692,7 @@ library. Every move counts against the `creative` budget; transitions are also r
 | `craft.behind.max_width` | `0.92` | widest line, fraction of the safe-zone width |
 | `craft.behind.max_lines` | `2` | lines the text may wrap to |
 | `craft.behind.position` | `above` | above (the head covers the lower `overlap` of the type) / behind (centred on the eyes) / low (behind the shoulders) |
-| `craft.behind.overlap` | `0.3` | fraction of the cap height the head covers in `above` |
+| `craft.behind.overlap` | `0.42` | fraction of the cap height the head covers in `above` |
 | `craft.behind.one_line_min` | `0.42` | keep the text on one line when it fits at >= this fraction of `size` (no orphan word on its own line), else wrap |
 | `craft.behind.track` | `0.6` | how much of the head's motion the type follows: 0 locked at its entry, 1 glued |
 | `craft.behind.smooth_frames` | `9` | face-landmark smoothing radius, frames (triangular window) |

@@ -274,7 +274,7 @@ def craft_overlay(out, kind, fps, st=None, en=None):
         E["roto"] = [{"segment": "01_hook_0", "template": "text_behind", "params": dict(dark, text="2 SECONDS", at=0.45, entry="slam", size=150)},
                      {"segment": "05_cta_0", "template": "text_behind", "params": dict(dark, text="TODAY", at=round(c0 + .75, 2), size=140)}]
         cuts = E["cutaways"]; cuts[0]["in"] = "whip_pan"; c1p = cuts[0]["params"]
-        lead = round(c1p["at"] - (st("02_problem") + .05), 2)            # the list's title lands with the whip, not after it
+        lead = round(c1p["at"] - st("02_problem"), 2)                   # the list's title lands with the whip, not after it
         c1p["at"] = round(c1p["at"] - lead, 2)
         for it in c1p.get("items") or []: it["at"] = round(it["at"] - lead, 2)
         c2 = next(c for c in cuts if c["id"] == "c2"); c2.update(start=b_end, snap=False)
