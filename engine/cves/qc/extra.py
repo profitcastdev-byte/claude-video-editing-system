@@ -213,7 +213,7 @@ def decode(cx, need, keep_low=True, low_frames=None):
     cx._results["errors"] += [m for _, _, m in sorted(errs, key=lambda x: (x[0], x[1]))]
     return low
 
-def decode_plate_frames(cx, path, ks, fmt="gray"):
+def decode_plate_frames(cx, path, ks, fmt="gray", conv=None):
     """frames ks (0-based) of a plate / matte file. FFV1 plates are GOPs of intra-coded frames whose entropy state
     carries over: each GOP is decoded from its keyframe up to its last wanted frame and the rest of the GOP is skipped
     (the frames decoded are bit-identical to a full decode; ~40% less work for every-6th-frame sampling). Any surprise
@@ -221,15 +221,16 @@ def decode_plate_frames(cx, path, ks, fmt="gray"):
     import av
     out, ks = {}, set(ks)
     if not ks or not os.path.exists(path): return out
-    try: return _decode_gops(path, ks, fmt)
+    conv = conv or (lambda k, fr: fr.to_ndarray(format=fmt))
+    try: return _decode_gops(path, ks, conv)
     except Exception: pass
     with av.open(path) as c:
         for k, fr in enumerate(c.decode(video=0)):
-            if k in ks: out[k] = fr.to_ndarray(format=fmt)
+            if k in ks: out[k] = conv(k, fr)
             if k >= max(ks): break
     return out
 
-def _decode_gops(path, ks, fmt):
+def _decode_gops(path, ks, conv):
     import av
     out, top = {}, max(ks)
     with av.open(path) as c:
@@ -238,7 +239,7 @@ def _decode_gops(path, ks, fmt):
         def take(frames):
             for fr in frames:
                 j = sent.pop(0)
-                if j in ks: out[j] = fr.to_ndarray(format=fmt)
+                if j in ks: out[j] = conv(j, fr)
         def flush():
             last = max((j for j, _ in buf if j in ks), default=-1)
             for j, p in buf:
@@ -358,6 +359,26 @@ def plan_aroll(cx):
         per[s["id"]] = dict(seg=s, vis=vis, pick=sorted(pick), first=vis[0], last=vis[-1], mid=vis[len(vis) // 2])
     return per
 
+def halo_reference(TL, sid, g):
+    """conv(k, frame) for a plate file: (8-bit grey plate for FRAME-10, the 8-bit BT.709 luma of the plate as the global
+    grade shows it: the wall's shot-match or exposure gain, then look.grade without a matte (no relight / edge work))"""
+    from ..look import grade
+    from .. import shotmatch as SM
+    from ..render import smooth_face
+    def conv(k, fr):
+        P = fr.to_ndarray(format="rgb48le").astype(np.float32) / 65535
+        p = SM.params_at(TL.match, sid, k) if TL.match else None
+        if p is not None:
+            if not np.allclose(p[1], 1, atol=1e-4): P = SM._lut(P, p[1])            # the wall gain (outside the matte)
+        else:
+            gn = np.asarray(TL.gain.get(sid, 1.0), np.float32)
+            if np.any(gn != 1): P = np.clip(P * gn, 0, 1)
+        cx_, cy_, _ = smooth_face(TL, sid, k)
+        img = np.clip(grade(P, None, (cx_, cy_), g), 0, 1)
+        Yr = np.clip(np.round(16 + 219 * (img @ np.float32([.2126, .7152, .0722]))), 0, 255).astype(np.uint8)
+        return fr.to_ndarray(format="gray"), Yr
+    return conv
+
 def aroll_frame(cx, f, yuv, matte, plate, src=None):
     m = cx.aroll_M(f)
     if m is None or matte is None: return
@@ -382,11 +403,15 @@ def aroll_frame(cx, f, yuv, matte, plate, src=None):
     # FRAME-03 halo: luma 3-7 px outside the matte edge vs the wall 20-40 px out ALONG THE SAME NORMAL: every outside pixel is
     # binned by its nearest subject pixel (40 px cells of the edge); a cell is judged only where its wall band is uniform
     # (std <= 10 Y), so a background object edge near the silhouette is not read as a halo. With the source plate the halo
-    # is what the PIPELINE added: the same ring - wall step measured in the camera frame (scaled by the grade's wall gain)
-    # is subtracted. A real room (a bright wall strip between the head and a dark monitor) has a ring brighter than its
-    # 'wall' in the camera already; that is the scene, not a halo (first real job: +97 Y read as a halo on an untouched edge)
+    # is what the MATTE OPERATIONS added: the same ring - wall step is measured in a reference frame = the plate with the
+    # wall's shot-match / exposure gain and the global grade (tone curve, black lift, shoulder, vignette; no relight), warped
+    # like the output (halo_reference), and subtracted. The global grade cancels; relight, decontaminate, dehalo, the
+    # shot-match blend through the matte and roto composites still show in full. The value is min(absolute step, added
+    # step): a ring darker than its wall is no halo, and a step the graded camera frame already has is the scene. A real room (a bright wall strip between
+    # the head and a dark monitor) is the scene, not a halo (first real job: +97 Y, then +5 Y on a clean cheek edge whose
+    # grade is not a simple gain)
     Y = yuv[0]
-    Ys = cv2.warpAffine(src, M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE).astype(float) if src is not None else None
+    Ys = cv2.warpAffine(src, M, (W, H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE).astype(float) if src is not None else None   # warped as render.compose warps the graded plate
     dist, lab = cv2.distanceTransformWithLabels((~inside).astype(np.uint8), cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
     reg = np.zeros((H, W), bool); reg[6:int(min(H - 6, chin + .6 * fb[3])), 6:W - 6] = True; reg &= ~elmask
     src = np.flatnonzero(inside.ravel())   # label i -> i-th zero pixel of the source (= subject pixel) in raster order
@@ -400,7 +425,7 @@ def aroll_frame(cx, f, yuv, matte, plate, src=None):
         ex = float(np.median(a) - np.median(b))
         if Ys is not None:
             ys_ = Ys[by[m], bx[m]]; ap, bp = float(np.median(ys_[isring[m]])), float(np.median(ys_[~isring[m]]))
-            ex -= (float(np.median(b)) / bp if bp > 8 else 1.0) * (ap - bp)
+            ex = min(ex, ex - (ap - bp))        # a halo is brighter than its wall in the output AND brighter than the graded source made it
         if worst is None or ex > worst[0]: worst = (ex, f"edge cell x{(cid % 1000) * 40} y{(cid // 1000) * 40}", float(np.median(a)), float(np.median(b)))
     r["halo"] = worst
     # colour: skin core (cheeks), wall patch, frame statistics with graphics masked
@@ -669,6 +694,41 @@ def gates_motion(cx, gate):
 
 
 # ======================================================================== gates: graphics
+def settled_boxes(bb):
+    """per frame, the bbox the element is settling into: the last bbox of its slow run (consecutive frames that move
+    <= 1 px per frame; a step > 1 px starts a new run). An ease-out tail creeping < 1 px/frame while still 2-8 px from
+    rest belongs to the run that ends at rest, so its frames are measured against where the element comes to rest."""
+    bb = np.asarray(bb, float)
+    if len(bb) < 2: return bb.copy()
+    run = np.concatenate([[0], np.cumsum(np.abs(np.diff(bb, axis=0)).max(1) > 1)])
+    ends = np.r_[np.flatnonzero(np.diff(run)), len(bb) - 1]                     # last frame of each run
+    return bb[ends[run]]
+
+def gfx08(ins, FPS, in_trans):
+    """GFX-08 -> ({frame: [(instance, bbox)]} static elements, ["a / b: left edges 4 px apart (n frames)"]).
+    Static = within 1 px over +-0.05 s, opaque, not under a transition AND within 1 px of its own settled position
+    (settled_boxes): at 60 fps an outExpo tail moves < 1 px per frame for ~0.4 s while 2-8 px from rest, and two rows
+    caught mid-settle are not a near miss. Two elements that are both at rest and 3-12 px apart still are."""
+    mis = collections.defaultdict(list); static = {}; kw = max(1, int(round(.05 * FPS)))
+    for i in ins:
+        if i.role == "caption" or i.decor: continue
+        rest = settled_boxes(i.bb)
+        for j in range(kw, len(i.f) - kw):
+            if (np.abs(i.bb[j - kw:j + kw + 1] - i.bb[j]).max() <= 1 and np.abs(i.bb[j] - rest[j]).max() <= 1
+                    and i.al[j] >= .9 and not in_trans(int(i.f[j]))):
+                static.setdefault(int(i.f[j]), []).append((i, i.bb[j]))
+    for f in sorted(static)[::3]:
+        L = static[f]
+        for a in range(len(L)):
+            for b in range(a + 1, len(L)):
+                (ia, ba), (ib, bb) = L[a], L[b]
+                if ia.role != ib.role: continue
+                dl = abs(ba[0] - bb[0]); dc = abs((ba[0] + ba[2]) / 2 - (bb[0] + bb[2]) / 2)
+                if min(dl, dc) <= 2: continue          # aligned on one axis: a near miss on the other is a coincidence
+                for kind, dv in (("left", dl), ("centre", dc)):
+                    if 2 * max(1, U_) < dv <= 12 * U_: mis[(ia.key, ib.key, kind)].append(dv)     # px at a 1080 short side
+    return static, [f"{a} / {b}: {kind} {'edges' if kind == 'left' else 'axes'} {np.median(v):.0f} px apart ({len(v)} frames)" for (a, b, kind), v in mis.items()]
+
 def gates_graphics(cx, gate):
     FPS = cx.FPS; ins = cx.inst
     # GFX-05 font count + classes
@@ -710,25 +770,7 @@ def gates_graphics(cx, gate):
         worst = max(worst, len(tmpl))
     gate("GFX-26", not where, f"max {worst} non-caption overlay(s) on an A-roll frame", f"{len(where)} frames, first f{where[0]}" if where else "", status=None if not where else "WARN")
     # GFX-08 alignment axis: near-miss left edges / centres (2-12 px) between static elements on the same frame
-    # static = within 1 px over +-0.05 s (not just the neighbouring frames): at 60 fps an ease-out tail creeps < 1 px per
-    # frame while still 3-4 px from rest, and two rows caught mid-settle read as a near miss they are not
-    mis = collections.defaultdict(list); static = {}; kw = max(1, int(round(.05 * FPS)))
-    for i in ins:
-        if i.role == "caption" or i.decor: continue
-        for j in range(kw, len(i.f) - kw):
-            if np.abs(i.bb[j - kw:j + kw + 1] - i.bb[j]).max() <= 1 and i.al[j] >= .9 and not cx.in_trans(int(i.f[j])):
-                static.setdefault(int(i.f[j]), []).append((i, i.bb[j]))
-    for f in sorted(static)[::3]:
-        L = static[f]
-        for a in range(len(L)):
-            for b in range(a + 1, len(L)):
-                (ia, ba), (ib, bb) = L[a], L[b]
-                if ia.role != ib.role: continue
-                dl = abs(ba[0] - bb[0]); dc = abs((ba[0] + ba[2]) / 2 - (bb[0] + bb[2]) / 2)
-                if min(dl, dc) <= 2: continue          # aligned on one axis: a near miss on the other is a coincidence
-                for kind, dv in (("left", dl), ("centre", dc)):
-                    if 2 * max(1, U_) < dv <= 12 * U_: mis[(ia.key, ib.key, kind)].append(dv)     # px at a 1080 short side
-    pairs = [f"{a} / {b}: {kind} {'edges' if kind == 'left' else 'axes'} {np.median(v):.0f} px apart ({len(v)} frames)" for (a, b, kind), v in mis.items()]
+    static, pairs = gfx08(ins, FPS, cx.in_trans)
     gate("GFX-08", not pairs, f"{len(static)} frames with static graphics; {len(pairs)} near-aligned pairs ({2 * max(1, U_):.0f}-{12 * U_:.0f} px off one axis)", "\n".join(sorted(pairs)[:12]))
     # GFX-15 text contrast (WCAG, worst case over the shot) on the delivered frames
     cm = cx._results["contrast"]; per = collections.defaultdict(list)
@@ -1200,15 +1242,23 @@ def run_extra(pr, video, gate, tier="full"):
         for s in cx.segs:
             fs = set(per[s["id"]]["pick"] if s["id"] in per else []) | {f for f in roto_fr if s["f0"] <= f < s["f0"] + s["n"]}
             if not fs: continue
-            todo.append((s, ("matte", [f - s["f0"] for f in fs])))
-            if s["id"] in per: todo.append((s, ("plate", [f - s["f0"] for f in per[s["id"]]["pick"]])))    # FRAME-03 compares with the source
+            todo.append((s, ("matte", [f - s["f0"] for f in fs], None)))
+            if s["id"] in per: todo.append((s, ("plate", [f - s["f0"] for f in per[s["id"]]["pick"]], "ref")))    # FRAME-03 compares with the graded source
         _tick("extra plan")
         # the plate / matte files decode on threads WHILE the master decodes; a measurement that needs a shot's matte or
         # plate waits for that shot only (seg_ready), so every callback sees exactly the dicts the serial loop filled first
         import threading
         from concurrent.futures import ThreadPoolExecutor
         pex = ThreadPoolExecutor(max(1, min(jobs(), len(todo) or 1)))
-        futs = [(t, pex.submit(decode_plate_frames, cx, pr.e(t[1][0], f"{t[0]['id']}.mkv"), t[1][1])) for t in todo]
+        try:
+            from ..render import Timeline
+            TLr = Timeline(pr); G.set_canvas(W, H); gd = cx.S.get("grade") or {}
+        except (Exception, SystemExit): TLr = None                   # no reference: FRAME-03 judges the absolute ring - wall step
+        def job(t):
+            s_, (kind, ks, ref) = t
+            conv = halo_reference(TLr, s_["id"], gd) if ref and TLr is not None else ((lambda k, fr: (fr.to_ndarray(format="gray"), None)) if ref else None)
+            return decode_plate_frames(cx, pr.e(kind, f"{s_['id']}.mkv"), ks, conv=conv)
+        futs = [(t, pex.submit(job, t)) for t in todo]
         by_seg = collections.defaultdict(list)
         for t, fu in futs: by_seg[t[0]["id"]].append((t, fu))
         seg_at = {}
@@ -1220,14 +1270,15 @@ def run_extra(pr, video, gate, tier="full"):
             if sid is None or sid in installed: return
             with lock:
                 if sid in installed: return
-                for (s, (kind, _)), fu in by_seg[sid]:
+                for (s, (kind, _, _)), fu in by_seg[sid]:
                     res = fu.result()
                     if kind == "matte":
                         for k, a in res.items(): mattes[s["f0"] + k] = a
                         continue
                     p = per[s["id"]]
-                    for k, a in res.items(): halo_src[s["f0"] + k] = a
-                    if p["first"] - s["f0"] in res: plates[p["first"]] = res[p["first"] - s["f0"]]                # FRAME-10: one frame per shot
+                    for k, a in res.items():
+                        if a[1] is not None: halo_src[s["f0"] + k] = a[1]
+                    if p["first"] - s["f0"] in res: plates[p["first"]] = res[p["first"] - s["f0"]][0]             # FRAME-10: one frame per shot
                 installed.add(sid)
         for s in cx.segs:
             if s["id"] in per and s["id"] in by_seg:
