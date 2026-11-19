@@ -183,7 +183,11 @@ def test_riser_resolves_on_the_target_and_budget_limits_accents(built_song, tmp_
     TL = _tl(pr, segs, 14.0)
     log = []; acc = SO.accents(TL, [], log)
     kinds = sorted((kw["accent"], round(kw["target"], 3)) for _, _, _, kw in acc)
-    assert ("riser", 7.0) in kinds and ("impact", 7.0) in kinds and ("riser", 3.0) in kinds, log     # payoff riser + hit; out of the hook
+    assert ("riser", 7.0) in kinds and ("impact", 7.0) in kinds, log            # the payoff: a riser into the drop + a hit
+    assert ("riser", 3.0) not in kinds and any("nothing lands" in r.get("status", "") for r in log)    # a riser into nothing: none
+    log = []; acc = SO.accents(TL, [(3.0, "swipe", -19, {"trim": (0, .18)})], log)        # a sound lands where the hook hands over
+    kinds = sorted((kw["accent"], round(kw["target"], 3)) for _, _, _, kw in acc)
+    assert ("riser", 3.0) in kinds, log
     fin = MX._finalize(TL, acc)
     E = {s["id"]: s for s in SFX.entries(pr)}
     for t, name, g, kw in fin:

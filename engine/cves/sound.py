@@ -3,7 +3,8 @@
 Accents (`accents()`, called by mix.all_cues, so `cves mix` and the SND gates see the same cue list):
   * a riser whose PEAK lands on the payoff (the drop moment: music.drop_cut, else the first music.drop_beats clip,
     else the reveal) and one into the hook (music.hook_cut / the first music.hook_beats clip when there is room before
-    it, else resolving where the hook hands over to the body);
+    it, else resolving where the hook hands over to the body). A riser needs a landing: a sound already on its target,
+    the music drop, or an impact placed with it; otherwise it is skipped (a riser into nothing sounds unfinished);
   * an impact (a downbeat hit, layered with the music drop) on the payoff, and on reveals / big text slams whose own
     cues carry no low hit;
   * rate-limited by the restraint budget `creative.sound_accents_per_30s` (payoff riser, payoff impact, hook riser,
@@ -74,6 +75,12 @@ def accents(TL, cues, log=None):
         rev = sorted({round(float(t), 4) for t, n, g, kw in cues if kw.get("reveal") and not n.startswith("asset:")})
         for t in rev:
             if not any(any(f in n for f in IMPACT_FAMILY) and abs(t2 - t) <= 2 * fr for t2, n, _, _ in cues): want.append((3, "impact", t, "reveal without a low hit", A.get("reveal_impact", "medium")))
+    has_drop = bool((TL.E.get("music") or {}).get("file")) and pay is not None
+    def landing(t):          # a riser must resolve INTO something: a sound already on the target, the drop, or an impact we add
+        if any(abs(t2 - t) <= 2 * fr and "riser" not in n for t2, n, _, kw in cues): return "a cue on the target"
+        if has_drop and abs(t - pay) <= fr: return "the music drop"
+        if any(k == "impact" and abs(x - t) <= fr for _, k, x, _, _ in want): return "the impact on the target"
+        return None
     out, used, taken = [], [], {}
     for pri, kind, tgt, why, inten in sorted(want, key=lambda w: (w[0], w[2])):
         rec = {"kind": kind, "target": round(tgt, 4), "why": why}; log.append(rec)
@@ -85,6 +92,7 @@ def accents(TL, cues, log=None):
         if kind == "impact" and any(any(f in n for f in IMPACT_FAMILY) and abs(t - tgt) <= 2 * fr for t, n, _, kw in cues if not kw.get("accent")):
             rec["status"] = "skipped: the moment already has a low hit"; continue
         if len(out) >= budget: rec["status"] = f"skipped: restraint budget ({budget} accents for {T:.1f} s, creative.sound_accents_per_30s)"; continue
+        if kind == "riser" and not landing(tgt): rec["status"] = "skipped: nothing lands on the target (a riser resolves into a hit, a drop or a cut sound)"; continue
         if kind == "riser":
             prev = max([u for u in used if u < tgt - 1e-6] + [0.0])       # a riser starts after the accent before it
             room = tgt - prev - (gap if prev > 0 else 0.0)

@@ -59,6 +59,7 @@ Alignment rules:
 
 Rules:
 - **Restraint.** At most `creative.sound_accents_per_30s` accents (default 3; a video under 30 s still gets the full 3). They are taken in priority order: payoff riser, payoff impact, hook riser, then reveals in time order. The rest are logged as `skipped: restraint budget`.
+- **A riser needs a landing.** Its target must already have a sound on it (within 2 frames), the music drop, or an impact placed with it. A riser that resolves into nothing sounds unfinished, so it is skipped.
 - **Never doubled.** A moment that already has a riser (peak within 0.5 s) or a low hit (lowhit, boom, impact or hit within 2 frames) gets no extra one.
 - **Only on picture.** A target must be within 1 frame of a known picture event: a cut, a cutaway edge, the end card or the punch-in. Otherwise the accent is skipped, so SND-07 holds.
 - **Risers that resolve.** A riser is picked only if its peak is within `riser_tail_max_s` (0.1 s) of its end. It is placed by that peak, so the sound ends on the target. It must also fit the room before its target (`riser_min_s` to `riser_max_s`, starting at least `min_gap_s` after the previous accent).
