@@ -659,3 +659,37 @@ advisory (not a QC gate). Per-30 s budgets give a video shorter than 30 s one fu
 | `creative.transition_kinds_max` | `2` | distinct transition kinds in one video, cut not counted |
 | `creative.motion_pieces_per_30s` | `6` | animated graphics (cutaways, roto, chest, motion pieces, end card) per 30 s |
 | `creative.accent_colors_max` | `1` | accent colours beyond the text colour and the stage |
+
+#### `review`
+
+`cves review` ([REVIEW.md](REVIEW.md)): what goes into the render review pack and the thresholds of its machine findings.
+The review reads QC and the critique, it never re-runs a gate; these keys only tune the cut-local and sound detectors that
+no gate covers, and the loop cap.
+
+| key | default | meaning |
+|---|---|---|
+| `review.max_rounds` | `3` | review rounds per loop; at the cap `cves review build` says so and refuses a 4th round until Claude signs off (`ship` / `revise`) and records what is still wrong |
+| `review.cut_offsets` | `[-2, -1, 0, 1, 2]` | frames shown around every cut in `cuts/cut_NN.jpg` (0 = first frame of the incoming shot) |
+| `review.hook_s` | `3.0` | length of the hook strip (`hook.jpg`), s; also the hook section of the loudness report |
+| `review.hook_fps` | `10` | frames per second sampled into the hook strip |
+| `review.payoff_frames` | `6` | frames sampled across the payoff window (`structure.payoff_window`) before the end card |
+| `review.black_luma` | `18` | a frame within 2 of a cut darker than this (mean luma 0-255) between brighter shots is a black flash (high) |
+| `review.flash_delta` | `60` | a frame within 2 of a cut this much brighter than both shots is a white flash (high) |
+| `review.glitch_ratio` | `0.35` | one-frame glitch: frames -1 and +1 differ by less than this share of the steps into and out of the frame (high) |
+| `review.freeze_ratio` | `0.15` | a frame step at a cut below this share of the local motion is a duplicate frame / freeze (med) |
+| `review.freeze_motion` | `1.0` | local mean abs frame step (0-255) below which a shot counts as static (no freeze check) |
+| `review.luma_jump` | `45` | mean-luma step across a hard cut that reads as a flash (low; med above 1.5x between footage shots); a transition covers it |
+| `review.caption_near_f` | `2` | a caption that changes 1..this many frames from a cut (not on it) is flagged (med at 1 frame, low at 2) |
+| `review.min_shot_f` | `3` | a shot shorter than this many frames reads as a glitch (med) |
+| `review.click_ratio` | `4.0` | audio pop: sharpest sample step (2nd difference) within a frame of a cut vs the p99.5 in the 0.3 s around it (med; high above 2x) |
+| `review.click_floor_db` | `-45` | ... unless the audio there peaks below this (dBFS) |
+| `review.vmr_min_db` | `6.0` | vocal-to-music ratio in the 1-4 kHz speech band (400 ms windows over speech, from the stems) under which music masks the voice |
+| `review.mask_share` | `0.1` | share of speech windows under `vmr_min_db` that makes a finding (high when the p10 is below 0 dB) |
+| `review.bed_step_max_db` | `6.0` | largest `music.bed_lu` cut the safe masking patch makes |
+| `review.silence_db` | `-50` | master 50 ms windows quieter than this (dBFS) count as silence |
+| `review.silence_s` | `0.6` | a silent gap inside the body longer than this is reported (low; skipped when QC RET-31 already reports dead air) |
+| `review.section_jump_lu` | `6.0` | hook / body / payoff loudness differing by more than this (LU) is flagged (low) |
+| `review.end_card_min_s` | `1.0` | an end card shorter than this cannot be read; safe patch: `end_card.duration` = this (PLAT-11 caps it at 3 s) |
+| `review.end_tail_db` | `-30` | master level in its last 50 ms above this (dBFS) = audio cut off at the end, not faded or ended on a hit (low) |
+| `review.earshot` | `auto` | `auto` runs `earshot measure --json --light` on the master when earshot is installed (`audio.json` `earshot`); `off` skips it |
+| `review.earshot_timeout_s` | `180` | give up on earshot after this long; the pack is written without it |

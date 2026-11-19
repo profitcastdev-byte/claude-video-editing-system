@@ -44,6 +44,9 @@ journals under the projects root) and anything path-like, and refuses to write i
 | `deliver` | `cves deliver` | version, variants and their status, forced or not, the decisions (as `build`) |
 | `import-edits` | `cves import-edits` | what the human changed in Resolve / Kdenlive, as an edit.yaml diff + the importer's applied list |
 | `critique` | `cves critique` | which version was reviewed |
+| `review` | `cves review build` | round, loop, pack folder, finding counts, QC FAIL count, the kinds of the high findings |
+| `review-apply` | `cves review apply` | the safe patches applied (`[{id, kind, changes: [{path, old, new}]}]`) |
+| `review-signoff` | `cves review signoff` | verdict (`ship` / `revise`), Claude's notes, the high / med findings still open, rounds used, cap reached ([REVIEW.md](REVIEW.md)) |
 
 And these by hand (Claude runs them during the workflow, `plugin/skills/video-editor/SKILL.md`):
 
@@ -107,6 +110,8 @@ frame-difference pass if that is unavailable). Per kind it writes medians to `~/
 1. Creative direction before the plan (`Edit/DIRECTION.md`, knowledge-base/CREATIVE.md §1).
 2. After QC passes: `cves critique`, fill `CRITIQUE.md`, fix anything below 7 that is fixable, log the scores with
    `cves learn rate ... --by claude`.
+2b. Then the review loop ([REVIEW.md](REVIEW.md)): `cves review build`, look at the pack, fix, re-render, until 0 FAIL and no high
+   findings (max 3 rounds), and `cves review signoff` records the verdict and what was still wrong.
 3. After every user note: `cves learn note "<their words>"`. After delivery: ask for a 1–10 rating and log it; log
    platform results when the user has them.
 4. Every few deliveries: `cves learn mine`, show the user the new candidates, and promote only what they approve.
