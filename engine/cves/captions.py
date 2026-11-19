@@ -199,7 +199,7 @@ def _bounce(p):
     p -= 2.625 / d; return n * p * p + .984375
 
 def _bright_under(im, frame, sz):
-    """the bright end (p90 luminance) of the picture under a text layer, as an RGB tuple, or None without a frame. The
+    """the bright end (p98 luminance) of the picture under a text layer, as an RGB tuple, or None without a frame. The
     bed is then sized for what is really behind the words, not only for the style's assumed mid-tone (GFX-15 on the first
     real job: a white caption over a window-lit cheek at 2.8:1)"""
     if frame is None or getattr(frame, "ndim", 0) != 3 or frame.shape[2] < 3: return None
@@ -211,7 +211,7 @@ def _bright_under(im, frame, sz):
     if patch.size == 0: return None
     if patch.max() <= 1.001: patch = patch * 255
     L = .2126 * patch[..., 0] + .7152 * patch[..., 1] + .0722 * patch[..., 2]
-    sel = patch[L >= np.percentile(L, 90)]
+    sel = patch[L >= np.percentile(L, 98)]          # p98: a thin bright detail (a chain, a mic clip) crossing the words counts too
     return tuple(int(round(v)) for v in sel.mean(0)) if len(sel) else None
 
 def element(TL, t, chin, events, S, frame=None):

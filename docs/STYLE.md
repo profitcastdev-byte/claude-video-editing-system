@@ -756,7 +756,7 @@ text over video (captions, chest, roto): WCAG targets and the auto bed (GFX-15)
 | `legibility.large_px` | `48` | text this size or larger uses `large_contrast` |
 | `legibility.video_bg` | `#B4B4B4` | assumed worst-case background behind text on video |
 | `legibility.video_bg_broll` | `#C8C8C8` | the same for captions over B-roll / footage with no presenter on screen (full-bleed footage runs brighter and varies more) |
-| `legibility.measure` | `true` | captions also size their bed for the brightest part (p90) of the real frame behind them, when it is brighter than `video_bg` |
+| `legibility.measure` | `true` | captions also size their bed for the brightest part (p98) of the real frame behind them, when it is brighter than `video_bg` |
 | `legibility.plate_max` | `0.85` | strongest bed opacity |
 | `legibility.bed_spread` | `0.18` | bed reach around glyphs, as a fraction of the type size |
 | `legibility.wordmark_bed` | `0.72` | darkness of the soft bed behind a chest wordmark |

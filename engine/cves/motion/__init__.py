@@ -407,6 +407,12 @@ def split_alpha(a, parts, pad):
             g = np.zeros((H, W), bool); g[max(0, y0 - r):min(H, y1 + r), max(0, x0 - r):min(W, x1 + r)] = True
             take = stray & g
             if take.any(): m |= take; claimed |= take; stray &= ~take
+    if masks and stray.any():            # a thin sliver further out (a glyph tail mid-rise): never its own element
+        ys, xs = np.nonzero(stray)
+        if ys.max() - ys.min() < 8 or xs.max() - xs.min() < 8:
+            cy, cx = ys.mean(), xs.mean()
+            pid, m, box = min(masks, key=lambda q: max(q[2][0] - cx, 0, cx - q[2][2]) + max(q[2][1] - cy, 0, cy - q[2][3]))
+            m |= stray; claimed |= stray
     for pid, m, _ in masks:
         out = a.copy()
         if out.ndim == 3: out[..., 3] = np.where(m, out[..., 3], 0)

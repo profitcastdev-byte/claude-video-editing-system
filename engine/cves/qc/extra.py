@@ -333,7 +333,9 @@ def aroll_frame(cx, f, yuv, matte, plate, src=None):
         ex = float(np.median(a) - np.median(b))
         if Ys is not None:
             ys_ = Ys[by[m], bx[m]]; ap, bp = float(np.median(ys_[isring[m]])), float(np.median(ys_[~isring[m]]))
-            ex -= (float(np.median(b)) / bp if bp > 8 else 1.0) * (ap - bp)
+            # a halo is a ring brighter than its wall in the delivered frame AND brighter than the camera had it: the
+            # grade's tone curve lifts shadows unevenly, so a dark edge can read as 'added' while still darker than its wall
+            ex = min(ex, ex - (float(np.median(b)) / bp if bp > 8 else 1.0) * (ap - bp))
         if worst is None or ex > worst[0]: worst = (ex, f"edge cell x{(cid % 1000) * 40} y{(cid // 1000) * 40}", float(np.median(a)), float(np.median(b)))
     r["halo"] = worst
     # colour: skin core (cheeks), wall patch, frame statistics with graphics masked
