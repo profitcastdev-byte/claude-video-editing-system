@@ -31,5 +31,5 @@ structure:
   roto: keep                  # keep | drop
   music: {bed_lu_offset: 2}   # added to edit.yaml music.bed_lu when the edit sets one
   motion:                     # drawn templates swapped for HTML motion pieces (params are mapped)
-    swap: {stat: m_stat_counter, checklist: m_list_build}
+    swap: {stat: m_stat_counter}   # checklist -> m_list_build is mapped too, but its row slide crosses the 60 px margin (PLAT-01) at 1080x1920
   broll_move: null            # broll spines: kenburns zoom [from, to] given to unmoving fill shots (null = leave them)

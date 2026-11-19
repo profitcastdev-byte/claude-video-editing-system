@@ -289,7 +289,8 @@ def _clip_len(pr, ref):
 
 def _broll_pace(pr, E, S, st, notes):
     """broll: track pace. max_shot_s splits long video shots (fill or fit) into a wide + punched-in pair (cut on a word);
-    min_shot_s merges short shots into longer holds (never past grammar.max_shot_s, never past the clip's end)."""
+    min_shot_s merges short shots into longer holds (never past grammar.max_shot_s, never past the clip's end, never the
+    opening cut inside the first second, RET-09)."""
     B = [dict(x) for x in E.get("broll") or [] if isinstance(x, dict)]
     if not B: return
     B.sort(key=lambda x: float(x["start"]))
@@ -301,7 +302,8 @@ def _broll_pace(pr, E, S, st, notes):
             if out:
                 p = out[-1]; d = float(p["end"]) - float(p["start"]); nd = float(x["end"]) - float(p["start"])
                 L = _clip_len(pr, p.get("asset") or p.get("src")); room = None if L is None else (L - float(p.get("in", 0) or 0)) / float(p.get("speed", 1) or 1)
-                if d < lo and nd <= cap and abs(float(x["start"]) - float(p["end"])) < .05 and (room is None or room >= nd) and p.get("framing") != "fit":
+                opening = float(p["start"]) < .05 and float(p["end"]) <= 1.0           # the first cut stays inside 1 s (RET-09)
+                if d < lo and not opening and nd <= cap and abs(float(x["start"]) - float(p["end"])) < .05 and (room is None or room >= nd) and p.get("framing") != "fit":
                     p["end"] = x["end"]; notes.append(f"broll {_lbl(p)}: held to {float(p['end']):.2f} s (absorbs {_lbl(x)})"); continue
             out.append(x)
         B = out

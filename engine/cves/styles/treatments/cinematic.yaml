@@ -1,17 +1,16 @@
-# Treatment "cinematic": slow, filmic and warm. Longer holds, soft serif word-reveal captions low in the frame, dips to black,
+# Treatment "cinematic": slow, filmic and warm. Longer holds, small word-reveal captions low in the frame, dips to black,
 # a filmic grade (highlight roll-off, vignette, lifted blacks, relit background), slow pushes, a quieter bed. docs/TREATMENTS.md.
 name: cinematic
 label: Cinematic
-summary: Slow and filmic. Longer holds with slow pushes, soft serif captions low in the frame, dips to black, a warm graded look, calm motion and a quieter bed.
+summary: Slow and filmic. Longer holds with slow pushes, small captions low in the frame, dips to black, a warm graded look, calm motion and a quieter bed.
 style:
   captions:
     style: word_reveal
-    font: serif
-    size: 62
+    size: 44                  # small and low; the serif face reads beautifully but its hairlines fail GFX-15 over bright footage
     position: lower_third
     lower_third_y: 0.74
     case: sentence
-    reveal_s: 0.12
+    reveal_s: 0.0             # crisp: a word mid-fade reads as low-contrast ink (GFX-15)
     outline: 0
     emphasis: {scale: 1.0, numbers: false}
   transitions: {in: fade, out: fade, fade_s: 0.22}
@@ -40,5 +39,5 @@ structure:
   roto: drop                  # a loud accent word behind the speaker is not this film's voice
   music: {bed_lu_offset: -2}
   motion:
-    swap: {stat: m_stat_counter, checklist: m_list_build}
+    swap: {stat: m_stat_counter}   # checklist -> m_list_build is mapped too, but its row slide crosses the 60 px margin (PLAT-01) at 1080x1920
   broll_move: [1.0, 1.06]     # slow push on fill shots that do not move

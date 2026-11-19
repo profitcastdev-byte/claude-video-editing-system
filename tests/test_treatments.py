@@ -91,6 +91,7 @@ def test_plans_differ_on_the_voiceover_demo(spine_demo, tmp_path):
     cap = STY.load(TR.variant(pr, "cinematic")).get("grammar.max_shot_s")
     for x in TR.variant(pr, "cinematic").edit["broll"]:          # holds never break the pacing gate
         assert float(x["end"]) - float(x["start"]) <= cap + 1e-6
+    for n in NAMES: assert TR.metrics(TR.variant(pr, n))["cut_times"][0] <= 1.0      # every treatment still opens on a cut (RET-09)
     tr = [x.get("transition", "cut") for x in TR.variant(pr, "punchy").edit["broll"]]
     assert 0 < tr.count("whip") < len(tr)                        # whips on sentence starts only, not on every shot
 
@@ -119,7 +120,7 @@ def test_pick_promotes_journals_and_feeds_learning(demo_copy, tmp_path):
     assert open(pr.e("edit.yaml"), encoding="utf-8").read() == open(os.path.join(TR.tdir(pr, "minimal"), "edit.yaml"), encoding="utf-8").read()
     assert any(os.path.basename(b).startswith("edit.yaml.bak-") and open(b, encoding="utf-8").read() == old for b in r["backups"])
     assert pr.edit["treatment"] == "minimal" and os.path.exists(pr.e("treatment.yaml"))
-    S = STY.load(pr); assert "treatment:minimal" in S["_sources"] and S.get("captions.style") == "highlight"
+    S = STY.load(pr); assert "treatment:minimal" in S["_sources"] and S.get("captions.style") == "box"
     ev = learn.read_journal(pr)[-1]
     assert ev["event"] == "treatment-pick" and ev["treatment"] == "minimal" and set(ev["offered"]) == {"punchy", "minimal"} and ev["metrics"]["cuts"]
     assert learn.facts(pr)["treatment"] == "minimal"

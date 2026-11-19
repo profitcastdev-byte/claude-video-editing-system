@@ -45,13 +45,13 @@ folder's `treatment.yaml`; after `pick` it is `Edit/treatment.yaml`.
 |---|---|---|
 | `pace` | `fast` / `medium` / `slow` | a label for the cut density the hints below produce |
 | `max_shot_s` | seconds or null | broll spines: a video shot (fill or fit) longer than this, not under a drawn cutaway, is split on a word near its middle into a wide shot and a punched-in shot (kenburns from 1.22x) |
-| `min_shot_s` | seconds or null | broll spines: a shot shorter than this absorbs the next one into a longer hold, never past `grammar.max_shot_s` and never past the clip's end |
+| `min_shot_s` | seconds or null | broll spines: a shot shorter than this absorbs the next one into a longer hold, never past `grammar.max_shot_s`, never past the clip's end, and never the opening cut inside the first second (RET-09) |
 | `cutaways_per_30s` | number or null | caps drawn cutaways; the ones that carry a number, then a list, then the longest stay |
 | `punch_ins` | `add` / `keep` / `gentle` | `add`: an `aroll.snap` punch-in from the strongest word (a number first, else the longest word) of the first A-roll shot seen whole (no cutaway over it; shots under a chest graphic only as a fallback) to the end of that shot, at the scale `Timeline._auto_zoom` will give it stepped up by `framing.min_step`, at a scale level that still changes by `framing.min_step` at the next cut (CUT-05) and stays under 1.4x. `gentle`: removes a snap (pair it with smaller `framing.zoom_levels` in `style:`) |
 | `transitions` | `whip` / `glitch` / `fade` / `cut` / `keep` | the transition family: every cutaway's `in` / `out`, broll shot entries that start a sentence (others stay cuts, so it never becomes effect soup), explicit `transitions:`, the end card |
 | `roto` | `keep` / `drop` | `drop` removes the behind-the-speaker moments |
 | `music.bed_lu_offset` | LU | added to `edit.yaml music.bed_lu` when the edit sets one (otherwise the overlay's `sound.bed_lu` applies) |
-| `motion.swap` | `{drawn template: m_piece}` | swaps drawn templates for HTML motion pieces with mapped params (`stat` → `m_stat_counter`, `checklist`/`list` → `m_list_build`); unknown mappings are left alone |
+| `motion.swap` | `{drawn template: m_piece}` | swaps drawn templates for HTML motion pieces with mapped params (`stat` → `m_stat_counter`, `checklist`/`list` → `m_list_build`, which the built-ins leave out: its row slide crosses the PLAT-01 margin on 1080×1920); unknown mappings are left alone |
 | `broll_move` | `[from, to]` or null | broll spines: a slow kenburns push on fill shots that do not move yet |
 
 Per-video caption look keys in `edit.yaml captions:` (size, max_chars, style...) that the treatment's caption preset sets
@@ -64,11 +64,11 @@ still win, as the merge order says.
 | | punchy | cinematic | minimal |
 |---|---|---|---|
 | idea | retention-first energy for feeds | slow, filmic, warm | restraint, clean information |
-| captions | `pop`, bigger, outlined, keywords and numbers popped | serif `word_reveal` with a soft fade, low (`lower_third`) | `highlight`: one clean line, the spoken word lit |
+| captions | `pop`, bigger, outlined, keywords and numbers popped | `word_reveal`, small and low (`lower_third`), sentence case, no emphasis | `box`: one plain subtitle line on a dark box |
 | transitions | whips into and out of cutaways, on sentence starts | dips to black | straight cuts, no transition sounds |
 | punch-ins | a punch-in on a key word; every shot creeps (2%) | slow push (1.2%), long holds | gentle reframes (`zoom_levels [1.0, 1.16]`), no creep |
 | B-roll pace | long shots split into wide + punch-in | short shots merged into holds with slow pushes | as planned |
-| graphics | drawn stat / checklist → motion pieces at energy 0.85, roto kept | the same pieces at energy 0.3, cubic ease, no roto | only the most informative cutaways (2 per 30 s), no roto |
+| graphics | drawn `stat` → `m_stat_counter` at energy 0.85, roto kept | the same piece at energy 0.3, cubic ease, no roto | only the most informative cutaways (2 per 30 s), no roto |
 | grade + stage | a touch of contrast, light vignette; dotted stage | relit (darker, desaturated) background, highlight roll-off, vignette, warm skin / cool wall, lifted blacks; plain glowing stage | neutral, a little roll-off; flat stage |
 | sound | bed −8 LU, SFX at full share, `music.sync: cuts` | bed −12 LU, SFX −6 dB, `music.sync: drop` | bed −13 LU, SFX −6 dB, `music.sync: drop` |
 

@@ -1,14 +1,13 @@
-# Treatment "minimal": restraint. Straight cuts, one clean caption line with the spoken word lit, gentle reframes, fewer
+# Treatment "minimal": restraint. Straight cuts, one clean boxed caption line, gentle reframes, fewer
 # graphics (the most informative ones stay), no flourishes behind the speaker, a neutral grade and a low bed. docs/TREATMENTS.md.
 name: minimal
 label: Minimal
-summary: Quiet and clean. Straight cuts, one clean caption line, gentle reframes, only the graphics that carry information, a neutral grade.
+summary: Quiet and clean. Straight cuts, one clean boxed caption line, gentle reframes, only the graphics that carry information, a neutral grade.
 style:
   captions:
-    style: highlight
-    highlight_mode: text
-    size: 46
-    max_chars: 30
+    style: box                # plain subtitles on a dark box: legible on any footage (an accent-coloured word fails GFX-15 on bright B-roll)
+    size: 52
+    max_chars: 24             # one line that never has to shrink to fit (PLAT-10 cap height)
     max_lines: 1
     case: sentence
     outline: 0
