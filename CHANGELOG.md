@@ -6,6 +6,9 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
 ## [0.5.0] - 2026-11-20
 
 ### CI
+- Parallel test runs cap each worker's render pool, QC jobs and math-library threads (`CVES_RENDER_WORKERS`, `CVES_QC_JOBS`, `CVES_QC_WHISPER_JOBS`, `NUMBA/OMP/MKL_NUM_THREADS`): 4 xdist workers each starting a full render pool ran small CI runners out of memory and hung.
+- Jobs time out after 60 min and dump a traceback for any test over 10 min.
+- RF-AUD compares a copied audio stream's average bit rate within 2% (ffmpeg builds differ over a trim).
 - The Linux job runs on `ubuntu-24.04`: `ubuntu-latest` moved to Ubuntu 26.04, which Playwright 1.58 cannot install Chromium on.
 
 ### Added (team)

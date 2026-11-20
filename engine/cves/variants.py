@@ -282,7 +282,9 @@ def qc_reframe(pr, S, master, r, aspect, master_stamp):
     col = D.get("color", "bt709"); tags = (vs.get("color_space"), vs.get("color_primaries"), vs.get("color_transfer"), vs.get("color_range"))
     gate("COL-01", tags == (col, col, col, "tv"), "/".join(map(str, tags)))
     nf = int(vs.get("nb_frames") or 0); gate("RF-LEN", abs(nf - r["n"]) <= 1, f"{nf} frames (master {r['n']})")
-    gate("RF-AUD", a.get("codec_name") == am.get("codec_name") and a.get("bit_rate") == am.get("bit_rate") and a.get("sample_rate") == am.get("sample_rate"),
+    br, bm = float(a.get("bit_rate") or 0), float(am.get("bit_rate") or 0)   # the stream is copied; its AVERAGE bit rate is container maths
+    gate("RF-AUD", a.get("codec_name") == am.get("codec_name") and a.get("sample_rate") == am.get("sample_rate") and a.get("channels") == am.get("channels")
+         and bm > 0 and abs(br - bm) <= .02 * bm,    # over the (-shortest) trimmed length, so ffmpeg builds report it a few b/s apart
          f"audio copied from the master ({a.get('codec_name')} {a.get('bit_rate')} b/s)")
     nt = r["notes"]
     gate("RF-CAP", not nt["caption_cut"], f"captions/chest text inside the {aspect} frame on every frame" if not nt["caption_cut"] else f"{len(nt['caption_cut'])} frames with text cropped",

@@ -14,6 +14,10 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "engine"))
 # a machine's personal learned taste (~/.cves/taste/learned.yaml) must never change test renders (docs/LEARNING.md)
 os.environ["CVES_TASTE"] = tempfile.mkdtemp(prefix="cves_taste_")
+if os.environ.get("PYTEST_XDIST_WORKER"):     # several xdist workers on one small CI runner (7 GB, 4 cores): each worker's render
+    for k, v in (("CVES_RENDER_WORKERS", "2"), ("CVES_QC_JOBS", "2"), ("CVES_QC_WHISPER_JOBS", "1"),   # pool and QC jobs stay small, and the
+                 ("NUMBA_NUM_THREADS", "1"), ("OMP_NUM_THREADS", "1"), ("MKL_NUM_THREADS", "1")):      # math libraries single-threaded: 16 torch
+        os.environ.setdefault(k, v)                                                                     # processes + nested thread pools hung CI
 # ... nor may a personal SFX bank (~/.cves/sfx, docs/SOUND.md) change which sounds the mix picks
 os.environ["CVES_SFX"] = tempfile.mkdtemp(prefix="cves_sfx_")
 

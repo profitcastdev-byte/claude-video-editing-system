@@ -733,7 +733,7 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None, 
         prepare_media(pr, TL)                                   # HDR B-roll / clips tonemapped to SDR once here, not raced by the workers
     for f in glob.glob(os.path.join(out_dir, "_log_*.jsonl")): os.remove(f)
     want = set(range(TL.N)) if only is None else set(only)
-    nw = max(1, workers or max(2, (os.cpu_count() or 4) - 1))
+    nw = max(1, workers or int(os.environ.get("CVES_RENDER_WORKERS", "0") or 0) or max(2, (os.cpu_count() or 4) - 1))   # env cap: parallel test runs on small CI runners
     jobs = _chunks(TL, want, nw)
     n = 0
     if jobs:
