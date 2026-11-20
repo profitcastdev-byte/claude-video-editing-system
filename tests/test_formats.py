@@ -118,7 +118,7 @@ def test_landscape_voiceover_broll_builds_and_passes_qc(spine_demo, tmp_path):
     from cves import deliver                                                 # reframe the landscape master to 9:16 (crop the width)
     out, man = deliver.deliver(pr, "9:16")
     v916 = next(x for x in man["variants"] if x["id"] == "9x16")
-    assert v916["status"] == "delivered", v916
+    assert v916["status"] == "delivered", __import__("json").dumps(v916, default=str)[:4000]
     from cves import moodboard
     moodboard.moodboard(pr)
     from PIL import Image
