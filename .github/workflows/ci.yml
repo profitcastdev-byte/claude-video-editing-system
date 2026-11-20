@@ -56,8 +56,8 @@ jobs:
         run: python tools/lint.py && python tools/gate_status.py --check
       - name: Tests (${{ matrix.suite }}, pytest-xdist)
         run: |
-          if [ "${{ matrix.suite }}" = "unit" ]; then M="not e2e"; else M="e2e"; fi
-          python -m pytest -q -n auto --dist loadgroup -m "$M" --durations=15 -o faulthandler_timeout=600 tests
+          if [ "${{ matrix.suite }}" = "unit" ]; then M="not e2e"; N=2; else M="e2e"; N=auto; fi   # unit: 2 workers (each JIT-compiles librosa/numba
+          python -m pytest -q -n $N --dist loadgroup -m "$M" --durations=15 -o faulthandler_timeout=600 tests
       - name: Control-mode export self-test
         if: matrix.suite == 'unit'
         run: cves export selftest --no-gui
