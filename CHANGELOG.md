@@ -308,6 +308,7 @@ CVES becomes a senior editor for any video: motion design, inspirations it can h
 - Lint L4 points at `canvas.size`.
 
 ### Fixed
+- Windows: CLI output is UTF-8, so `cves templates` no longer crashes printing ₹ on a cp1252 console.
 - Pop / one-word captions are opaque from their first frame (a fading word failed GFX-15 over bright footage).
 - The caption legibility bed reaches past an outline stroke (`legible_bed(reach=)`), and captions over B-roll assume the brighter `legibility.video_bg_broll` (#C8C8C8): outlined viral captions over bright B-roll now pass GFX-15 without loosening it.
 - `cves critique` counts B-roll footage as shots, not animated graphics (the restraint budget no longer flags B-roll edits).

@@ -77,6 +77,10 @@ def main(argv=None):
     """the CLI. Run as a program (argv None): third-party stderr noise is filtered and an exception prints one line + the
     log path (-v: everything, with tracebacks). Called with argv (tests, other code): exceptions propagate as before."""
     real = argv is None; args = list(sys.argv[1:] if real else argv)
+    for st in (sys.stdout, sys.stderr):             # Windows consoles default to cp1252: ₹, ✓ etc. must not crash a command
+        try:
+            if (getattr(st, "encoding", "") or "").lower().replace("-", "") != "utf8": st.reconfigure(encoding="utf-8", errors="replace")
+        except Exception: pass
     cmd, verbose = _peek(args)
     if not real: return _main(args, verbose)
     log = _log_path(args); filt = OUT.StderrFilter(log, verbose).start()
