@@ -6,6 +6,7 @@ All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.c
 ## [0.5.0] - 2026-11-20
 
 ### CI
+- `cves doctor`: config paths with `~` are expanded, a missing projects folder is created, and an unset (optional) `team_taste` is not a FAIL.
 - Windows: CLI output is UTF-8, so `cves templates` no longer crashes printing ₹ on a cp1252 console.
 - Parallel test runs cap each worker's render pool, QC jobs and math-library threads (`CVES_RENDER_WORKERS`, `CVES_QC_JOBS`, `CVES_QC_WHISPER_JOBS`, `NUMBA/OMP/MKL_NUM_THREADS`): 4 xdist workers each starting a full render pool ran small CI runners out of memory and hung.
 - Jobs time out after 60 min and dump a traceback for any test over 10 min.

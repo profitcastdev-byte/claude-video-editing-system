@@ -312,8 +312,17 @@ def check_config_keys(cfg, seen):
         if key in seen:
             continue
         p = cfg.get(key)
-        ok = bool(shutil.which(p) or os.path.exists(p))
-        add("config", key, "PASS" if ok else "FAIL", p, "" if ok else f"set {key}: in ~/.cves/config.yaml or re-run {INSTALLER}")
+        if key == "team_taste" and not p:              # optional: without it, learning stays personal to this computer
+            add("config", key, "PASS", "not set (lessons stay on this computer; see EDITORS.md 'Team setup')")
+            continue
+        full = os.path.expanduser(str(p or ""))
+        ok = bool(full and (shutil.which(full) or os.path.exists(full)))
+        if not ok and key == "clients_root" and full:     # first run: the projects folder simply doesn't exist yet
+            try:
+                os.makedirs(full, exist_ok=True); ok = True
+            except OSError:
+                pass
+        add("config", key, "PASS" if ok else "FAIL", full or p, "" if ok else f"set {key}: in ~/.cves/config.yaml or re-run {INSTALLER}")
 
 
 # ---------------------------------------------------------------------------------------------- output
