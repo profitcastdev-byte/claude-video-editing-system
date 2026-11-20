@@ -15,7 +15,8 @@ S.get("captions.style", "word_reveal")   # dotted lookup with a default
 **Merge order** (later wins):
 1. `engine/cves/styles/default.yaml`, the neutral defaults;
    - `engine/cves/styles/viral.yaml` when `edit.yaml goal: viral` (the goal layer, [VIRAL.md](VIRAL.md));
-2. `knowledge-base/taste/learned.yaml`, the repo's learned layer (team taste, shared through git);
+2. `knowledge-base/taste/learned.yaml`, the repo's learned layer (public, anonymised, shared through git);
+   `<team_taste>/learned.yaml`, the team layer when `team_taste` / `$CVES_TEAM_TASTE` is set (a shared folder; docs/LEARNING.md);
 3. `~/.cves/taste/learned.yaml`, the personal learned layer (`$CVES_TASTE`);
 4. the preset named by `edit.yaml style.preset`;
 5. `PROJECT/Edit/style.yaml`, written by `cves inspire`;
@@ -29,7 +30,7 @@ S.get("captions.style", "word_reveal")   # dotted lookup with a default
 The learned layers (2, 3) hold `scopes: {global | goal:<x> | platform:<x> | client:<x>: {style keys}}` and apply only the
 sections whose scope matches the project (`edit.yaml goal:`, `platform.target`, `project.client`; absent keys match only
 unscoped sections), general before specific. They are written only by `cves learn promote` (a person approves every
-entry) and may hold only keys that exist in `default.yaml`. `S["_sources"]` lists `learned:repo` / `learned:personal`
+entry) and may hold only keys that exist in `default.yaml`. `S["_sources"]` lists `learned:repo` / `learned:team` / `learned:personal`
 when they applied. See [LEARNING.md](LEARNING.md).
 
 After the merge, `platform.target` fills `platform.safe_zone`, `sound.master_lufs` and `sound.true_peak` from `styles/platforms.yaml` unless a layer set them. Platform boxes are fractions of the frame: compute pixels from the real frame size (`platforms.safe_zone(S, w, h)`), never from a fixed canvas.
@@ -68,10 +69,12 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 
 | file | written by | content |
 |---|---|---|
-| `selects.yaml` | Claude / human | source clips (`src` per clip for multi-source), in/out, `beat:` tag |
-| `edl.json` | ingest | fps, fps_rational, size, clips, segments (f0, n, in, out, src); non-aroll spines: `spine`, `duration`, `segments: []` (voiceover: `vo_kept`) |
+| `selects.yaml` | Claude / human | source clips (`src` per clip for multi-source), in/out, `beat:` tag (from the style's `grammar.structure`), `text:` (the clip's spoken words: take alignment and STORY-17 need it), optional `align: false` |
+| `edl.json` | ingest | fps, fps_rational, size, clips (selects.yaml clips with their aligned in/out and `aligned: {in, out, score, status, hand: [in, out]}`), segments (f0, n, in, out, src); non-aroll spines: `spine`, `duration`, `segments: []` (voiceover: `vo_kept`) |
 | `ingest.json` | ingest | per source: probe (w, h, fps, rotation, hdr, sar), conform applied, plate_scale; top level: canvas, fps_rational, plate_scale (max), language_detected. See [INGEST.md](INGEST.md) |
-| `voice_chain.json` | ingest | `{"steps": [{"name", "generative": bool, "params"}]}` (SND-30 reads it) |
+| `voice_chain.json` | ingest | `{"steps": [{"name", "generative": bool, "params"}]}` (SND-30 reads it); the last step is `adaptive_gate` with each take's measured floor / speech / threshold / depth |
+| `shot_match.json` | render (Timeline) | per-shot colour match (`grade.shot_match`): `reference`, per-shot skin / wall stats, the measured samples, and per shot `k` (plate frames), `gs` / `gb` (linear subject / wall gains); `_sig` = what it was solved for |
+| `cue_sync.json` | mix (`sound.sync_cues`) | pixel-change onsets measured on the rendered frames near each cue, with the render signature (element log + timeline) they belong to: `cves qc` rebuilds the same synced cue list. Also `tl` (sha256 of `timeline.json`) and `keys` (the frame-cache key of every frame a scan read): after an incremental render only the windows round re-rendered frames are scanned again |
 | `words.json` | ingest | `[[t0, t1, word]]` in cut time; language from `edit.yaml project.language` > `captions.language` (`auto` = detect) |
 | `style.yaml` | `cves inspire` | measured style profile + `_evidence` |
 | `inspire/` | `cves inspire` | `REPORT.md` (see / hear / feel per reference + the per-dimension mix), `<ref>-sheet.jpg` contact sheets, `aesthetic-review.md` (Claude fills it), `cache/` (per-reference measurements) |
@@ -79,10 +82,12 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `assets.json` | `cves assets` | registry: id → path, kind, source (file/magnific/elevenlabs/stock/url), prompt, licence, sha256 |
 | `stems/guide.wav` | mix | only with `music.slot: platform`: the guide the edit is cut to (reference track or click track), never mixed into the master ([VIRAL.md](VIRAL.md) §4) |
 | `beats.json` | `cves beats` | music analysis in track seconds: tempo, beats, downbeats, bars, sections, phrases (intro / build / drop / body / break / outro), energy, drop candidates, last sync plan ([MUSIC.md](MUSIC.md), [SOUND.md](SOUND.md)) |
-| `mix.json` | `cves mix` | master gain, cue count, music placement (+ `sections`, `story` alignment), automatic `accents` (placed / skipped + why), `duck` settings ([SOUND.md](SOUND.md)) |
+| `mix.json` | `cves mix` | master gain, cue count, music placement (+ `sections`, `story` alignment), automatic `accents` (placed / skipped + why), `duck` settings, `vmr_guard` (the bed's speech-band trim), `cue_sync` (every cue moved onto its picture event) ([SOUND.md](SOUND.md)) |
 | `timeline.json` | render | resolved timeline (spine, zoom, cutaways incl. `broll` shots, transitions, fps_rational, size, segments with `kind`) |
 | `IMPORT-REPORT.md` | `cves import-edits` | editor changes mapped onto edit.yaml / selects.yaml (backups `*.bak-<time>`), and what could not be mapped. `Export/control/layers.json` (schema in CONTROL-MODE.md §3) is the reference it compares against |
-| `elements.jsonl` | render | one record per drawn element per frame (id, role, bbox, text, t_key, asset, font) |
+| `elements.jsonl` | render | one record per drawn element per frame (id, role, bbox, text, t_key, asset, font, size when the template logs it) |
+| `frames/` + `frames/_cache.json` | render | the rendered frames (`NNNNN.png`) and the frame cache index: `{v, log_sha, keys: {frame: key}}`, the input key of every frame whose PNG and element records are current, and the sha256 of the `elements.jsonl` they pair with (`cves.rcache`, ARCHITECTURE §6b). A final render re-renders only frames whose key changed; `--only` renders drop their frames from it |
+| `draft/` | `cves build --draft` | the draft Variant (ARCHITECTURE §6b): a copy of `edit.yaml` (+ `treatment.yaml`), its own `frames/`, `elements.jsonl`, `timeline.json` (`draft: true`, `proxy`), `mix.wav`, `stems/`, `qc.json` (`draft: true`), `QC-REPORT.txt` and `<title>_draft.mp4` (tagged `comment=cves-draft`). Never delivered |
 | `QC-REPORT.txt` / `qc.json` | `cves qc` | gate results; `qc.json` is machine-readable and carries the hash of the file it judged |
 | `journal.jsonl` | `cves` (build, encode, qc, deliver, import-edits, critique, review, treatments make / render / compare / pick) + `cves learn` | append-only events `{t, event, cves, style_hash, ...}` for self-learning ([LEARNING.md](LEARNING.md)); `journal.last_edit.yaml` is the edit.yaml of the last build |
 | `DIRECTION.md` | Claude | creative direction: concept, arc, the one signature moment, motif, what we will not do (knowledge-base/CREATIVE.md) |
@@ -90,7 +95,13 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `treatments/<name>/` | `cves treatments make` / `render` | one treatment: `edit.yaml` (the adapted plan, `treatment: <name>`), `treatment.yaml`, `plan.json` (changes + metrics: cuts, caption style, transitions, punch-ins), `proxy.mp4`; its own `timeline.json`, `mix.wav`, `stems/`, `exposure.json`, `beats.json`. A `project.Variant` view: plates, mattes, faces, words and voice are read from `Edit/`, never rebuilt |
 | `treatments/compare/` | `cves treatments compare` | `sheet.jpg` (rows = treatments, columns = the same timecodes, labelled), `compare.mp4`, `compare.json` |
 | `critique/` | `cves critique` | `contact_sheet.jpg`, `timeline.png`, `critique.json`, `CRITIQUE.md` (rubric Claude fills) |
-| `review/` | `cves review` | `state.json` (rounds of the current loop, closed loops, capped at style `review.max_rounds`); one never-overwritten `rNNN/` per round: `cuts/cut_NN.jpg`, `index.jpg`, `hook.jpg`, `payoff.jpg`, `endcard.jpg`, `cuts.json`, `audio.json`, `findings.json` (`[{id, severity: high\|med\|low, t, kind, message, patch?}]`, `patch = {set: {edit.yaml path: value}, append: {...}, safe}`), `REVIEW.md` (rubric Claude answers), `applied.json`, `signoff.json` ([REVIEW.md](REVIEW.md)) |
+| `review/` | `cves review` | `state.json` (rounds of the current loop, closed loops, capped at style `review.max_rounds`); one never-overwritten `rNNN/` per round: `cuts/cut_NN.jpg`, `index.jpg`, `strips_N.jpg`, `hook.jpg`, `payoff.jpg`, `endcard.jpg`, `ends.jpg`, `cuts.json`, `audio.json`, `findings.json` (`[{id, severity: high\|med\|low, t, kind, message, patch?}]`, `patch = {set: {edit.yaml path: value}, append: {...}, safe}`), `REVIEW.md` (rubric Claude answers), `applied.json`, `signoff.json` ([REVIEW.md](REVIEW.md)) |
+| `logs/cves.log` | the `cves` CLI | the last command's traceback and the third-party stderr noise it hid (objc / OpenCV / numba lines, folded worker tracebacks); the run before is `cves.log.prev`. `-v` prints all of it instead |
+| `plan_notes.json` | the plan review page (Send, `cves review-plan`) | the editor's plan notes: per shot its `edit.yaml` refs, approve / unlock, quick actions, note; overall note, `approve_all`; `applied_at` once applied ([PLAN-REVIEW.md](PLAN-REVIEW.md)) |
+| `plan_notes.pending.md` | `cves plan apply-notes` | the free-text notes and the actions left for Claude, per shot (the only plan-review file Claude reads) |
+| `plan_lock.json` | `cves plan apply-notes` | approved shots: `{shots: {key: {entries: {"slot:id": entry hash}, approved_at, n}}}`; a locked entry is never changed without an unlock note |
+
+`Moodboard/plan_state.json` (`cves moodboard`): the plan round, its global signature and per shot hash + keyframes, so the next round re-renders only changed shots ([PLAN-REVIEW.md](PLAN-REVIEW.md)).
 
 Client folders live outside the repo. Their root is `$CVES_CLIENTS`, else the `clients_root` config key, else `~/CVES Projects`.
 
@@ -112,10 +123,11 @@ Templates are auto-discovered.
   scale px themselves; `DESIGN = True` modules (hard-coded 1080×1920, third-party only) are fitted per instance into the
   safe zone. Identity at 1080×1920.
 - `render(t, params, ctx) -> list[El]`. `ctx` has `start`, `end`, `resolve` (asset id or path resolver: `edit.yaml assets:` / `Edit/assets.json` first, then project- and repo-relative paths), `fps` (quantise animation starts: `round(t * fps) / fps`) and `S` (the style profile). On A-roll it also has `chin`, the smoothed chin y on the canvas. Templates listed in `render.NEEDS_AROLL` (kind `media`, or a module-level `NEEDS_AROLL = {names}` / `True`) also get `aroll = (graded RGB float HxWx3, matte float HxW)`: the A-roll frame under the cutaway, framed as the A-roll shot; no other template pays for it.
+- **Frame cache.** Anything a template reads must reach it through `params`, `ctx`, the style or a file under `Raw/`, `Assets/`, `Brand/` or `Edit/conform/` (or the engine code): those are what `cves.rcache` keys a frame on. A template that reads other project state per frame must add it to `rcache.frame_keys`, or a build may keep a stale frame.
 - `cves render --only` / `Timeline.frames_for(spec)` accept cutaway, segment, `roto.N`, `chest.N`, `end_card` ids, `12.5-14.0` (seconds), `300-420` (frames, inclusive) and comma lists.
 - `cues(params, ctx) -> list[(t, sfx_name, gain_db, kw)]`. `sfx_name` is a bank id / file name, or `@category[:intensity]` (resolved from the SFX bank manifest, [SOUND.md](SOUND.md) §4).
 - **Kind.** Set it per module with `KIND = "cutaway"|"roto"|"chest"|"end"|"media"|"overlay"`, or per template with `KINDS = {name: kind}`.
-- **El(im, id, role, text=, t_key=, asset=, font=).** The `id` must be stable across frames; the QC gates track elements by `id`.
+- **El(im, id, role, text=, t_key=, asset=, font=, size=).** The `id` must be stable across frames; the QC gates track elements by `id`. `size` (optional, type px at a 1080 short side) is logged; GFX-20 compares it when every instance of a class logs it (type a person occludes under-reads its glyph height).
 - **Fonts and colours.** Templates read colours and fonts through `gfx` (`G.MINT` is the accent slot, `G.font(...)`). They never use literal hex values.
 - **Timing and cue helpers (gfx).** Use these instead of hand-rolled maths:
   - `G.enter(t, at, dur, G.fps_of(ctx))`: an entry first visible on the frame of `at`;
@@ -139,6 +151,7 @@ Templates are auto-discovered.
   Status `N/A` = the gate cannot apply to this spine (presenter / voice / caption gates; `qc.NA_NO_AROLL`, `NA_NO_VOICE`,
   `NA_NO_CAPTIONS`); it never blocks delivery.
 - `cves deliver` refuses unless `qc.json` exists, has `fail == 0`, and its `sha256` matches the master being delivered.
+- `cves deliver` refuses a draft render (`deliver.is_draft`: a file inside `Edit/draft/` or tagged `comment=cves-draft` by `encode(..., draft=True)`), even with `--force-unchecked`.
 - `cves deliver` writes a never-overwritten `Export/vNNN/` with `manifest.json` (`qc_verified`, `master_sha256`, files with sha256, variants with status); `--force-unchecked` is recorded as `forced_unchecked` + `WARNING`.
 - Encoder settings come from the style `delivery:` section through `encode.video_args(S)` / `audio_args(S)`; fps and size from `encode.stream_params(pr)`.
 - The plugin hook (`plugin/hooks/qc_guard.py`, PreToolUse) denies copying / moving / uploading out of `Export/` unless the QC stamp (or the `vNNN` manifest) is clean, and denies `--force-unchecked` while QC is not clean. Details: [DELIVERY.md](DELIVERY.md).

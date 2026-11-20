@@ -653,12 +653,19 @@ def run(pr, refs=None, dry_run=False, max_s=90.0, min_conf=.5, workers=None, mix
         if r: got[v] = r
         else: todo.append(v)
     if todo:
-        import multiprocessing as _mp; Pool = _mp.get_context("spawn").Pool   # no fork: see render.py
-        with Pool(workers or max(1, min(len(todo), (os.cpu_count() or 4) // 2))) as pool:
-            for r in pool.imap(_job, [(v, max_s, os.path.join(idir, labs[v] + "-sheet.jpg"), (DESIGN_W, DESIGN_H)) for v in todo]):
+        import multiprocessing as _mp
+        from concurrent.futures import ProcessPoolExecutor
+        nw = workers or int(os.environ.get("CVES_INSPIRE_WORKERS", "0") or 0) or max(1, min(len(todo), (os.cpu_count() or 4) // 2))
+        args = [(v, max_s, os.path.join(idir, labs[v] + "-sheet.jpg"), (DESIGN_W, DESIGN_H)) for v in todo]
+        # a worker that dies (out of memory on a small machine) raises BrokenProcessPool here; multiprocessing.Pool waited forever
+        ex = ProcessPoolExecutor(nw, mp_context=_mp.get_context("spawn")) if nw > 1 else None   # no fork: see render.py
+        try:
+            for r in (ex.map(_job, args) if ex else map(_job, args)):
                 if r.get("kind") == "error": print(f"  skipped {os.path.basename(r['path'])}: {r['error']}"); continue
                 for w in r.get("warnings", []): print(f"  ({os.path.basename(r['path'])}: {w})")
                 _cache_put(cdir, labs[r["path"]], _cache_key(r["path"], max_s), r); got[r["path"]] = r
+        finally:
+            if ex: ex.shutdown(cancel_futures=True)
     R, labels = [], []
     for v in vids:
         if v not in got: continue

@@ -7,8 +7,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        os: [macos-latest, windows-latest, ubuntu-24.04]
+        # the suite split by marker (tests/conftest.py): unit = everything that does not render a demo; e2e = render /
+        # mix / encode / QC of the demo projects. Both run in parallel on pytest-xdist (-n auto, demo builds shared)
+        suite: [unit, e2e]
+    name: ${{ matrix.os }} / ${{ matrix.suite }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -47,8 +52,25 @@ jobs:
           print("yunet ok", p)
           PY
       - name: Lint (portability + no hard-coded style)
+        if: matrix.suite == 'unit'
         run: python tools/lint.py && python tools/gate_status.py --check
-      - name: Unit + golden tests
-        run: python -m pytest -q tests
+      - name: Warm the numba cache (one process)
+        # librosa's numba kernels are cached on disk on first use. Two pytest workers compiling and writing that cache
+        # at the same time segfaulted a worker in beat tracking, and xdist then hung until the job timeout.
+        run: |
+          python - <<'PY'
+          import os, tempfile, numpy as np, soundfile as sf
+          from cves import beats
+          sr = 22050; t = np.arange(sr * 12) / sr
+          y = 0.3 * np.sin(2 * np.pi * 220 * t) * (np.mod(t, 0.5) < 0.05) + 0.05 * np.sin(2 * np.pi * 110 * t)
+          p = os.path.join(tempfile.mkdtemp(), "warm.wav"); sf.write(p, y.astype("float32"), sr)
+          a = beats.analyse(p); print("numba cache warm, tempo", round(a.get("tempo", 0), 1))
+          PY
+      - name: Tests (${{ matrix.suite }}, pytest-xdist)
+        run: |
+          if [ "${{ matrix.suite }}" = "unit" ]; then M="not e2e"; N=2; else M="e2e"; N=auto; fi
+          # --max-worker-restart=0: a crashed worker fails the run at once instead of hanging it
+          python -m pytest -q -n $N --dist loadgroup --max-worker-restart=0 -m "$M" --durations=15 -o faulthandler_timeout=600 tests
       - name: Control-mode export self-test
+        if: matrix.suite == 'unit'
         run: cves export selftest --no-gui

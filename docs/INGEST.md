@@ -11,7 +11,7 @@ or from probing the sources.
 |---|---|---|---|
 | `probe` | `cves ingest --steps probe` | every source | `ingest.json` `probes` |
 | `transcribe_raw` | `cves ingest` | every source's audio | `raw_audio.wav`, `raw_words.json`, `raw_transcript.txt`, `sources/<slug>.*` |
-| `select` | `cves select` | `selects.yaml` | `ingest.json` (conform plans), `edl.json`, `voice/`, `voice_{raw,df,final}.wav`, `voice_chain.json` |
+| `select` | `cves select` (`--align-only`: the alignment report alone) | `selects.yaml` | `align/` (window transcripts), `ingest.json` (conform plans), `edl.json`, `voice/`, `voice_{raw,df,final}.wav`, `voice_chain.json` |
 | `conform` | `cves ingest --steps conform` | `selects.yaml` | `ingest.json` (also run by `select` and `plate`) |
 | `words` | `cves prep` | `voice_final.wav` | `words.json`, `ingest.json` `language_detected` |
 | `plate` | `cves prep` | `edl.json`, `ingest.json` | `plate/<segment>.mkv` (FFV1 10-bit, canvas size, project rate) |
@@ -116,11 +116,56 @@ Filter order per segment: `[SAR fix] [HDR→SDR] [fps] [crop] scale=W:H:lanczos 
   `words(processed, reference, lang=None)`, `stutters(pr, lang=None)` (defaults to `ingest.whisper_language(pr)`). The English
   verbatim prompt is only sent when the language is English. Word normalisation keeps letters and combining marks of any script.
 
+## Take alignment
+
+Long-form whisper word times drift by 1-3 s around retakes and long pauses (a pause is absorbed into a word:
+`your [32.86-36.29]`), so in/out points read off `raw_words.json` clip words. `cves select` therefore re-times every
+`selects.yaml` clip that has a `text:` field before it cuts anything (`cves.align`):
+
+1. **Windows.** `story.align_passes` (3) windows of the source's 16 kHz audio, `in - w .. out + w` with
+   w = `story.align_window_s` (1.5 s) x 1 / 0.8 / 1.2, clamped to the file. Each is transcribed with whisper.cpp
+   (`config whisper` / `whisper_model`, the project language) using **DTW token times** (`-ojf --dtw <preset> -nfa`; the
+   preset comes from the model file name, `config whisper_dtw` overrides it or turns it `off`). Plain `-ml 1` segment
+   times stretch the first and last word to the window edges, so they are only the fallback. Transcripts are cached in
+   `Edit/align/cache/` (keyed by file, window, model and language).
+2. **Match.** The clip's `text:` is fuzzy-matched to the best contiguous word run (case and punctuation ignored, numbers
+   normalised: "300 plus" = "300+", "a hundred percent" = "100%", "four to six" = "4-6"; near spellings and plurals count).
+   With several takes in the window, the run that matches the text best wins, then the one nearest the hand times.
+3. **Pool.** The passes whose score is at least `story.align_min_score` (0.8) give a first-word start and a last-word end:
+   their median when they agree within 0.3 s; otherwise the estimate nearest the hand time. A pass whose run jumps over
+   more than 1 s of speech (whisper merged two takes of a repeated line) is outvoted by any clean pass.
+4. **Snap.** Each edge moves to the nearest pause in the speech energy (quieter than the window's 10th-percentile level +
+   `story.align_quiet_db`), looking up to `story.align_search_s` (0.5 s) outward: `in` to just before the first word,
+   `out` to just after the last, with the pads `story.align_pad_s` ([0.04, 0.08] s) kept inside the pause. It never
+   cuts inside speech; with no pause in reach it takes the quietest 10 ms (and says so).
+
+A score below the minimum keeps the hand times and prints a warning with what was heard. Opt out per clip with
+`align: false`, or for a style with `story.align: false`. Every clip in `edl.json` records
+`aligned: {in, out, score, status (moved / unchanged / kept_low_score / off / no_text), hand: [in, out], est, pause}`,
+and `cves select` prints one line per clip (`align <id>: in 114.02 -> 113.99 (-0.03) out 115.62 -> 115.84 (+0.22) score 1.00`).
+`selects.yaml` itself is never rewritten: the hand times stay the input, the aligned ones are in `edl.json`.
+
+**STORY-17** (`cves qc --stage story`) closes the loop: each clip's own span of `voice_final.wav` (from the `edl.json`
+segments) is transcribed separately, never the whole file (whisper skips whole sentences on long files), and the
+recall of the clip's `text:` words is compared with style `qc.words_recall_min` (0.85), fillers ignored and numbers
+normalised the same way. A clip whose first or last word is not heard fails whatever its recall (`qc.words_edges`):
+that is a clipped take, the failure of the first real job ("We've" heard as "I've", a lost final "refund"). A FAIL lists the missing words per clip; clips without `text:` are skipped and named.
+
 ## Voice chain
 
 `select` runs, in order: ffmpeg extract (48 kHz mono) → DeepFilterNet (per clip, ±0.5 s pad) → pause tightening →
-8 ms crossfades → ffmpeg polish (`ingest.VOICE_CHAIN`: high-pass, 3-band EQ, high shelf, de-esser, compressor, gate).
-None is generative. `Edit/voice_chain.json` records exactly these steps and their parameters from the same list the
+8 ms crossfades → ffmpeg polish (`ingest.VOICE_CHAIN`: high-pass, 3-band EQ, high shelf, de-esser, compressor) → the
+adaptive gate (`cves.voicegate`, style `voice.gate`; `ingest.polish_voice`, shared with the voiceover spine).
+None is generative.
+
+The gate is measured per take, not fixed: a fixed `agate` threshold left a real room at -50 dBFS between words (SND-19
+wants the voice floor's p5 at -60 or lower). For each take it reads a 10 ms voice-band envelope of the tightened voice (the
+room the viewer actually hears between words; DeepFilterNet pulls long pauses far lower), takes the floor (10th
+percentile) and the speech level (90th), puts the threshold between them (floor + 0.3 x the gap, 6-14 dB over the floor)
+and sets the depth that takes the room to -72 dBFS (10-40 dB). It is a downward expander (ratio 6) with an 8 ms
+look-ahead, a 15 ms hold and 2 / 40 ms ramps in dB, so consonants are never clipped and word tails fade instead of
+switching off. `voice_chain.json` records the step `adaptive_gate` with every take's floor, speech level, threshold
+and depth. `Edit/voice_chain.json` records exactly these steps and their parameters from the same list the
 filter string is built from (`{"steps": [{"name", "generative": false, "params"}], "output": "voice_final.wav"}`).
 QC SND-30 fails if any step is generative.
 

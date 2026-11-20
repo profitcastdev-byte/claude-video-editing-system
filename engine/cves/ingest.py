@@ -2,8 +2,8 @@
 Steps (each idempotent, run by `cves ingest --steps a,b` or individually):
   probe           ffprobe every source -> Edit/ingest.json (size, SAR, rotation, VFR, HDR, bit depth, audio)
   transcribe_raw  every source's audio -> Edit/raw_words.json + raw_transcript.txt (Claude reads this to pick selects)
-  select          Edit/selects.yaml (Claude-written; clips may carry `src:`) -> conform plans, DeepFilterNet voice clips,
-                  pause tightening, edl.json, voice stems, voice_chain.json
+  select          Edit/selects.yaml (Claude-written; clips may carry `src:`) -> take alignment of every clip with a `text:`
+                  (cves.align), conform plans, DeepFilterNet voice clips, pause tightening, edl.json, voice stems, voice_chain.json
   conform         per referenced source: rotation, SAR, HDR->SDR tonemap, frame-rate conform, face-aware crop path
   words           voice_final.wav -> words.json (cut-time word timings for captions and cues)
   plate           one lossless 10-bit FFV1 decode per segment, conform filters applied in that single decode
@@ -430,6 +430,8 @@ def select(pr):
     order = sorted(set(srcs.values()), key=lambda s: (s != primary(pr), s))
     fr, _plans = conform_sources(pr, order, S); fps = float(fr)
     audio = {s: _extract_audio(pr, s) if (s != primary(pr) or not os.path.exists(pr.e("raw_audio.wav"))) else pr.e("raw_audio.wav") for s in order}
+    from . import align as AL       # take alignment: re-time each clip with a text: field from a local word-level transcript
+    AL.align_clips(pr, clips, srcs, S)
     with ThreadPoolExecutor(4) as ex: dfs = list(ex.map(lambda c: _df_clip(pr, c, audio[srcs[c["id"]]]), clips))
     segments = []
     for c, dfp in zip(clips, dfs):
@@ -447,15 +449,16 @@ def select(pr):
 # the voice chain: podcast-style polish on the DeepFilterNet stem. No generative models: they rewrite words (SND-30).
 VOICE_CHAIN = [("highpass", {"f": 75}), ("equalizer", {"f": 170, "t": "q", "w": 1, "g": 1.5}), ("equalizer", {"f": 380, "t": "q", "w": 1.2, "g": -2}),
                ("equalizer", {"f": 3800, "t": "q", "w": 1, "g": 2}), ("highshelf", {"f": 10000, "g": 1.5}), ("deesser", {"i": 0.35, "m": 0.5, "f": 0.55}),
-               ("acompressor", {"threshold": "-22dB", "ratio": 3, "attack": 8, "release": 120, "makeup": "4dB"}),
-               ("agate", {"threshold": 0.02, "ratio": 6, "range": 0.015, "attack": 3, "release": 90})]
+               ("acompressor", {"threshold": "-22dB", "ratio": 3, "attack": 8, "release": 120, "makeup": "4dB"})]
+# the gate is NOT a fixed ffmpeg agate any more: cves.voicegate measures each clip's room tone and speech level and sets the
+# threshold and depth from them (SND-19: a fixed threshold left real rooms at a -50 dBFS floor)
 def voice_af(chain=VOICE_CHAIN): return ",".join(f"{n}=" + ":".join(f"{k}={v}" for k, v in p.items()) for n, p in chain)
 
 def assemble_voice(pr):
     import librosa
-    edl = pr.json("edl.json"); clips = {c["id"]: c for c in edl["clips"]}; resampled = set(); df_model = set()
+    edl = pr.json("edl.json"); clips = {c["id"]: c for c in edl["clips"]}; resampled = set(); df_model = set(); spans = []
     for stem in ("df", "raw"):
-        out, cache = [], {}
+        out, cache, pos = [], {}, 0
         for s in edl["segments"]:
             if s["clip"] not in cache:
                 p = _df_out(pr, s["clip"]) if stem == "df" else pr.e("voice", "in", f"{s['clip']}.wav")
@@ -466,16 +469,37 @@ def assemble_voice(pr):
             y = cache[s["clip"]]; off = max(0, clips[s["clip"]]["in"] - PAD)
             seg = y[int((s["in"] - off) * SR):int((s["out"] - off) * SR)].copy(); f = int(.008 * SR)
             seg[:f] *= np.linspace(0, 1, f); seg[-f:] *= np.linspace(1, 0, f); out.append(seg)
+            if stem == "df": spans.append((pos, pos + len(seg), s["clip"]))
+            pos += len(seg)
         sf.write(pr.e(f"voice_{stem}.wav"), np.concatenate(out), SR)
-    sh([C.get("ffmpeg"), "-v", "error", "-y", "-i", pr.e("voice_df.wav"), "-af", voice_af(), "-ar", str(SR), pr.e("voice_final.wav")])
+    gate_step = polish_voice(pr, pr.e("voice_df.wav"), pr.e("voice_final.wav"), spans)
     steps = [{"name": "extract", "generative": False, "params": {"rate": SR, "channels": 1, "tool": "ffmpeg"}},
              {"name": "deepfilternet", "generative": False, "params": {"model": ",".join(sorted(df_model)) or "DeepFilterNet", "pad_s": PAD,
                                                                         "binary": os.path.basename(C.get("deepfilter"))}},
              {"name": "pause_tighten", "generative": False, "params": {"max_gap_s": MAXGAP, "breath_s": BREATH, "edge_s": EDGE, "threshold_db_below_peak": 32}}]
     if resampled: steps.append({"name": "resample", "generative": False, "params": {"from": sorted(resampled), "to": SR, "tool": "librosa"}})
     steps.append({"name": "crossfade", "generative": False, "params": {"ms": 8}})
-    steps += [{"name": n, "generative": False, "params": dict(p, tool="ffmpeg")} for n, p in VOICE_CHAIN]
+    steps += [{"name": n, "generative": False, "params": dict(p, tool="ffmpeg")} for n, p in VOICE_CHAIN] + [gate_step]
     pr.save_json("voice_chain.json", {"steps": steps, "output": "voice_final.wav"})
+
+def polish_voice(pr, src, dst, spans=None):
+    """the voice chain after DeepFilterNet: the ffmpeg polish (VOICE_CHAIN), then the adaptive gate (cves.voicegate),
+    measured per take. spans = [(first sample, end sample, take id)] of the assembled voice (None = one take).
+    Writes dst; returns the gate's voice_chain.json step."""
+    from . import voicegate as VG
+    pre = dst + ".pregate.wav"
+    try:
+        sh([C.get("ffmpeg"), "-v", "error", "-y", "-i", src, "-af", voice_af(), "-ac", "1", "-ar", str(SR), pre])
+        y, _ = sf.read(pre, dtype="float32"); y = y.mean(1) if y.ndim > 1 else y
+        spans = spans or [(0, len(y), "take")]
+        yg, info = VG.apply(y, SR, spans, _S(pr), seams=[a for a, _, _ in spans[1:]])     # the room between words, per take
+        sf.write(dst, yg, SR)
+    finally:
+        if os.path.exists(pre): os.remove(pre)
+    g = VG.cfg_of(_S(pr))
+    return {"name": "adaptive_gate", "generative": False, "params": {"tool": "cves.voicegate", "enabled": bool(info),
+            "floor_target_db": g["floor_target_db"], "ratio": g["ratio"], "attack_ms": g["attack_ms"], "lookahead_ms": g["lookahead_ms"],
+            "hold_ms": g["hold_ms"], "release_ms": g["release_ms"], "takes": info}}
 
 # ------------------------------------------------------------------ 3. cut-time words
 def words(pr):
@@ -518,18 +542,35 @@ def _edl_rate(edl):
     fr = edl.get("fps_rational")
     return Fraction(*fr) if fr else Fraction(edl["fps"]).limit_denominator(1001)
 
+def _frames(path):
+    """packet (frame) count of the first video stream, without decoding"""
+    r = subprocess.run([C.get("ffprobe"), "-v", "error", "-count_packets", "-select_streams", "v:0", "-show_entries", "stream=nb_read_packets",
+                        "-of", "csv=p=0", path], capture_output=True, text=True)
+    try: return int(r.stdout.strip())
+    except ValueError: return -1
+
 def plate(pr):
     edl = pr.json("edl.json"); F = edl["fps"]; fr = _edl_rate(edl); S = _S(pr); os.makedirs(pr.e("plate"), exist_ok=True)
     size = tuple(edl.get("size") or canvas(pr, S))
     srcs = sorted({s.get("src") or primary(pr) for s in edl["segments"]}, key=lambda s: (s != primary(pr), s))
     _, plans = conform_sources(pr, [norm_src(pr, s) for s in srcs], S)
     def job(s):
-        out = pr.e("plate", f"{s['id']}.mkv")
-        if os.path.exists(out): return
-        src = norm_src(pr, s.get("src")); plan = plans[src]; P = plan["probe"]
+        out = pr.e("plate", f"{s['id']}.mkv"); src = norm_src(pr, s.get("src")); plan = plans[src]; P = plan["probe"]
+        # a plate is reused only when it was cut from the same source span with the same conform: segment ids survive a
+        # re-cut (cves select, take alignment), so file existence alone would reuse a stale plate of the wrong length
+        key = json.dumps({"src": src, "in": round(s["in"], 5), "out": round(s["out"], 5), "fps": str(fr), "size": list(size),
+                          "vf": plate_vf(plan, s, size, fr)}, sort_keys=True)
+        kf = out[:-4] + ".key"
+        if os.path.exists(out) and os.path.exists(kf) and open(kf, encoding="utf-8").read() == key: return
+        if os.path.exists(out) and not os.path.exists(kf) and _frames(out) == round((s["out"] - s["in"]) * F):   # a plate from before keys: adopt it
+            with open(kf, "w", encoding="utf-8") as fh: fh.write(key)
+            return
+        for stale in (out, pr.e("matte", f"{s['id']}.mkv")):
+            if os.path.exists(stale): os.remove(stale)
         tags = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"] if plan.get("tonemap") else []
         sh([C.get("ffmpeg"), "-v", "error", "-y", "-ss", f"{s['in']:.5f}", "-i", _abs(pr, src), "-map", f"0:v:{P['stream']}", "-frames:v", str(round((s["out"] - s["in"]) * F)),
             "-vf", plate_vf(plan, s, size, fr), "-c:v", "ffv1", "-level", "3", "-pix_fmt", "yuv420p10le", *tags, out])
+        with open(kf, "w", encoding="utf-8") as fh: fh.write(key)
     with ThreadPoolExecutor(4) as ex: list(ex.map(job, edl["segments"]))
 
 # ------------------------------------------------------------------ 5. matte (RVM)
@@ -541,7 +582,7 @@ def matte(pr, variant="resnet50", ds=0.4):
     os.makedirs(pr.e("matte"), exist_ok=True); edl = pr.json("edl.json"); rate = _edl_rate(edl)
     for s in edl["segments"]:
         out = pr.e("matte", f"{s['id']}.mkv")
-        if os.path.exists(out): continue
+        if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(pr.e("plate", f"{s['id']}.mkv")): continue   # never older than its plate
         cin = av.open(pr.e("plate", f"{s['id']}.mkv")); vs = cin.streams.video[0]
         o = av.open(out, "w"); st = o.add_stream("ffv1", rate=rate); st.pix_fmt = "gray"; st.width, st.height = vs.width, vs.height
         rec = [None] * 4

@@ -5,7 +5,7 @@ An autonomous editing agent for short-form talking-head video (Reels, Shorts, Ti
 
 No look is hard-coded. Each client's style is **measured from their own reference edits** (`cves inspire`) into a style profile. That profile drives the grade, captions, transitions, framing, pacing, sound levels and the QC thresholds. The engine knows craft, not a house style.
 
-The craft comes from a 73-video curriculum covering motion, editing, graphic design, retention, sound, narrative, composition, colour and platform. It is distilled into a rulebook of 183 quality rules. **95 of them are measured automatically on every render** (`cves qc`), plus 17 early checks on the story and the plan. The rest are checked by eye on the edit plan and contact sheets. A render with any failing gate cannot be delivered.
+The craft comes from a 73-video curriculum covering motion, editing, graphic design, retention, sound, narrative, composition, colour and platform. It is distilled into a rulebook of 185 quality rules. **96 of them are measured automatically on every render** (`cves qc`), plus 18 early checks on the story and the plan. The rest are checked by eye on the edit plan and contact sheets. A render with any failing gate cannot be delivered.
 
 ## Two ways to work
 | | **Vibe mode** | **Control mode** |
@@ -33,6 +33,8 @@ python tools/make_demo.py ~/CVES-demo
 cves --project ~/CVES-demo build
 ```
 This builds a synthetic project (a drawn presenter, a synthesised voice, a generated music bed; no real person or licensed media) and renders, mixes, encodes and QCs it. The demo's presenter is drawn, so the face-detection gates that re-detect on the final file report on it; everything else is a normal edit.
+
+**Editors: start with [EDITORS.md](EDITORS.md)** (install, the 7-step workflow, team setup, fast commands).
 
 ## Install (Mac Apple Silicon or Windows 10/11)
 You need Claude Code. In Claude Code:
@@ -75,7 +77,7 @@ Restart Claude Code and run `/cves:install`. It installs every tool, model and s
   automated test. DaVinci Resolve is not installed on the build machine, so a live Resolve import and a Resolve-written
   FCPXML have not been tested; [docs/RESOLVE-CHECKLIST.md](docs/RESOLVE-CHECKLIST.md) is the script for the first person with Resolve.
 - **Complex scripts** (Indic, Arabic) need Pillow with libraqm for correct shaping; `cves doctor` reports whether it is available.
-- **Not every gate is automated:** 95 of the 183 rules are. The others need instruments that don't exist yet (role and intent tags, blur and banding detectors, music-stem gates); see `knowledge-base/QC-GATES.md`.
+- **Not every gate is automated:** 96 of the 185 rules are. The others need instruments that don't exist yet (role and intent tags, blur and banding detectors, music-stem gates); see `knowledge-base/QC-GATES.md`.
 - **Footage limits the grade can't remove:** on the first test ad, two colour gates still fail. COL-06 (cut-to-cut colour match) fails where skin drifts within a shot and where the wall patch changes between punch-ins. FRAME-03 (edge halo) fails where a bright door frame sits next to the shoulder and where hair is motion-blurred. Both report honestly instead of being loosened.
 - **Windows CI** runs the test suite; a full edit on a Windows machine has not been tried by hand yet.
 - **Linux is not a supported editing platform.** CI runs the tests there, but Ubuntu's own `melt` (MLT 7.36) ignores overlay transparency in landscape projects, so Kdenlive playback is verified with the MLT that ships in Kdenlive (7.43, macOS), not on Linux.

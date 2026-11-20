@@ -8,7 +8,10 @@ Cue post-pass (all_cues): the automatic accents (cves.sound: risers into the hoo
 bank manifest (cves.sfx), transition whooshes are placed by their measured PEAK on the cut (SND-08), identical back-to-back
 repeats get a deterministic pitch / gain variation (SND-09), and in `music.sync: full` transition-type cues are nudged so
 their peak lands on the beat (never more than `music.sfx_snap_max_f` frames, so they stay on their picture event).
-Ducking follows the voice envelope (`mix.duck_mode: envelope`, the default) or the v0.3 fixed dips (`gate`); cves.sound."""
+After render, every cue's onset (a riser: its peak) is synced onto its logged picture event (`sound.cue_sync`, SND-07 at
+any frame rate; cves.sound.sync_cues).
+Ducking follows the voice envelope (`mix.duck_mode: envelope`, the default) or the v0.3 fixed dips (`gate`); then the bed's
+speech band is trimmed wherever a word would not clear it (`mix.vmr_guard`); cves.sound."""
 import os, re, json, subprocess, tempfile, shutil
 import numpy as np, soundfile as sf, librosa
 from scipy.signal import butter, sosfiltfilt
@@ -80,7 +83,7 @@ def _trans_cue(TL, t_cut, kind, side):
     if name == "whoosh": return [(t_cut - .30, "whoosh", -15, {"trim": (0, .45), "peak_at": t_cut})]     # placed by peak below
     return [(t_cut - .04, name, -19, {"trim": (0, .18)})]
 
-def all_cues(TL, plan=None, log=None, finalize=True, accent_log=None):
+def all_cues(TL, plan=None, log=None, finalize=True, accent_log=None, sync_log=None):
     cues = []
     din, dout = TL.S.get("transitions.in", "cut"), TL.S.get("transitions.out", "cut")
     for c in TL.cuts:
@@ -101,14 +104,16 @@ def all_cues(TL, plan=None, log=None, finalize=True, accent_log=None):
     for x in (TL.E.get("sfx", {}) or {}).get("extra", []): cues.append((x["t"], x["name"], x.get("gain", -18), {k: v for k, v in x.items() if k in ("trim", "pitch", "beat_snap", "speed", "raw", "reveal")}))
     if any(SFX.parse_name(n)[0] for _, n, _, _ in cues): cues = SFX.resolve_cues(cues, SFX.entries(TL.pr))     # @impact:hard -> a bank id
     cues += SO.accents(TL, cues, accent_log)          # risers into the hook / payoff, impacts on reveals (restraint budget)
-    return _finalize(TL, cues, plan, log) if finalize else cues
+    return _finalize(TL, cues, plan, log, sync_log) if finalize else cues
 
-def _finalize(TL, cues, plan=None, log=None):
-    """peak placement (SND-08) -> beat nudge (music.sync full) -> repeat variation (SND-09). Deterministic."""
+def _finalize(TL, cues, plan=None, log=None, sync_log=None):
+    """peak placement (SND-08) -> cue sync onto the rendered picture events (SND-07, sound.sync_cues) -> beat nudge
+    (music.sync full) -> repeat variation (SND-09). Deterministic."""
     out = []
     for t, name, gain, kw in cues:
         if kw.get("peak_at") is not None: t = kw["peak_at"] - peak_offset(TL, name, kw)
         out.append((t, name, gain, dict(kw)))
+    out = SO.sync_cues(TL, out, sync_log)
     c = BT.cfg(TL.pr, TL.S)
     if BT.mode_of(c) == "full" and (TL.E.get("music") or {}).get("file"):
         P = plan or BT.plan(TL.pr, TL)
@@ -116,7 +121,7 @@ def _finalize(TL, cues, plan=None, log=None):
         mx = float(c.get("sfx_snap_max_f", 1)) / TL.FPS; kinds = [str(k) for k in (c.get("sfx_snap") or [])]
         if len(grid):
             for k, (t, name, gain, kw) in enumerate(out):
-                if name.startswith("asset:") or not kw.get("beat_snap", True) or not any(s in name for s in kinds): continue
+                if name.startswith("asset:") or not kw.get("beat_snap", True) or kw.get("synced") or not any(s in name for s in kinds): continue
                 pk = t + peak_offset(TL, name, kw); j = int(np.argmin(np.abs(grid - pk))); d = float(grid[j] - pk)
                 if 1e-4 < abs(d) <= min(tol, mx):
                     out[k] = (t + d, name, gain, kw)
@@ -152,7 +157,7 @@ def mix(pr):
         vo, _ = librosa.load(pr.e("voice_final.wav"), sr=SR, mono=True); vo = np.pad(vo, (0, max(0, N - len(vo))))[:N]
     else: vo = np.zeros(N, np.float32)
     M = TL.E.get("music") or {}; mus = np.zeros((N, 2), np.float32); SND = TL.S.get("sound") or {}; duck_info = None
-    bed_lu = M.get("bed_lu", SND.get("bed_lu", -10)); tmp = tempfile.mkdtemp(prefix="cves_mix_")
+    bed_lu = M.get("bed_lu", SND.get("bed_lu", -10)); tmp = tempfile.mkdtemp(prefix="cves_mix_"); lv0 = None
     TV, TM, TB = (os.path.join(tmp, f"{k}.wav") for k in "vmb")
     from . import guide as GD
     slot = GD.is_slot(pr)          # music.slot: platform -> the master carries no music (the poster adds the sound in-app)
@@ -161,13 +166,13 @@ def mix(pr):
     if P:
         y, legacy_fade = _music(pr, TL, P, N, T)
         sf.write(TV, vo, SR); sf.write(TM, y, SR)
-        if has_vo: y *= db(lufs(TV) - lufs(TM) + bed_lu + 3)   # +3: ducking takes ~3 LU back off
+        if has_vo: lv0 = lufs(TV); y *= db(lv0 - lufs(TM) + bed_lu + 3)   # +3: ducking takes ~3 LU back off
         else: y *= db(SND.get("master_lufs", -14) - 6 - lufs(TM))    # no voice: the music leads, 6 LU under the master target (headroom; the master stage sets the level)
         duck, duck_info = SO.duck_control(vo, SR, TL.S) if has_vo else (np.zeros(N), {"mode": "none (no voice)"})
         y = SO.apply_duck(y, duck, TL.S, SR)
         if legacy_fade: fo = int(.9 * SR); y[N - fo:] *= (np.linspace(1, 0, fo) ** 1.5)[:, None]
         mus = y.astype(np.float32); music_target = bed_lu
-    sfx = np.zeros(N, np.float32); cache = {}; snaps = []; acc = []; cues = all_cues(TL, plan=P, log=snaps, accent_log=acc)
+    sfx = np.zeros(N, np.float32); cache = {}; snaps = []; acc = []; syn = []; cues = all_cues(TL, plan=P, log=snaps, accent_log=acc, sync_log=syn)
     for t, name, gain, kw in cues:
         sp = float(kw.get("speed", 1) or 1); key = (name, str(kw.get("trim")), kw.get("pitch", 0), sp, bool(kw.get("raw")), str(kw.get("ramp")))
         if key not in cache:
@@ -183,12 +188,21 @@ def mix(pr):
         y = cache[key]; g = gain if kw.get("reveal") else gain + SND.get("sfx_offset_db", -3); i = int(round(t * SR)); j = min(N, i + len(y))
         if i < 0: y, i = y[-i:], 0                      # a cue placed before 0 keeps its peak where it belongs
         if i < N: sfx[i:j] += y[:j - i] * db(g)
+    vmr_info = None
     if P and has_vo:      # measure the real bed (music + SFX) vs voice and correct the music gain: no guessed compensation
-        sf.write(TV, vo, SR)
-        for _ in range(3):
-            sf.write(TB, mus.mean(1) + sfx, SR); err = music_target - (lufs(TB) - lufs(TV))
-            if abs(err) < .3: break
-            mus *= db(err)
+        sf.write(TV, vo, SR); lv = lv0 if lv0 is not None else lufs(TV)    # the voice does not change while the bed is levelled: measure it once
+        def bed_level():
+            nonlocal mus
+            for _ in range(3):
+                sf.write(TB, mus.mean(1) + sfx, SR); err = music_target - (lufs(TB) - lv)
+                if abs(err) < .3: break
+                mus *= db(err)
+        bed_level()
+        # the speech band of the bed must clear every word (mix.vmr_*): trim it where it does not, re-level, trim again
+        words = pr.json("words.json", []) or []
+        mus, vmr_info = SO.vmr_guard(vo, mus, SR, TL.S, words)
+        if vmr_info.get("max_cut_db"):
+            bed_level(); mus, vmr_info = SO.vmr_guard(vo, mus, SR, TL.S, words)
     os.makedirs(pr.e("stems"), exist_ok=True)
     sf.write(pr.e("stems", "voice.wav"), vo, SR); sf.write(pr.e("stems", "music.wav"), mus, SR); sf.write(pr.e("stems", "sfx.wav"), sfx, SR)
     mixd = (vo + sfx)[:, None] + mus
@@ -213,8 +227,11 @@ def mix(pr):
         if abs(err) < .2: break
         g += err
     info = {"master_gain_db": round(g, 2), "cues": len(cues), "peak_placed": sum(1 for c in cues if c[3].get("peak_at") is not None),
-            "beat_nudged": len(snaps), "accents": acc}
+            "beat_nudged": len(snaps), "accents": acc,
+            "cue_sync": {"synced": len(syn), "moved": sum(1 for x in syn if abs(x["to"] - x["from"]) > 1e-4),
+                         "max_shift_f": round(max([abs(x["to"] - x["from"]) * TL.FPS for x in syn] or [0]), 2), "cues": syn}}
     if duck_info: info["duck"] = duck_info
+    if vmr_info: info["vmr_guard"] = vmr_info
     if gi: info["guide"] = gi
     if P:
         lay = P.get("lay") or {}

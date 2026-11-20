@@ -106,8 +106,19 @@ def _stage(W, H):
 # ---------- layers (RGBA float, premultiplied composite helpers)
 def new(): return Image.new("RGBA", (PW, PH), (0, 0, 0, 0))
 def to_np(im): a = np.asarray(im, np.float32) / 255; return a
-def over(dst, im, opacity=1.0):
-    """dst float HxWx3, im PIL RGBA or float HxWx4"""
+def over(dst, im, opacity=1.0, inplace=False):
+    """dst float HxWx3, im PIL RGBA or float HxWx4. A PIL layer is blended only inside the box of its visible pixels:
+    outside it the full-frame formula gives dst exactly (dst * 1 + rgb * 0), so the result is the same and a small element
+    costs its own size, not the frame's. inplace=True writes into dst (the caller owns it); else dst is left untouched."""
+    if isinstance(im, Image.Image) and im.mode == "RGBA" and im.size == (dst.shape[1], dst.shape[0]):
+        bb = im.getbbox()                     # alpha > 0
+        out = dst if inplace else dst.copy()
+        if bb is None: return out
+        x0, y0, x1, y1 = bb
+        a = np.asarray(im.crop(bb), np.float32) / 255
+        al = a[..., 3:4] * opacity
+        out[y0:y1, x0:x1] = dst[y0:y1, x0:x1] * (1 - al) + a[..., :3] * al
+        return out
     a = to_np(im) if isinstance(im, Image.Image) else im
     al = a[..., 3:4] * opacity
     return dst * (1 - al) + a[..., :3] * al
@@ -160,15 +171,23 @@ def legible_bed(im, fg, size_px, bg=None, force=0.0, reach=2):
         tgt = need * (Lf + .05) - .05; a = (tgt - Lb) / max(1e-6, 1 - Lb); shade = (255, 255, 255)
     a = clamp(max(a, force), 0, sget("legibility.plate_max", .85))
     if a <= .02: return None
-    import cv2
-    al = np.asarray(im)[..., 3]
+    import cv2, math
     r = max(3, int(size_px * sget("legibility.bed_spread", .18) * R))   # size_px is layout px; the layer is R x larger
+    sg = max(1., r * .6); k = 2 * max(2, int(round(reach * R))) + 1
+    bb = im.getbbox()                                                   # the text's box (alpha > 0)
+    if bb is None: return Image.new("RGBA", im.size, (0, 0, 0, 0))
+    # work on the text's box plus everything the bed can reach (dilate r, blur 3 sigma) and the blur's border reflection
+    # (another 3 sigma): outside it the bed is zero, inside it every value is what the full-frame filters give
+    pad = r + k + 2 * (math.ceil(3 * sg) + 2) + 2
+    x0, y0, x1, y1 = max(0, bb[0] - pad), max(0, bb[1] - pad), min(im.size[0], bb[2] + pad), min(im.size[1], bb[3] + pad)
+    al = np.asarray(im.crop((x0, y0, x1, y1)))[..., 3]
     m = cv2.dilate(al, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1)))
-    m = cv2.GaussianBlur(m, (0, 0), max(1., r * .6))                  # soft: a hard-edged bed reads as a second "ink" class
-    k = 2 * max(2, int(round(reach * R))) + 1                          # full strength right at the glyph edge (the 3-7 px ring GFX-15 reads);
-    m = np.maximum(m, cv2.dilate(al, np.ones((k, k), np.uint8)))        # outlined text: al includes the stroke, so reach past it
-    out = np.zeros(al.shape + (4,), np.uint8); out[..., :3] = shade; out[..., 3] = (m.astype(np.float32) * a).astype(np.uint8)
-    return Image.fromarray(out)
+    m = cv2.GaussianBlur(m, (0, 0), sg)                                 # soft: a hard-edged bed reads as a second "ink" class
+    # full strength right at the glyph edge (the 3-7 px ring GFX-15 reads); outlined text: al includes the stroke, so reach past it
+    m = np.maximum(m, cv2.dilate(al, np.ones((k, k), np.uint8)))
+    crop = np.zeros(al.shape + (4,), np.uint8); crop[..., :3] = shade; crop[..., 3] = (m.astype(np.float32) * a).astype(np.uint8)
+    out = Image.new("RGBA", im.size, (0, 0, 0, 0)); out.paste(Image.fromarray(crop), (x0, y0))
+    return out
 
 # ---------- type
 SEPS = "·•|/–—"
@@ -254,6 +273,11 @@ def draw_text(d, xy, s, f, fill, tracking=0, anchor="ls", stroke=0, stroke_fill=
     x, y = xy; runs, _ = _runs(s, f, tracking)
     if anchor[0] != "l" or anchor == "li":
         l, r, _, _ = ink(s, f, tracking)
+        if tracking == 0 and len(runs) == 1 and runs[0][2] == "t" and not runs[0][1] and hasattr(d, "_f"):
+            # a supersampled layer draws with a k-times font whose advances round differently from the 1x font: measure the
+            # ink of the font that really draws, or a centred line lands up to ~3 px off the axis of its box (GFX-08)
+            bb = _inkbox(runs[0][0], d._f(f))
+            if bb: l, r = bb[0] / d.k, bb[1] / d.k
         x -= {"m": (l + r) / 2, "r": r, "l": l}[anchor[0]]
     kw = {"stroke_width": stroke, "stroke_fill": stroke_fill} if stroke else {}
     op = (fill[3] / 255) if isinstance(fill, tuple) and len(fill) > 3 else 1.

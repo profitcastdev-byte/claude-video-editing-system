@@ -7,7 +7,7 @@ There are two ways to use this repo:
 - **Changing the system** (engine, templates, gates, rules, plugin). Open this repo in Claude Code. The rules below apply.
 
 ## Before any edit
-Load `knowledge-base/RULEBOOK.md` and `knowledge-base/EDIT-STANDARD.md` before you touch an edit, a template or a gate, even for a "small" change. Then follow `plugin/skills/video-editor/SKILL.md`. Precedence: user-confirmed corrections > the client's style profile (`STYLE.md`, `Edit/style.yaml`, `Brand/style.yaml`) > EDIT-STANDARD > module rules. Never hard-code a colour, font, transition or threshold in the engine: add a key to `engine/cves/styles/default.yaml` and read it from the style profile. Open calls are in `knowledge-base/DECISIONS.md`.
+Load `knowledge-base/RULEBOOK-CORE.md` and `knowledge-base/EDIT-STANDARD.md` before you touch an edit, and the full `knowledge-base/RULEBOOK.md` before you touch a template, a gate, a threshold or a rule, even for a "small" change. Then follow `plugin/skills/video-editor/SKILL.md`. Precedence: user-confirmed corrections > the client's style profile (`STYLE.md`, `Edit/style.yaml`, `Brand/style.yaml`) > EDIT-STANDARD > module rules. Never hard-code a colour, font, transition or threshold in the engine: add a key to `engine/cves/styles/default.yaml` and read it from the style profile. Open calls are in `knowledge-base/DECISIONS.md`.
 
 ## Where things are
 | Path | What |
@@ -15,9 +15,9 @@ Load `knowledge-base/RULEBOOK.md` and `knowledge-base/EDIT-STANDARD.md` before y
 | `docs/ARCHITECTURE.md` | Workflow (§3), `edit.yaml` schema (§4), templates (§5), element log (§6), control-mode export (§7), style profile (§9) |
 | `docs/CONTRACTS.md`, `docs/STYLE.md` | Engine contracts (style merge order, timebase, project files) and the style-profile schema |
 | `engine/cves/` | Python package and the `cves` CLI: ingest, story, plan, moodboard, render, beats, mix, music, encode, deliver, assets, `qc/`, `export/`, `templates/`, `style.py` + `styles/` (default profile and optional presets) |
-| `plugin/` | Claude Code plugin `cves`: `skills/video-editor/SKILL.md` plus `commands/*.md` (one per workflow step) |
+| `plugin/` | Claude Code plugin `cves`: `skills/video-editor/SKILL.md` (loaded every session: keep it short), its on-demand `reference/*.md`, plus `commands/*.md` (one per workflow step) |
 | `.claude-plugin/marketplace.json` | Marketplace `cves`, so the plugin can be installed from this repo |
-| `knowledge-base/` | `RULEBOOK.md` (load every session), `CHECKLISTS.md`, `QA-REVIEW.md`, `QC-GATES.md` (183 rules; 95 measured automatically by `cves qc`), `DECISIONS.md`, `modules/`, `transcripts/`, `tools/` |
+| `knowledge-base/` | `RULEBOOK-CORE.md` (load every session; the full `RULEBOOK.md` per step / for system changes), `CHECKLISTS.md`, `QA-REVIEW.md`, `QC-GATES.md` (185 rules; 96 measured automatically by `cves qc`), `DECISIONS.md`, `modules/`, `transcripts/`, `tools/` |
 | `assets/` | Fonts (OFL), Material icons (Apache-2.0), SFX (CC0), logos |
 | `setup/` | `install_mac.sh`, `install_windows.ps1`, `requirements*.txt`, `doctor.py` |
 | `examples/` | A demo project (`edit.yaml`, `edl.json`, notes; no client footage) |

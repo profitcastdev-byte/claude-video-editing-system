@@ -36,7 +36,7 @@ class Variant(Project):
     """A view of a project whose plan and outputs live in their own folder (a treatment: Edit/treatments/<name>/) while the
     ingest artefacts (edl.json, plates, mattes, faces, words, voice, beats, motion cache, inspire style) stay shared and are
     never rebuilt. `e()` routes the files in OWN to the variant folder and everything else to the project's Edit/."""
-    OWN = {"edit.yaml", "treatment.yaml", "frames", "elements.jsonl", "timeline.json", "exposure.json", "mix.wav",
+    OWN = {"edit.yaml", "treatment.yaml", "frames", "elements.jsonl", "timeline.json", "exposure.json", "shot_match.json", "cue_sync.json", "mix.wav",
            "mix_premaster.wav", "mix.json", "stems", "beats.json", "journal.jsonl", "journal.last_edit.yaml", "qc.json", "QC-REPORT.txt"}
     def __init__(self, root, work):
         super().__init__(root)

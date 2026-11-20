@@ -23,7 +23,7 @@
     setup(P, ctx) {
       wrap = document.getElementById('wrap'); const tx = document.getElementById('tx');
       style = P.style || 'marker'; tx.classList.add('style-' + style); if (P.plate) wrap.classList.add('plate');
-      W = C.words(tx, P.text);
+      W = C.words(tx, P.text); tx.dataset.text = C.plain(P.text);   // its own logged text block (MOT-01)
       C.fit(tx, tx.clientWidth, ctx.h * 0.5, 6);
       W.words.forEach((w, i) => { if (w.classList.contains('accent')) { const mk = C.el('span', 'mk', w); mk.dataset.el = 'bed'; marks.push({ w, wi: W.inners[i], mk, i }); } });
       TXT = rgbOf('--text-rgb'); INK = rgbOf('--bg-rgb');

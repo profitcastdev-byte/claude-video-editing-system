@@ -121,3 +121,19 @@ frame-difference pass if that is unavailable). Per kind it writes medians to `~/
 3. After every user note: `cves learn note "<their words>"`. After delivery: ask for a 1–10 rating and log it; log
    platform results when the user has them.
 4. Every few deliveries: `cves learn mine`, show the user the new candidates, and promote only what they approve.
+
+## Team taste (shared between editors' computers)
+Personal taste (`~/.cves/taste/`) stays on one computer. For a team, point every editor's machine at one shared folder
+(a synced Google Drive / Dropbox folder):
+
+```yaml
+# ~/.cves/config.yaml (or the env var CVES_TEAM_TASTE)
+team_taste: ~/Google Drive/CVES Team/taste
+```
+
+`cves learn promote <id> --team` writes an approved lesson there (`learned.yaml` for style changes, `rules.md` for
+rules), with who promoted it and when. Every editor's next edit picks it up. Client-scoped taste is allowed in the team
+folder (it never goes to the public repo; `--share` still anonymises and refuses client scopes). `cves learn forget <id>`
+removes it for everyone. Merge order: default → goal → learned:repo → **learned:team** → learned:personal → preset →
+inspire → treatment → brand → edit.yaml. Keep the projects root (`clients_root`, `$CVES_CLIENTS`) in the same shared
+drive so client STYLE.md, brand files and past edits are visible to the whole team.

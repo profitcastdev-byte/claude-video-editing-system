@@ -8,7 +8,7 @@ import multiprocessing as _mp
 Pool = _mp.get_context("spawn").Pool   # same on every OS; fork deadlocks once torch/OpenCV threads exist (Linux)
 from PIL import Image, ImageFilter
 from fractions import Fraction
-from . import gfx as G, templates as TPL, style as STY, captions as CAP, spines as SP, craft as CR
+from . import gfx as G, templates as TPL, style as STY, captions as CAP, spines as SP, craft as CR, shotmatch as SM
 from .gfx import prog, clamp          # the canvas is G.W / G.H, read at call time (set per process by Timeline)
 from .look import grade
 
@@ -83,7 +83,9 @@ class Timeline:
         sn = ar.get("snap"); self.snap = (sn["start"], sn["end"], sn["zoom"]) if sn else None
         self.zoom = self._auto_zoom(ar.get("zoom", {})) if self.aroll else {}
         if not self.aroll: self.lift = set()
-        self.gain = self._exposure() if self.aroll and ar.get("exposure_match", self.S.get("grade.exposure_match", True)) else {}
+        self.match = SM.solve(self) if self.aroll else {}          # per-shot colour match to a reference shot (COL-06/07)
+        # the colour match includes exposure: the older skin-gain balance only runs when it is off
+        self.gain = self._exposure() if self.aroll and not self.match and ar.get("exposure_match", self.S.get("grade.exposure_match", True)) else {}
         self.caps = self._captions()
         self.root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         if proxy and float(proxy) != 1.0: self._to_proxy(float(proxy))
@@ -297,9 +299,23 @@ class Timeline:
     def _captions(self):
         cfg = {**(self.S.get("captions") or {}), **(self.E.get("captions") or {})}     # style defaults + per-video (fixes, hide)
         self.cap_cfg = cfg; self.cap_hide = [tuple(x) for x in cfg.get("hide", [])]
-        if cfg.get("events"): return [(e["start"], e["end"], [tuple(w) for w in e["words"]]) for e in cfg["events"]]
-        if not SP.has_voice(self.spine): return []                           # music / broll spines: text cards are cutaways
-        return CAP.build(self.pr.json("words.json", []), cfg, self.T_END)
+        if cfg.get("events"): ev = [(e["start"], e["end"], [tuple(w) for w in e["words"]]) for e in cfg["events"]]
+        elif not SP.has_voice(self.spine): return []                         # music / broll spines: text cards are cutaways
+        else: ev = CAP.build(self.pr.json("words.json", []), cfg, self.T_END)
+        self.cap_log = []                                                    # no fragment flashes round a cover (PLAT-06 / 07)
+        return CAP.schedule(ev, self.cap_hidden, self.FPS, cfg, self.cap_log)
+
+    def cap_hidden(self, f):
+        """True where compose() surely draws no caption on frame f: a drawn cutaway (B-roll shots keep them), the snap over a
+        roto segment, a captions.hide window, the end card. Chest graphics are not counted: they hide captions only on the
+        frames they draw on, which only the render knows (a fragment there is left as it is)."""
+        t = f / self.FPS
+        if t >= self.T_END or any(a <= t < b for a, b in self.cap_hide): return True
+        c = self.in_cut(t)
+        if c and not c.get("broll"): return True
+        if not (self.snap and self.snap[0] <= t < self.snap[1]): return False
+        s = self.seg_at(f)
+        return bool(s is not None and s["id"] in self.roto)
 
 # ------------------------------------------------------------------ helpers
 def skin_lab(bgr, f):
@@ -341,10 +357,10 @@ def glitch(img, e, seed):
     lines = (np.arange(G.H) % 4 < 1)[:, None, None].astype(np.float32)
     return np.clip(out * (1 - .25 * e * lines) + np.array([.1, .9, .6], np.float32) * .12 * e * lines, 0, 1)
 
-def caption_el(TL, t, chin):
+def caption_el(TL, t, chin, frame=None):
     if any(a <= t < b for a, b in getattr(TL, "cap_hide", [])): return None
     S = STY.Style({**TL.S, "captions": TL.cap_cfg})
-    return CAP.element(TL, t, chin, TL.caps, S)
+    return CAP.element(TL, t, chin, TL.caps, S, frame=frame)
 
 # ------------------------------------------------------------------ frame composition
 def compose(TL, i, P=None, A=None, k=0, mode="final"):
@@ -354,7 +370,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         e = TL.E["end_card"]; fn = TPL.get(e["template"])[0]
         els = fn(t, e.get("params", {}), TL.ctx(TL.T_END, TL.T_END + TL.END))
         img = G.stage().copy()
-        for el in els: img = G.over(img, el.im)
+        for el in els: img = G.over(img, el.im, inplace=True)
         sc = 1 + TL.S.get('motion.drift', .025) * clamp((t - TL.T_END) / 6); M = affine(sc, G.W / 2, G.H * .46875, False); img = warp(img, M)
     elif cut and mode != "aroll":
         fn = TPL.get(cut["template"])[0]; cx_ = TL.ctx(cut["start"], cut["end"])
@@ -362,7 +378,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
             cx_["aroll"] = aroll_frame(TL, s, k, t, P, A)
         els = fn(t, cut.get("params", {}), cx_)
         img = G.stage().copy()
-        for el in els: img = G.over(img, el.im)
+        for el in els: img = G.over(img, el.im, inplace=True)
         if not cut.get("broll"):          # B-roll shots frame themselves (fill / fit / ken burns): no stage drift
             sc = 1 + TL.S.get('motion.drift', .025) * clamp((t - cut["start"]) / 6); M = affine(sc, G.W / 2, G.H * .46875, False); img = warp(img, M)
         if mode in ("overlay", "chest"): img = None
@@ -372,7 +388,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
         sh = next((c for c in TL.cuts if c.get("broll") and c["id"] == s["id"]), None) if mode == "aroll" and s.get("kind") == "broll" else None
         if sh is not None:
             els = TPL.get(sh["template"])[0](t, sh.get("params", {}), TL.ctx(sh["start"], sh["end"]))
-            for el in els: img = G.over(img, el.im)
+            for el in els: img = G.over(img, el.im, inplace=True)
         if mode in ("final", "overlay"): img, els = _caption_front(TL, t, img, els)
     else:
         sid = s["id"]; f = TL.faces[sid][min(k, len(TL.faces[sid]) - 1)]
@@ -387,15 +403,14 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
             Ms = affine(max(z0, TL.snap[2]), cx, G.H if sid in TL.lift else cy - fh * .05, True); M0 = Ms if Ms[0, 0] > M0[0, 0] else M0
         if mode in ("overlay", "chest"): img = None
         else:
-            g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
-            img = grade(np.clip(P * g, 0, 1) if np.any(g != 1) else P, A, (cx, cy), TL.S.get("grade"))
+            img = grade(_matched(TL, sid, k, P, A), A, (cx, cy), TL.S.get("grade"))
             r = TL.roto.get(sid)
             if r:
-                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], view=M, seg_view=M0, **CR.roto_ctx(TL, s, k)))
+                rels = TPL.get(r["template"])[0](t, r.get("params", {}), TL.ctx(s["t0"], s["t1"], view=M, seg_view=M0, plate_lum=lambda ks, s=s: plate_lum(TL, s, ks), **CR.roto_ctx(TL, s, k)))
                 if rels:
                     a = cv2.GaussianBlur(cv2.erode(A.astype(np.float32) / 255, np.ones((3, 3), np.uint8)), (0, 0), 1.2)[..., None]
                     person = img.copy()
-                    for el in rels: img = G.over(img, el.im)
+                    for el in rels: img = G.over(img, el.im, inplace=True)
                     img = img * (1 - a) + person * a; els += rels
         if img is not None: img = warp(img, M, cv2.INTER_CUBIC)
         _, scy, sfh = smooth_face(TL, sid, k, r=12)                         # smoothed: raw boxes made chest graphics shake (MOT-03)
@@ -411,7 +426,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
                 front += TPL.get(c["template"])[0](t, c.get("params", {}), TL.ctx(s["t0"], s["t1"], chin=chin, chin_hold=chin_hold))
             snapped = TL.snap and TL.snap[0] <= t < TL.snap[1] and sid in TL.roto   # the snap's roto type replaces the captions; a bare punch-in keeps them
             if not front and not snapped and mode != "chest":     # chest mode: graphics only, captions go to subtitles
-                ce = caption_el(TL, t, cap_chin)
+                ce = caption_el(TL, t, cap_chin, frame=img)
                 if ce: front.append(ce)
             if img is None: img = np.zeros((G.H, G.W, 4), np.float32); ov = True
             else: ov = False
@@ -419,7 +434,7 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
                 if ov:
                     a = np.asarray(el.im, np.float32) / 255; al = a[..., 3:4]
                     img[..., :3] = img[..., :3] * (1 - al) + a[..., :3] * al; img[..., 3:4] = img[..., 3:4] * (1 - al) + al
-                else: img = G.over(img, el.im)
+                else: img = G.over(img, el.im, inplace=True)
             els += [(el, "post") for el in front]
     if mode == "final" and img is not None:
         kind, e, after = trans_strength(TL, t)
@@ -436,24 +451,59 @@ def compose(TL, i, P=None, A=None, k=0, mode="final"):
 
 def _caption_front(TL, t, img, els):
     """captions over a frame with no presenter (B-roll, gaps): low in the safe zone; img None = a transparent overlay"""
-    ce = caption_el(TL, t, None)
+    ce = caption_el(TL, t, None, frame=img)
     if ce is None: return img, els
     if img is None:
         img = np.zeros((G.H, G.W, 4), np.float32); a = np.asarray(ce.im, np.float32) / 255; al = a[..., 3:4]
         img[..., :3] = a[..., :3] * al; img[..., 3:4] = al
-    else: img = G.over(img, ce.im)
+    else: img = G.over(img, ce.im, inplace=True)
     return img, els + [(ce, "post")]
+
+def _matched(TL, sid, k, P, A=None):
+    """the plate as the grade receives it: colour-matched to the reference shot (grade.shot_match), else exposure-balanced"""
+    if TL.match: return SM.apply(TL.match, sid, k, P, A)
+    g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
+    return np.clip(P * g, 0, 1) if np.any(g != 1) else P
 
 def aroll_frame(TL, s, k, t, P, A):
     """the graded, framed A-roll frame of segment s at plate frame k (what the A-roll branch shows, without roto,
     chest or captions) + its matte (float 0..1, framed the same way). Only computed for NEEDS_AROLL templates."""
     sid = s["id"]; cx, cy, fh = smooth_face(TL, sid, k)
-    g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
-    img = grade(np.clip(P * g, 0, 1) if np.any(g != 1) else P, A, (cx, cy), TL.S.get("grade"))
+    img = grade(_matched(TL, sid, k, P, A), A, (cx, cy), TL.S.get("grade"))
     z = TL.zoom.get(sid, 1.0) * (1 + TL.creep * clamp((t - s["t0"]) / max(.5, s["t1"] - s["t0"])))
     if TL.snap and TL.snap[0] <= t < TL.snap[1]: z = TL.snap[2]
     M = affine(z, cx, G.H if sid in TL.lift else cy - fh * .05, True)
     return warp(img, M, cv2.INTER_CUBIC), warp(A.astype(np.float32) / 255, M)
+
+def plate_lum(TL, s, ks):
+    """[(k, relative luminance HxW float32, subject matte HxW float 0..1)] of segment s at plate frames ks: the graded plate
+    as the A-roll branch shows it before the frame transform (plate px). Roto templates measure the wall behind them with it
+    (text_behind color: auto) and find free space beside the head (roto card placement). Decoded on demand; callers cache
+    what they decide from it, so every worker decides the same."""
+    import av
+    sid = s["id"]; n = max(1, int(s["n"])); ks = sorted(set(min(max(0, int(k)), n - 1) for k in ks))
+    if not ks: return []
+    def grab(path, fmt):
+        got = {}
+        with av.open(path) as c:
+            for j, fr in enumerate(c.decode(video=0)):
+                if j > ks[-1]: break
+                if j in ks: got[j] = fr.to_ndarray(format=fmt)
+        return got
+    P = grab(TL.pr.e("plate", f"{sid}.mkv"), "rgb48le")
+    A = grab(TL.pr.e("matte", f"{sid}.mkv"), "gray") if TL.matte_ok.get(sid, True) else {}
+    out = []
+    for k in ks:
+        if k not in P: continue
+        p_ = P[k].astype(np.float32) / 65535; a_ = A.get(k)
+        if a_ is None: a_ = np.zeros(p_.shape[:2], np.uint8)
+        if TL.proxy: p_ = cv2.resize(p_, TL.size, interpolation=cv2.INTER_AREA); a_ = cv2.resize(a_, TL.size, interpolation=cv2.INTER_AREA)
+        cx, cy, _ = smooth_face(TL, sid, k)
+        g = np.asarray(TL.gain.get(sid, 1.0), np.float32)
+        img = np.clip(grade(np.clip(p_ * g, 0, 1) if np.any(g != 1) else p_, a_, (cx, cy), TL.S.get("grade")), 0, 1)
+        lin = np.where(img <= .04045, img / 12.92, ((img + .055) / 1.055) ** 2.4)
+        out.append((k, (lin @ np.float32([.2126, .7152, .0722])).astype(np.float32), a_.astype(np.float32) / 255))
+    return out
 
 def smooth_face(TL, sid, k, r=6):
     """face centre smoothed over +-r frames (no punch-in shake, MOT-03)"""
@@ -467,36 +517,94 @@ def trans_strength(TL, t):
         if d and abs(t - tb) < d: return kind, 1 - abs(t - tb) / d, t >= tb
     return None, 0, False
 
+_GT20 = [0] * 21 + [255] * 235
+
+def _alpha_box(im):
+    """(box of alpha > 20 as inclusive (x0, y0, x1, y1), max alpha 0..255) or (None, max): PIL in C, else numpy"""
+    if isinstance(im, Image.Image) and im.mode == "RGBA":
+        b0 = im.getbbox()                                         # alpha > 0: everything else is on the clear canvas
+        if b0 is None: return None, 0.0
+        al = im.crop(b0).getchannel("A"); mx = al.getextrema()[1]
+        bb = al.point(_GT20).getbbox() if mx > 20 else None
+        return (None if bb is None else (float(b0[0] + bb[0]), float(b0[1] + bb[1]), float(b0[0] + bb[2] - 1), float(b0[1] + bb[3] - 1))), float(mx)
+    a = np.asarray(im)[..., 3]; ys, xs = np.where(a > 20)
+    if not len(xs): return None, float(a.max())
+    return (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())), float(a.max())
+
 def log_records(i, els, M):
     out = []
     for el in els:
         post = isinstance(el, tuple); el = el[0] if post else el
-        a = np.asarray(el.im)[..., 3]; ys, xs = np.where(a > 20)
-        if not len(xs): continue
-        x0, y0, x1, y1 = float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())
+        box, amax = _alpha_box(el.im)
+        if box is None: continue
+        x0, y0, x1, y1 = box
         if not post:     # element was drawn before the frame transform (roto / cutaway drift)
             x0, y0 = M[0, 0] * x0 + M[0, 2], M[1, 1] * y0 + M[1, 2]; x1, y1 = M[0, 0] * x1 + M[0, 2], M[1, 1] * y1 + M[1, 2]
-        out.append({"f": i, "id": el.id, "role": el.role, "bbox": [round(x0), round(y0), round(x1), round(y1)], "alpha": round(float(a.max()) / 255, 2),
-                    "text": el.text, "t_key": el.t_key, "asset": el.asset, "font": el.font})
+        out.append({"f": i, "id": el.id, "role": el.role, "bbox": [round(x0), round(y0), round(x1), round(y1)], "alpha": round(amax / 255, 2),
+                    "text": el.text, "t_key": el.t_key, "asset": el.asset, "font": el.font, **({"size": el.size} if getattr(el, "size", None) else {})})
     return out
 
 # ------------------------------------------------------------------ jobs
-def _decode(path, fmt):
-    import av
-    for f in av.open(path).decode(video=0): yield f.to_ndarray(format=fmt)
+def _decode(path, fmt, start=0):
+    """plate / matte frames from frame `start` on, converted to ndarrays. FFV1 plates are GOP-coded (keyframe every
+    12 frames): the decoder seeks to the keyframe at or before `start` and decodes forward, so a chunk of a segment
+    costs its own frames, not the whole segment before it; a container that cannot seek is decoded from frame 0."""
+    for f in _frames_from(path, start): yield f.to_ndarray(format=fmt)
 
-def _zeros(TL):
-    while True: yield np.zeros((G.H, G.W), np.uint8)
+def _frames_from(path, start=0):
+    """av.VideoFrame objects from frame index `start` on (frame index from the pts and the stream rate)"""
+    import av
+    c = av.open(path); vs = c.streams.video[0]
+    if start > 0:
+        rate = float(vs.average_rate or vs.guessed_rate or 0); tb = vs.time_base; st = vs.start_time or 0
+        idx = lambda f: round(float((f.pts - st) * tb) * rate)
+        ok, it, first = False, None, None
+        if rate > 0 and tb:
+            try:
+                c.seek(int(st + start / rate / tb), stream=vs, backward=True)      # the keyframe at or before `start`
+                it = c.decode(vs); first = next(it, None)
+                ok = first is not None and first.pts is not None and idx(first) <= start
+            except (av.error.FFmpegError, ValueError, TypeError):
+                ok = False
+        if ok:
+            if idx(first) == start: yield first
+            for f in it:
+                if idx(f) >= start: yield f
+            return
+        c.close(); c = av.open(path); vs = c.streams.video[0]          # cannot seek: decode from the start, skip to `start`
+        for j, f in enumerate(c.decode(vs)):
+            if j >= start: yield f
+        return
+    yield from c.decode(vs)
 
 def _write(TL, out_dir, i, img, logf):
     t = i / TL.FPS
-    if img.shape[2] == 4:
-        out = np.clip(img * 255 + .5, 0, 255).astype(np.uint8); cv2.imwrite(f"{out_dir}/{i:05d}.png", cv2.cvtColor(out, cv2.COLOR_RGBA2BGRA), [cv2.IMWRITE_PNG_COMPRESSION, 1]); return
+    if img.shape[2] == 4: _put(f"{out_dir}/{i:05d}.png", img, True, None); return
     c = TL.in_cut(t); s = TL.seg_at(i)
-    if (c and not c.get("broll")) or t >= TL.T_END or (not c and s is not None and s.get("kind") == "gap"):
-        img = img + np.random.default_rng(i).uniform(-.5, .5, img.shape) / 255   # dither the gradient stage only
+    dith = (c and not c.get("broll")) or t >= TL.T_END or (not c and s is not None and s.get("kind") == "gap")   # dither the gradient stage only
+    _put(f"{out_dir}/{i:05d}.png", img, False, i if dith else None)
+
+def _png(path, img, rgba, seed):
+    """float frame -> 8-bit PNG (runs on the writer thread: numpy, cv2 and the file write release the GIL)"""
+    if seed is not None: img = img + np.random.default_rng(seed).uniform(-.5, .5, img.shape) / 255
     out = np.clip(img * 255 + .5, 0, 255).astype(np.uint8)
-    cv2.imwrite(f"{out_dir}/{i:05d}.png", cv2.cvtColor(out, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_PNG_COMPRESSION, 1])
+    if not cv2.imwrite(path, cv2.cvtColor(out, cv2.COLOR_RGBA2BGRA if rgba else cv2.COLOR_RGB2BGR), [cv2.IMWRITE_PNG_COMPRESSION, 1]):
+        raise OSError(f"could not write {path} (disk full?)")
+
+_WRITER, _PENDING = None, []
+
+def _put(path, img, rgba, seed):
+    """quantise + PNG-encode + write a frame on a background thread while the next frame composes (same bytes as writing
+    it inline; at most 3 frames in flight). _flush() waits for them: a job returns only once its frames are on disk."""
+    global _WRITER
+    if _WRITER is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _WRITER = ThreadPoolExecutor(1, thread_name_prefix="cves-png")
+    _PENDING.append(_WRITER.submit(_png, path, img, rgba, seed))
+    while len(_PENDING) > 3: _PENDING.pop(0).result()
+
+def _flush():
+    while _PENDING: _PENDING.pop(0).result()
 
 _TL = None
 def _init(root, work=None, proxy=None):
@@ -511,32 +619,40 @@ def canvas_of_worker():
     return (G.W, G.H)
 
 def job_seg(sid, only, out_dir, mode):
-    """one segment, streamed: plate/matte decoded a frame at a time, element records written as they come (O(1) RAM in length)"""
+    """one segment (or a chunk of it), streamed: plate/matte decoded a frame at a time from the chunk's first frame,
+    converted only for frames that show the A-roll, element records written as they come (O(1) RAM in length)"""
     TL = _TL; s = next(x for x in TL.segs if x["id"] == sid)
     frames = set(range(s["f0"], s["f0"] + s["n"])) if only is None else {f for f in only if s["f0"] <= f < s["f0"] + s["n"]}
     if not frames: return 0
-    need = s.get("kind", "aroll") == "aroll" and (mode == "aroll" or any(not TL.in_cut(f / TL.FPS) or (TL.in_cut(f / TL.FPS) or {}).get("template") in NEEDS_AROLL for f in frames))
-    Pg = _decode(TL.pr.e("plate", f"{sid}.mkv"), "rgb48le") if need else None
-    Ag = (_decode(TL.pr.e("matte", f"{sid}.mkv"), "gray") if TL.matte_ok.get(sid, True) else _zeros(TL)) if need else None   # no matte: degrade (roto in front)
-    if need and TL.proxy:      # proxy: the full-size plate / matte, resized as it decodes (never re-ingested)
-        Pg = (cv2.resize(x, TL.size, interpolation=cv2.INTER_AREA) for x in Pg); Ag = (cv2.resize(x, TL.size, interpolation=cv2.INTER_AREA) for x in Ag)
-    last = max(frames) - s["f0"]
-    with open(os.path.join(out_dir, f"_log_{s['f0']:07d}_{sid}.jsonl"), "w", encoding="utf-8") as fh:
-        for k in range(last + 1):
-            P, A = (next(Pg), next(Ag)) if need else (None, None); i = s["f0"] + k
+    uses = lambda f: mode == "aroll" or not TL.in_cut(f / TL.FPS) or (TL.in_cut(f / TL.FPS) or {}).get("template") in NEEDS_AROLL
+    need = s.get("kind", "aroll") == "aroll" and any(uses(f) for f in frames)
+    first, last = min(frames) - s["f0"], max(frames) - s["f0"]
+    Pg = _frames_from(TL.pr.e("plate", f"{sid}.mkv"), first) if need else None
+    Ag = (_frames_from(TL.pr.e("matte", f"{sid}.mkv"), first) if TL.matte_ok.get(sid, True) else None) if need else None   # no matte: degrade (roto in front)
+    def arr(fr, fmt):
+        if fr is None: return np.zeros((G.H, G.W), np.uint8)
+        x = fr.to_ndarray(format=fmt)
+        return cv2.resize(x, TL.size, interpolation=cv2.INTER_AREA) if TL.proxy else x   # proxy: the full-size plate / matte, resized as it decodes
+    with open(os.path.join(out_dir, f"_log_{min(frames):07d}_{sid}.jsonl"), "w", encoding="utf-8") as fh:
+        for k in range(first, last + 1):
+            pf, af = (next(Pg), next(Ag) if Ag is not None else None) if need else (None, None); i = s["f0"] + k
             if i not in frames: continue
+            P, A = (arr(pf, "rgb48le"), arr(af, "gray")) if need and uses(i) else (None, None)
             img, r = compose(TL, i, P.astype(np.float32) / 65535 if P is not None else None, A, k, mode)
             if img is not None: _write(TL, out_dir, i, img, None)
             for x in r: fh.write(json.dumps(x) + "\n")
+    _flush()
     return len(frames)
 
 def job_tail(only, out_dir, mode):
     TL = _TL; fr = range(TL.A_FRAMES, TL.N) if only is None else [f for f in only if f >= TL.A_FRAMES]
-    with open(os.path.join(out_dir, f"_log_{TL.A_FRAMES:07d}_tail.jsonl"), "w", encoding="utf-8") as fh:
+    if not fr: return 0
+    with open(os.path.join(out_dir, f"_log_{min(fr):07d}_tail.jsonl"), "w", encoding="utf-8") as fh:
         for i in fr:
             img, r = compose(TL, i, mode=mode)
             if img is not None: _write(TL, out_dir, i, img, None)
             for x in r: fh.write(json.dumps(x) + "\n")
+    _flush()
     return len(fr)
 
 def media_refs(TL):
@@ -563,38 +679,101 @@ def prepare_media(pr, TL):
         except SystemExit: continue
         if p and os.path.isfile(p) and not _is_still(p): ING.sdr_source(p, TL.S, pr.e("conform"))
 
-def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None):
+def _chunks(TL, want, workers):
+    """[(segment id | None for the end card, [frames])]: every segment's wanted frames in contiguous chunks of about
+    1/4 of a worker's share (>= render.chunk_min frames), longest first. A whole segment per job left the pool waiting on
+    the longest shot; plates seek to a chunk's first frame (_frames_from), so a chunk costs only its own frames."""
+    per = max(int(TL.S.get("render.chunk_min", 24) or 24), -(-len(want) // max(1, workers * 4)))
+    out = []
+    for sid, lo, hi in [(s["id"], s["f0"], s["f0"] + s["n"]) for s in TL.segs] + [(None, TL.A_FRAMES, TL.N)]:
+        fr = sorted(f for f in want if lo <= f < hi)
+        runs, cur = [], []
+        for f in fr:
+            if cur and (f - cur[-1] > 12 or len(cur) >= per): runs.append(cur); cur = []      # a short gap is decoded through (GOP)
+            cur.append(f)
+        if cur: runs.append(cur)
+        out += [(sid, r) for r in runs]
+    return sorted(out, key=lambda j: -len(j[1]))
+
+LAST = {}          # what the last render() did: {"frames": rendered, "of": N, "cached": kept from the frame cache} (cves build prints it)
+
+def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None, cache=None, draft=False):
     """only: None (everything), a frame list, or an `--only` spec string (ids / ranges, see Timeline.frames_for).
     proxy: a canvas fraction (e.g. 0.5) for a fast preview render (treatments); timeline.json then records `proxy`.
+    cache: incremental render (rcache, default style `render.cache`): a full final render re-renders only the frames whose
+    inputs changed and rebuilds the element log from the kept frames' records; the result equals a full render.
+    draft: timeline.json records `draft: true` (`cves build --draft`; delivery refuses it).
     Streams: each worker decodes one segment a frame at a time and writes frames + element records straight to disk;
     nothing holds the timeline's frames or logs in RAM, so memory does not grow with the video's length."""
+    from . import rcache as RC
     out_dir = out_dir or pr.e("frames"); os.makedirs(out_dir, exist_ok=True)
     TL = Timeline(pr, proxy=proxy)    # also computes + caches exposure gains before forking
     if isinstance(only, str): only = TL.frames_for(only)
     for n in TL.craft_notes: print(f"craft: {n}")
     used, allowed = CR.budget(TL.E, TL.S, TL.N / TL.FPS)
     if used > allowed: print(f"craft: {used} craft moves (ramps, camera moves, match cuts, text behind) > creative.craft_per_30s budget {allowed}: restraint")
-    from . import motion as MOT; MOT.prerender(pr, TL)     # motion pieces (HTML) render their frames ONCE here, before the spawn pool: workers only read the cache
-    prepare_media(pr, TL)                                   # HDR B-roll / clips tonemapped to SDR once here, not raced by the workers
+    full = only is None and mode == "final"
+    index = full and (cache is True or RC.enabled(TL.S))          # keep a frame cache index for this frames folder
+    use_cache = index and cache is not False                       # ... and reuse the frames it vouches for (--no-cache: refresh only)
+    log_path = pr.e("elements.jsonl"); keys = kept = None
+    if index: keys = RC.frame_keys(TL, mode)
+    if use_cache:
+        have = RC.load(out_dir, log_path)
+        kept = {i for i in range(TL.N) if have.get(i) == keys[i]}
+        only = [i for i in range(TL.N) if i not in kept]
+        RC.save(out_dir, {i: keys[i] for i in kept}, log_path)      # invalidate first: a crash mid-render never leaves a stale key
+    elif full:
+        RC.save(out_dir, None, log_path)                             # every frame is rendered again: no key may outlive it
+    elif os.path.abspath(out_dir) == os.path.abspath(pr.e("frames")) and only is not None:
+        RC.drop(out_dir, only)                                       # --only rewrote these PNGs but not the element log
+    elif os.path.abspath(out_dir) == os.path.abspath(pr.e("frames")) and mode != "final":
+        RC.save(out_dir, None, log_path)
+    if only is None or only:
+        from . import motion as MOT; MOT.prerender(pr, TL)     # motion pieces (HTML) render their frames ONCE here, before the spawn pool: workers only read the cache
+        prepare_media(pr, TL)                                   # HDR B-roll / clips tonemapped to SDR once here, not raced by the workers
     for f in glob.glob(os.path.join(out_dir, "_log_*.jsonl")): os.remove(f)
-    want = None if only is None else set(only)
-    jobs = [(s["id"], None if want is None else sorted(f for f in range(s["f0"], s["f0"] + s["n"]) if f in want))
-            for s in sorted(TL.segs, key=lambda s: -s["n"])]
-    jobs = [(sid, fr) for sid, fr in jobs if fr is None or fr]
-    tail = None if want is None else sorted(f for f in want if f >= TL.A_FRAMES)
-    with Pool(max(1, min(workers or max(2, (os.cpu_count() or 4) - 1), len(jobs) + 1)), initializer=_init, initargs=(pr.root, getattr(pr, "work", None), proxy)) as pool:
-        res = [pool.apply_async(job_seg, (sid, fr, out_dir, mode)) for sid, fr in jobs]
-        if tail is None or tail: res.append(pool.apply_async(job_tail, (tail, out_dir, mode)))
-        n = sum(r.get() for r in res)
+    want = set(range(TL.N)) if only is None else set(only)
+    nw = max(1, workers or int(os.environ.get("CVES_RENDER_WORKERS", "0") or 0) or max(2, (os.cpu_count() or 4) - 1))   # env cap: parallel test runs on small CI runners
+    jobs = _chunks(TL, want, nw)
+    n = 0
+    if jobs:
+        with Pool(max(1, min(nw, len(jobs))), initializer=_init, initargs=(pr.root, getattr(pr, "work", None), proxy)) as pool:
+            res = [pool.apply_async(job_tail if sid is None else job_seg, ((fr,) if sid is None else (sid, fr)) + (out_dir, mode)) for sid, fr in jobs]
+            n = sum(r.get() for r in res)
     logs = sorted(glob.glob(os.path.join(out_dir, "_log_*.jsonl")))     # named by first frame: concatenation is in frame order
-    if only is None and mode == "final":
-        with open(pr.e("elements.jsonl"), "w", encoding="utf-8") as out:
+    LAST.clear(); LAST.update(frames=n, of=TL.N, cached=len(kept or ()))
+    if full:
+        for f in os.listdir(out_dir):                        # a shorter timeline: no stale frames past the end for the encoder
+            if f.endswith(".png") and f[:-4].isdigit() and int(f[:-4]) >= TL.N: os.remove(os.path.join(out_dir, f))
+        if use_cache:
+            old = RC.old_records(log_path, kept)
+            new = {}
             for f in logs:
                 with open(f, encoding="utf-8") as fh:
-                    for line in fh: out.write(line)
-        pr.save_json("timeline.json", {"spine": TL.spine, "fps": TL.FPS, "fps_rational": list(TL.fps_rational), "size": list(TL.size), "frames": TL.N, "a_frames": TL.A_FRAMES, "zoom": TL.zoom, "lift": sorted(TL.lift), "snap": TL.snap, "creep": TL.creep,
-                                       "cutaways": [dict({"id": c["id"], "start": c["start"], "end": c["end"], "template": c["template"]}, **({"broll": True} if c.get("broll") else {})) for c in TL.cuts],
-                                       "transitions": TL.trans, "exposure_gain": TL.gain, **({"proxy": list(TL.proxy)} if TL.proxy else {}),
-                                       "segments": [{k: s.get(k) for k in ("id", "in", "out", "f0", "n", "t0", "t1", "kind")} for s in TL.segs]})
+                    for line in fh: new.setdefault(json.loads(line)["f"], []).append(line)
+            body = "".join(l for i in range(TL.N) for l in (old.get(i) if i in kept else new.get(i, [])))
+            _write_if_changed(log_path, body, force=n > 0)
+        else:
+            with open(log_path, "w", encoding="utf-8") as out:
+                for f in logs:
+                    with open(f, encoding="utf-8") as fh:
+                        for line in fh: out.write(line)
+        tl = {"spine": TL.spine, "fps": TL.FPS, "fps_rational": list(TL.fps_rational), "size": list(TL.size), "frames": TL.N, "a_frames": TL.A_FRAMES, "zoom": TL.zoom, "lift": sorted(TL.lift), "snap": TL.snap, "creep": TL.creep,
+              "cutaways": [dict({"id": c["id"], "start": c["start"], "end": c["end"], "template": c["template"]}, **({"broll": True} if c.get("broll") else {})) for c in TL.cuts],
+              "transitions": TL.trans, "exposure_gain": TL.gain,
+              "shot_match": {"reference": (TL.pr.json("shot_match.json", {}) or {}).get("reference"), "shots": sorted(TL.match)} if TL.match else None, **({"proxy": list(TL.proxy)} if TL.proxy else {}),
+              **({"draft": True} if draft else {}),
+              "segments": [{k: s.get(k) for k in ("id", "in", "out", "f0", "n", "t0", "t1", "kind")} for s in TL.segs]}
+        _write_if_changed(pr.e("timeline.json"), json.dumps(tl, indent=1), force=n > 0 or not use_cache)
+        if index: RC.save(out_dir, {i: keys[i] for i in range(TL.N)}, log_path)
     for f in logs: os.remove(f)
     return n, TL.N
+
+def _write_if_changed(path, text, force=False):
+    """rewrite only when the content changed (or force): an untouched element log / timeline keeps its mtime, so caches
+    keyed on it (mix cue_sync) stay valid when nothing was re-rendered"""
+    if not force and os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            if fh.read() == text: return False
+    with open(path, "w", encoding="utf-8") as fh: fh.write(text)
+    return True

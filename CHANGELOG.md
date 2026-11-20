@@ -3,6 +3,186 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [0.5.0] - 2026-11-20
+
+### CI
+- Windows: CLI output is UTF-8, so `cves templates` no longer crashes printing ₹ on a cp1252 console.
+- Parallel test runs cap each worker's render pool, QC jobs and math-library threads (`CVES_RENDER_WORKERS`, `CVES_QC_JOBS`, `CVES_QC_WHISPER_JOBS`, `NUMBA/OMP/MKL_NUM_THREADS`): 4 xdist workers each starting a full render pool ran small CI runners out of memory and hung.
+- Jobs time out after 60 min and dump a traceback for any test over 10 min.
+- RF-AUD compares a copied audio stream's average bit rate within 2% (ffmpeg builds differ over a trim).
+- The Linux job runs on `ubuntu-24.04`: `ubuntu-latest` moved to Ubuntu 26.04, which Playwright 1.58 cannot install Chromium on.
+
+### Added (team)
+- **Team taste layer**: `team_taste:` in `~/.cves/config.yaml` (or `$CVES_TEAM_TASTE`) points every editor at one shared folder; `cves learn promote <id> --team` shares an approved lesson with the whole team (client scopes allowed, who/when recorded); merged between the repo and personal layers.
+### Changed (Claude token cost: quiet, compact output and leaner always-loaded docs)
+- **Quiet CLI by default** (`cves.out`). Run as a program, `cves` filters its stderr at the file-descriptor level, so
+  workers and subprocesses are covered: the duplicate libavdevice `objc[...] Class AVF... is implemented in both` lines,
+  OpenCV `[ WARN:...] global ...` lines (also `OPENCV_LOG_LEVEL=ERROR`, set before cv2 loads and inherited by workers)
+  and numba RuntimeWarnings are dropped; a worker's traceback is folded into one `worker error: <exception>` line. All of
+  it goes to `PROJECT/Edit/logs/cves.log` (else `~/.cves/logs/cves.log`; the previous run is `cves.log.prev`). An
+  exception prints one actionable line plus the log path instead of a traceback. `-v` / `--verbose` (or
+  `CVES_VERBOSE=1`) restores everything. Called with an argv (tests, other code), `cli.main` behaves as before.
+- **`cves build` / `cves qc` print a short summary**: counts, one line per FAIL (+ up to 2 detail lines), WARNs as
+  `id: reason` one-liners, the full report path. `Edit/QC-REPORT.txt` and `qc.json` are unchanged; `-v` prints the full
+  report; the `N FAIL` wording the plugin hook reads is kept. Demo build (4 FAIL, 11 WARN): 113 lines / 10.3 k chars -> 21 lines / 1.8 k chars.
+- **`cves templates`** prints one line per kind (7 lines instead of ~105); `--kinds` one line; `NAME` one template's
+  kind, doc, the params its code reads (with defaults) and its `docs/TEMPLATES.md` section; `-v` the old full list.
+- **`cves review build`** console: QC findings that only restate a QC line are grouped by gate id; it names the images to
+  read. `REVIEW.md` lists only what Claude must look at and decide: a **Look** list (images in read order), the findings
+  to judge (QC-only findings by id, detail in QC-REPORT.txt), facts in one line, sound in two, the rubric, the loop in
+  one line. New sheets `strips_N.jpg` (every flagged cut strip + `review.look_unflagged` (3) others, stacked to
+  `review.look_px` (1560 px, about one image read)) and `ends.jpg` (payoff over end card): the pack is read in about
+  4-5 image reads instead of one per cut. The per-cut `cuts/cut_NN.jpg`, `payoff.jpg`, `endcard.jpg` are still written.
+- **Leaner skill and command docs.** `plugin/skills/video-editor/SKILL.md` keeps every rule and step but moves reference
+  detail to on-demand `reference/*.md` (formats, treatments, motion, sound, viral, review-loop, learning, modes) that it
+  names per step; `plugin/commands/*.md` point to those instead of restating them (56.1 k -> 38.7 k chars).
+  **`knowledge-base/RULEBOOK-CORE.md`** (new) holds the hard rules and which `RULEBOOK.md` section to read at each step;
+  it is loaded every session instead of the full RULEBOOK, which is read per step, in full for a new client's first edit
+  and before any rule / gate / template change. `CREATIVE.md` is read before DIRECTION.md and the critique.
+
+### Added
+- `cves status [PROJECT] [--json]`: one screen with the stage reached, the last QC counts, open FAILs, the review round,
+  deliveries and the next command (read-only).
+- `--json` on `cves qc` (counts + every gate, details for FAIL / WARN), `cves review build` and `cves templates`.
+- Style keys `review.look_unflagged`, `review.look_px` (docs/STYLE.md).
+### Speed (same pixels)
+Benchmark (40 s 1080x1920 60 fps selfie ad, 2502 frames, 12 shots, 4 motion pieces, text behind, shot match, 87 QC
+gates; a shared, heavily loaded 10-core Mac, so wall times are noisy): full build 1724 s -> 407 s (render 1394 -> 215 s,
+mix 26 -> 12 s, encode 81 -> 59 s, QC 223 -> 118 s); a one-cutaway tweak rebuild re-renders 234 frames in 11-18 s and
+the build takes 159-230 s, most of it encode + QC; `--draft` takes 196 s cold (Chromium re-renders the motion pieces at
+half size once) and 47 s per iteration after a one-cutaway tweak. Every frame, the element log, the timeline, the QC
+result per gate and the master file (sha256) are identical to the old build's.
+- Not adopted: the RVM matte at half the frame rate + interpolation saves only ~25 % of the matte step on MPS (decode and
+  encode dominate) and is not identical (IoU min 0.98, edge alpha error up to 0.75 on moving edges), so prep is unchanged.
+- **Incremental render by default** (`cves.rcache`, ARCHITECTURE §6b). Every frame of a final render is keyed by a hash
+  of what decides it (engine code, visual style, canvas, its segment's plate / matte / faces / framing / colour match, the
+  cutaway over it, its transition state and caption events, roto / end-card entries, the media files); `cves build` and
+  `cves render` re-render only the frames whose key changed and rebuild `Edit/elements.jsonl` from the kept frames'
+  records. Frames, element log, timeline and the encoded master equal a full render's (tests/test_render_cache.py). A
+  sound / delivery-only change re-renders nothing and leaves the element log untouched (the mix's cue-sync cache stays
+  valid). `--no-cache` / style `render.cache: false` render everything. Index: `Edit/frames/_cache.json`.
+- **`cves build --draft`**: a half-size (`render.draft_scale`) render through the proxy path into `Edit/draft/` (own
+  frames, cache, mix, QC stamp), proxy encode tagged `comment=cves-draft`, fast QC. The final build is untouched;
+  `cves deliver` refuses a draft even with `--force-unchecked` (`deliver.is_draft`).
+- **Render hot paths, bit-identical output** (tests/test_render_speed.py checks each against the code it replaced):
+  `gfx.over` blends only the box of a layer's visible pixels (and in place where render owns the frame); the element log
+  finds boxes with PIL in C instead of `np.where` on full frames; motion pieces split into per-part crops
+  (`motion.split_boxes`) instead of one full-frame copy per part; the colour match shares one contiguous LUT index per
+  channel between the subject and wall passes and blends without temporaries; `look.grade` skips an identity tint and a
+  redundant copy; the legibility bed, caption shadow, caption composite, `faded()` and the `text_behind` push work on the
+  type's box (with the filters' full reach) instead of the whole frame.
+- **Mix**: the cue-sync pixel scan reads frames on a few threads and keeps the scan of every frame whose frame-cache keys
+  (and the timeline) did not change, so a tweak re-scans only round the re-rendered frames (benchmark mix 48 s -> 17 s
+  cold, 8 s cached); the voice loudness is measured once while the bed is levelled. `mix.wav` is byte-identical.
+- **Worker pool**: segments are split into chunks (`render.chunk_min`) so the pool no longer waits on the longest shot;
+  plates / mattes seek to a chunk's keyframe instead of decoding the shot from its start; frames under a cutaway skip the
+  plate's RGB conversion; PNGs are quantised, encoded and written on a background thread while the next frame composes.
+### Added (plan review)
+- **Edit plan review page** (`cves.planreview`, docs/PLAN-REVIEW.md). `EDIT-PLAN.html` keeps everything it showed and adds,
+  per shot, an Approve box (locks the shot), quick actions (Bigger / Smaller, Earlier / Later 0.25 s, Swap template with
+  only the templates valid for the slot, Remove, Fix caption) and a note; page level an overall note, Send to Claude,
+  Approve all (approval 2 with the date in `Edit/NOTES.md`) and Copy notes. Every shot maps to the `edit.yaml` entries it
+  came from (cutaway id, B-roll id, roto / chest segment, A-roll zoom, end card, captions).
+- `cves review-plan [--port N] [--no-open] [--keep]`: rebuilds a stale plan and serves `Moodboard/` on 127.0.0.1 only
+  (stdlib server; other hosts and origins rejected); Send writes `Edit/plan_notes.json` atomically. Opened as a file the
+  page is read-only with Copy notes.
+- `cves plan apply-notes [--dry-run] [--force]`: quick actions become exact `edit.yaml` edits (backup kept; comments and
+  layout kept by a verified text patch, else a re-dump), approved shots are locked in `Edit/plan_lock.json` (a locked entry
+  is refused without an unlock note), and `Edit/plan_notes.pending.md` lists only the free-text notes and what needs
+  Claude: the one file Claude reads per plan round.
+- `cves moodboard` re-renders only the shots changed since the last round (`Moodboard/plan_state.json`; `--full` renders
+  all) and badges them "changed since last round".
+### Changed (QC + tests speed, no check weakened)
+- **`cves qc` is several times faster with byte-identical results** (docs/QC.md, DECISIONS.md "QC speed"): the gate families
+  run side by side (extra gates in a worker process, ffmpeg / whisper on threads, the OpenCV picture pass streamed), one
+  ffmpeg split-graph decode serves blackdetect + COL-02 + the retention frames, plates decode per GOP while the master
+  decodes, hot loops are vectorised and whisper calls run 3 at a time. Report and `qc.json` are identical gate by gate.
+- **`Edit/qc_cache/`**: per-master (sha256) measurement cache shared by QC re-runs and `cves review` (picture / media
+  passes, the extra gates' frame measurements keyed by every input, review grey frames, earshot) plus whisper transcripts
+  keyed by the audio bytes. `cves build` then `cves qc` re-measures almost nothing. `CVES_QC_CACHE=off` turns it off.
+- `cves review build` runs earshot while the frames decode.
+- **Tests run in parallel**: `python -m pytest -n auto tests` (pytest-xdist 3.8.0, pinned in requirements.txt,
+  `engine[test]`, TOOLS-REGISTRY.md, checked by the doctor). The session demo builds are made once per run for all
+  workers under a file lock; heavy tests carry the `e2e` marker; CI runs `unit` and `e2e` jobs on macOS, Windows and Linux.
+
+### Added
+- **`cves qc --draft`** / `qc.run(pr, video, tier="draft")`: the cheap gates for iteration (no frame decode, faces,
+  whisper or retention pass). Writes `Edit/QC-DRAFT.txt` + `Edit/qc_draft.json` (`deliverable: false`), says DRAFT, and
+  can never stamp a master: delivery still needs the full QC. `fast=` keeps working. Full stamps record `tier`.
+- `tools/qc_parity.py`: compare two QC stamps gate by gate (status + every number in the summary).
+
+### Fixed (QC definitions from the first real job, thresholds unchanged)
+- **GFX-08** counts an element as static only within 1 px of its own settled position (the end of its slow run): an
+  outExpo tail creeping < 1 px/frame while 2-8 px from rest is no near miss (`m_list_build` rows on the real job).
+- **FRAME-03** compares the output's ring - wall step with the same step in the plate as the global grade shows it
+  (wall shot-match / exposure gain + `look.grade` without a matte, warped like the render): the tone curve cancels,
+  every matte operation still shows. The halo is min(absolute step, added step).
+
+### Fixed (first real job, integration)
+- Prep no longer reuses a stale plate / matte after a re-cut that keeps segment ids (render ran out of frames); legacy plates are adopted when their length matches.
+- FRAME-03 judges the halo the pipeline added (output vs the source plate at the same edge), not the room's own edges.
+- `cves qc --stage plan` validates like `cves build`; abutting cutaways within half a frame no longer error.
+- Motion pieces: stray edge pixels join the nearest part (no 1 px element with a jumping box, MOT-01).
+- `text_behind`: harmonised instances keep the harmonising fit's line layout (GFX-20).
+- `captions.fixes`: case- and punctuation-insensitive keys (`Alena: aligner` works).
+
+### Added
+- **Take alignment in `cves select`** (`cves.align`, docs/INGEST.md "Take alignment"). Long-form whisper word times drift
+  by 1-3 s around retakes and pauses, so clip edges picked from `raw_words.json` clipped words. Every `selects.yaml` clip
+  with `text:` is now re-timed: `story.align_passes` windows around the hand in/out are transcribed with whisper.cpp DTW
+  token times (cached in `Edit/align/`), the text is fuzzy-matched (numbers normalised: "300 plus" = "300+", "a hundred
+  percent" = "100%"), the passes are pooled (a pass that merged two takes is outvoted) and each edge snaps into the nearest
+  pause, never inside speech, with `story.align_pad_s`. A low score keeps the hand times and warns. One report line per clip;
+  `edl.json` clips record `aligned: {in, out, score, status, hand}`. Opt out per clip (`align: false`) or per style
+  (`story.align: false`). `cves select --align-only` prints the report alone.
+- **STORY-17 "every chosen word is heard"** (`cves qc --stage story`): each clip's own span of `voice_final.wav` is
+  transcribed separately (a whole-file pass skipped a sentence that was in the cut) and its word recall against `text:` must
+  reach `qc.words_recall_min` (0.85), and a clip whose first or last word is lost fails on its own (`qc.words_edges`); the missing words are listed per clip, and clips without `text:` are skipped and named.
+  QC-GATES.md: 184 rows (STORY-14 was already the loops gate).
+- **Named story structures**: style `grammar.structure: problem | offer | story | custom` (`cves.structure`). `problem` =
+  H P A PR O C (the old fixed order), `offer` = H M PR R C (M mechanism, R risk reversal), `story` = H S T PR C (S setup,
+  T turn); `grammar.beats` still overrides. The labels show in `cves story`, the moodboard / edit plan and `cves validate`
+  (a beat outside the structure warns, as does a clip without `text:`). Music `hook_beats` / `turn_beats` / `drop_beats`
+  now default per structure (offer: turn M, drop PR). STORY-13 runs only when the structure has a P beat; STORY-07 checks
+  the offer after the proof, or for `offer` the risk reversal after the proof.
+- New style keys `grammar.structure`, `story.align*` (7), `qc.words_recall_min`, `qc.words_edges`; `grammar.beats` and `music.hook_beats` /
+  `turn_beats` / `drop_beats` now default to null (= from the structure). `tools/make_demo.py` writes `text:` on every
+  clip; `tests/test_story.py`.
+
+### Changed
+- `/cves:story`, the `video-editor` skill, RULEBOOK §2 and CHECKLISTS §2: choose the structure in the brief, tag with its
+  beats, write `text:` on every clip, read the alignment report.
+### Fixed (first 60 fps client job: timing, audio and colour)
+- **SFX on their picture event at any frame rate (SND-07).** Templates quantised a cue to the frame of its visual event, but the sound file starts there: its onset comes 17-40 ms later (1-3 frames at 60 fps; under a frame at 30 fps, where the bug hid), and some cues carried 30 fps-tuned offsets (the snap's `-0.01 s`). After render, `mix` now moves every cue so that its measured onset (a riser: its peak) lands exactly on the nearest picture event within `sound.cue_sync_max_f` (6) frames of the time the template asked for: element entries / changes from the element log and cuts first, a strong pixel-change onset on a graphic frame (measured on the rendered frames, `sound.cue_sync_pixel_min`) only when no logged event is that close. This is the event list SND-07 judges (`qc.extra.visual_events`, shared now). Peak-placed cues (transition whooshes, automatic risers), media audio and `sync: false` cues are left alone; synced cues are not beat-nudged. Pixel events are cached in `Edit/cue_sync.json` with the render they belong to, so `cves qc` rebuilds the same cue list; `mix.json cue_sync` lists every move. `m_list_build`'s check / cross mark is now its own logged part that pops in with its stroke on the frame of its pop cue (it used to sit, unlogged, in its row).
+- **No 1-frame captions round cutaways (PLAT-06 / PLAT-07).** `captions.schedule()` (called by the Timeline) knows where the renderer hides captions (drawn cutaways, the roto snap, `captions.hide`, the end card) and resolves every visible fragment shorter than `captions.min_on_s` (0.83 s): a caption that would resume for a few frames after a cutaway moves its still-unspoken words into the next event when they fit the style limits and cross no sentence end, or is skipped when all its words were spoken under the cutaway; one that would flash just before a cutaway is held by the previous event. Words are never lost from what can be read. On the test ad: `caption@9.21` (1 frame) and `caption@30.95` (4 frames) are gone.
+- **Adaptive voice gate (SND-19).** The fixed ffmpeg `agate` (threshold 0.02) left the room between words at -49.7 dBFS. `cves.voicegate` replaces it at the end of the voice chain: per take it measures the room left between the words (10th percentile of a 10 ms voice-band envelope on the tightened voice) and the speech level (90th), sets the threshold between them and the depth that takes the room to `voice.gate.floor_target_db` (-72), and works as a downward expander (ratio 6, 8 ms look-ahead, 15 ms hold, 2 / 40 ms ramps in dB): tails fade, never chop; no pumping. DeepFilterNet stays the only denoiser; `voice_chain.json` records the step `adaptive_gate` (generative: false) with each take's measurements. Shared by the A-roll and voiceover spines (`ingest.polish_voice`). Test ad: p5 -49.7 -> -64.4 dBFS.
+- **Per-shot colour match (COL-06 / COL-07).** `cves.shotmatch` (style `grade.shot_match`, on by default) matches every A-roll shot to a reference shot (`hook`, `median` or a segment id) in linear light before the look: the subject gets a per-channel gain that maps its skin (the two cheek patches) onto the reference skin, the background one that maps its wall (matte background round the head) onto the reference wall, blended through the matte and never more than `shot_match_split_max` apart. Inside a shot `shot_match_drift` of the light drift is followed, smoothed over `shot_match_smooth_s` (a head turn is not chased). It supersedes `grade.exposure_match` while on. Cached in `Edit/shot_match.json`; `edit.yaml aroll.shot_match: false` turns it off for one video.
+- **The music clears every word (review masking).** After envelope ducking, `mix` measures the voice and the bed in 1-4 kHz over 0.4 s windows while a word is spoken (the review's measure, including ffmpeg's mono downmix) and trims the bed's speech band wherever the ratio is under `review.vmr_min_db` + `mix.vmr_margin_db` (8 dB), at most `mix.vmr_max_cut_db` (12), smoothed; the bed is then re-levelled and checked again. `mix.json vmr_guard` records it. Test ad: 11 % of speech windows under 6 dB (worst at 5.10 s) -> 0 %.
+
+### Added
+- Style keys `sound.cue_sync`, `cue_sync_max_f`, `cue_sync_pixel_min`; `captions.min_on_s`; `voice.gate.*` (new `voice:` section); `grade.shot_match`, `shot_match_reference`, `shot_match_strength`, `shot_match_drift`, `shot_match_smooth_s`, `shot_match_step_f`, `shot_match_gain_range`, `shot_match_split_max`; `mix.vmr_guard`, `vmr_band_hz`, `vmr_min_db`, `vmr_margin_db`, `vmr_max_cut_db`, `vmr_window_s`, `vmr_attack_ms`, `vmr_release_ms` (default.yaml, docs/STYLE.md); `edit.yaml aroll.shot_match`.
+- `tests/test_av_fixes.py` (synthetic media): cue onsets on their entry frame at 30 and 60 fps, caption fragments round a cutaway (skipped, merged, held), the adaptive gate on noise + tone in two rooms, the colour match on two shots with different white balance (+ black never lifted, drift followed, a glitch not chased), the vocal-to-music guard.
+- Decisions in knowledge-base/DECISIONS.md ("AV fixes from the first 60 fps job"); docs/SOUND.md §3 and §6, docs/INGEST.md "Voice chain", docs/CONTRACTS.md §3.
+### Fixed (graphics, found on the first client job: a 9:16 60 fps selfie ad)
+- **`text_behind` contrast (GFX-15).** New default `craft.behind.color: auto`: the template measures the graded plate behind its box over the hold (the person masked out, `render.plate_lum`) and uses the light or dark token (`craft.behind.light` / `dark`) that reaches the GFX-15 target; a failing `*accent*` becomes its darker (`accent_dark`, then mixed toward black) or lighter variant, and a soft bed is added when neither token reads (`craft.behind.auto_bed`). White type over a light beige wall reached 1.93-2.2:1.
+- **`text_behind` size (GFX-20).** Every instance without its own `size` uses one size per video, the smallest size any instance fits at (`craft.behind_size`), each fitted once at its shot's tightest zoom (`craft.seg_scale`), so it never re-fits mid-shot. "DENTIST?" and "100% REFUND" were 77 vs 94 px.
+- **`text_behind` shake (MOT-03).** The face track is smoothed with a zero-phase Gaussian whose sigma is in seconds (`craft.behind.smooth_s`, 0.2 s, replaces `smooth_frames`), over the whole segment track; the clamped path is smoothed again so the type no longer stops dead on the safe edge (that was the 5 px/f^2 kink). `craft.behind.track` default 0.6 -> 0.4 (subtle).
+- **Roto card entries (MOT-01).** `map_card`, `listing_card` and `top3_card` rise by whole raster pixels with per-frame steps that never grow, so the ease-out stays monotonic at any frame rate (at 60 fps half-pixel steps rounded to 2, 3, 1, 2).
+- **End card centring (GFX-08).** `gfx.draw_text` measures a centred line's ink with the font that really draws it on the supersampled layer (the 1x font's rounded advances put a headline up to 3 px off its button's axis). Applies to every ink-centred line.
+
+- **Caption accent words (GFX-15).** The caption bed is as dark as the darkest emphasis / highlight colour needs (it was sized for the white only: a blue `100%` on a maroon shirt read 1.95:1).
+- **QC measurement at 60 fps (thresholds unchanged).** GFX-08 needs an element still for ±0.05 s, not just between neighbouring frames (ease-out tails crept < 1 px a frame); GFX-15 / GFX-20 skip glyphs the person cuts when measuring type size, and GFX-20 compares the type size a template logs (`El(..., size=)`, `size` in elements.jsonl; `text_behind` logs it).
+- **`text_behind` exit** is a fade with a slight lift (the larger drift rounded into uneven steps at 60 fps, MOT-01).
+
+### Changed
+- **`end_card`** has its own layout (no longer the `cta` cutaway's): display type scaled from the canvas, the headline wrapped to two balanced lines when one does not fit, button / handle / optional `logo` / `qr` scaled with it, the block centred in the safe zone (shrinks to fit it), every element on one centre axis, at any canvas size. Golden frame `end_card.png` regenerated for it.
+- **Roto cards place themselves** in the free space beside or above the head (`roto.place: auto`, or a card's `place` param): from the subject matte over the slot, the largest scale (down to `roto.min_scale`) at which the presenter covers at most `roto.max_cover` of the card, on the brightest free wall. When nothing fits, the designed position stays and GFX-27 judges it.
+
+### Added
+- **QC gate GFX-27** (roto card hidden by the subject): mean share of a roto card's area covered by the subject matte over its hold; WARN above `roto.occlusion_warn` (0.40), FAIL above `roto.occlusion_fail` (0.65) (knowledge-base/DECISIONS.md). `cves review` turns it into a `roto_hidden` finding at the card's time. `cves qc` now measures 96 gates.
+- New style keys `craft.behind.smooth_s`, `light`, `dark`, `auto_bed` and the `roto:` section (default.yaml, docs/STYLE.md).
+- Tests on synthetic media: auto colour on a light and a dark wall, size harmonisation, the face-track smoothing at 60 fps, monotonic roto entries at 24 / 30 / 60 fps, free-space placement and GFX-27 (`tests/test_gfx_fixes.py`).
+
 ## [0.4.0] - 2026-11-19
 
 ### Added

@@ -20,7 +20,11 @@ Ducking (`duck_control()` + `apply_duck()`, `mix.duck_mode`):
             (`auto` = 1.25 x the measured syllable period, clamped to `mix.duck_release_range_ms`), look-ahead
             `sound.duck_lookahead_s`. Depth from the style: `sound.duck_voice_band_db` (250 Hz-5 kHz) and
             `sound.duck_other_db` (lows + highs), the same frequency split as before.
-  gate      the v0.3 fixed dips: a near-binary speech gate (100 ms |voice| average), 30 ms attack, 400 ms release."""
+  gate      the v0.3 fixed dips: a near-binary speech gate (100 ms |voice| average), 30 ms attack, 400 ms release.
+
+Cue sync (`sync_cues()`, from mix._finalize): after render, every cue's onset (a riser: its peak) lands exactly on its
+logged picture event (SND-07 at any frame rate). Vocal-to-music guard (`vmr_guard()`, from mix): the bed's speech band is
+trimmed wherever a word would not clear it by the review's limit (docs/SOUND.md §3, §6)."""
 import numpy as np
 
 IMPACT_FAMILY = ("lowhit", "boom", "impact", "hit")
@@ -52,6 +56,116 @@ def onset_offset(path, trim=None):
         env = np.sqrt(np.convolve(y ** 2, np.ones(480) / 480, "same")) if len(y) else np.zeros(1)
         _ONSET[key] = float(np.argmax(env >= .1 * (env.max() + 1e-12))) / 48000
     return _ONSET[key]
+
+# ------------------------------------------------------------------ cue sync (SND-07 at any frame rate)
+def _sig(pr):
+    """identity of the render the cue sync was measured on (element log + timeline)"""
+    import os
+    out = []
+    for f in ("elements.jsonl", "timeline.json"):
+        p = pr.e(f)
+        if not os.path.exists(p): return None
+        st = os.stat(p); out.append([f, st.st_size, st.st_mtime_ns])
+    return out
+
+def _file_sha(path):
+    import hashlib, os
+    if not os.path.exists(path): return None
+    with open(path, "rb") as fh: return hashlib.sha256(fh.read()).hexdigest()
+
+def _low_frames(pr, frames, size):
+    """quarter-res full-range BT.709 luma of rendered frames (Edit/frames/NNNNN.png): what the SND-07 gate decodes from the master (PyAV gray).
+    Read and reduced on a few threads (cv2 and numpy release the GIL): the same values, a fraction of the wait."""
+    import os, cv2
+    from concurrent.futures import ThreadPoolExecutor
+    def one(f):
+        p = pr.e("frames", f"{f:05d}.png")
+        if not os.path.exists(p): return f, None
+        im = cv2.imread(p, cv2.IMREAD_COLOR)
+        if im is None: return f, None
+        y = im[..., 2] * .2126 + im[..., 1] * .7152 + im[..., 0] * .0722
+        return f, cv2.resize(y.astype(np.float32), size, interpolation=cv2.INTER_AREA).round().astype(np.uint8)
+    frames = list(frames)
+    with ThreadPoolExecutor(max(1, min(6, len(frames), (os.cpu_count() or 2) - 1))) as ex:
+        return {f: y for f, y in ex.map(one, frames) if y is not None}
+
+def sync_cues(TL, cues, log=None):
+    """snap every cue's audible anchor onto the picture event it belongs to, exactly, at any frame rate (SND-07).
+
+    A template quantises a cue to the frame of its visual event, but the sound file starts there: its onset (or a riser's
+    peak) comes 10-40 ms later, which is under a frame at 30 fps and 1-3 frames at 60 fps, and a few templates time a cue to
+    a drawn state that the element log never records (a check that draws inside its row). After render, the picture
+    events are known: the element log's entries, cuts / transitions / the snap, logged bbox changes and pixel-change onsets
+    on graphic frames (the same list SND-07 judges, qc.extra.visual_events). Each cue moves so that its measured onset
+    (risers: their peak) lands exactly on the nearest event within `sound.cue_sync_max_f` frames of the time the template
+    asked for: a logged element entry / change or a cut first; a pixel onset only when none is that close and only a strong
+    one (>= `sound.cue_sync_pixel_min` quarter-res px, so it survives the encode the gate decodes). A cue with no event
+    that close keeps its time. Cues placed by their peak (`peak_at`: transition whooshes,
+    automatic risers), media audio and `sync: false` cues are left alone. The pixel events are measured once on the
+    rendered frames and cached in Edit/cue_sync.json with the render they belong to, so `cves qc` rebuilds the same list."""
+    import os, json
+    S = TL.S
+    if not _on(S.get("sound.cue_sync", True)) or not cues: return cues
+    pr = TL.pr; sig = _sig(pr)
+    if sig is None: return cues                       # not rendered yet: nothing to sync to
+    from .qc import extra as X
+    from .mix import sfx_bank, peak_offset
+    cx = X.Ctx(pr, None); FPS = float(cx.FPS); mx = float(S.get("sound.cue_sync_max_f", 6)); find = sfx_bank(TL)
+    ev = sorted(set((round(float(t), 6), lab) for t, lab in X.visual_events(cx)))
+    cf = pr.e("cue_sync.json"); cache = {}
+    if os.path.exists(cf):
+        try: cache = json.load(open(cf, encoding="utf-8"))
+        except ValueError: cache = {}
+    pmin = int(S.get("sound.cue_sync_pixel_min", 40))
+    # a pixel event at frame f is a function of the rendered frames f-2..f and of the timeline (which frames are A-roll /
+    # in a transition): after an incremental render, the scan of every frame whose three frame-cache keys (cves.rcache) and
+    # timeline are unchanged is still valid, so only the windows round re-rendered frames are scanned again
+    from . import rcache as RC
+    fk = RC.load(pr.e("frames"), pr.e("elements.jsonl")); tl_sha = _file_sha(pr.e("timeline.json"))
+    if cache.get("sig") != sig or cache.get("min_px") != pmin:
+        old = cache; cache = {"sig": sig, "min_px": pmin, "scanned": [], "pixel": [], "tl": tl_sha, "keys": {}}
+        ok_keys = old.get("keys") or {}
+        if fk and ok_keys and old.get("min_px") == pmin and old.get("tl") == tl_sha:
+            same = lambda f: all(g < 0 or (fk.get(g) is not None and ok_keys.get(str(g)) == fk.get(g)) for g in (f - 2, f - 1, f))
+            keep = {f for f in old.get("scanned", []) if same(f)}
+            cache["scanned"] = sorted(keep); cache["pixel"] = [f for f in old.get("pixel", []) if f in keep]
+    cache["tl"] = tl_sha
+    todo = []
+    for t, name, gain, kw in cues:
+        if name.startswith("asset:") or kw.get("peak_at") is not None or kw.get("sync") is False: continue
+        k = int(round(float(t) * FPS)); todo.append((k - int(mx) - 2, k + int(mx) + 2))
+    scanned, px, dirty = set(cache["scanned"]), set(cache["pixel"]), False
+    for lo, hi in todo:                                   # each window: 2 warm-up frames so a change carries its history
+        rep = [f for f in range(max(1, lo), min(cx.N, hi + 1)) if f not in scanned]
+        if not rep: continue
+        low = _low_frames(pr, range(max(0, rep[0] - 2), rep[-1] + 1), X.LOW)
+        if not low: continue
+        px |= set(X.pixel_events(cx, low, frames=set(rep), min_px=pmin)); scanned |= {f for f in rep if f in low}; dirty = True
+    if dirty or cache.get("keys") is None or (fk and not cache.get("keys")):
+        dirty = True
+        cache.update(scanned=sorted(scanned), pixel=sorted(px),
+                     keys={str(g): fk[g] for f in scanned for g in (f - 2, f - 1, f) if g in fk})
+        try:
+            with open(cf, "w", encoding="utf-8") as fh: json.dump(cache, fh)
+        except OSError: pass
+    pev = [(f / FPS, f"pixel change on f{f}") for f in cache["pixel"]]
+    def nearest(E, ref):
+        if not E: return None
+        j = min(range(len(E)), key=lambda i: abs(E[i][0] - ref))
+        return E[j] if abs(E[j][0] - ref) * FPS <= mx + 1e-6 else None
+    out = []
+    for t, name, gain, kw in cues:
+        if name.startswith("asset:") or kw.get("peak_at") is not None or kw.get("sync") is False:
+            out.append((t, name, gain, kw)); continue
+        path = find(name); riser = "riser" in name
+        a = peak_offset(TL, name, kw) if riser else onset_offset(path, kw.get("trim"))
+        ref = float(t) + (a if riser else 0.0)        # the time the template meant: the file start (a riser: its peak)
+        e = nearest(ev, ref) or nearest(pev, ref)     # a logged element / cut first; a strong pixel onset only without one
+        if e is None: out.append((t, name, gain, kw)); continue
+        nt = float(e[0]) - a; kw = dict(kw, synced=e[1])
+        if log is not None: log.append({"name": name, "from": round(float(t), 4), "to": round(nt, 4), "event": e[1], "anchor_ms": round(a * 1000, 1)})
+        out.append((nt, name, gain, kw))
+    return out
 
 def _nearest(ev, t, tol):
     if not ev: return None
@@ -187,3 +301,82 @@ def apply_duck(y, duck, S, sr):
     lo = sosfiltfilt(butter(4, 250, "low", fs=sr, output="sos"), y, axis=0); hi = sosfiltfilt(butter(4, 5000, "high", fs=sr, output="sos"), y, axis=0)
     g_o = (10 ** (float(S.get("sound.duck_other_db", -3)) / 20)) ** duck; g_v = (10 ** (float(S.get("sound.duck_voice_band_db", -8)) / 20)) ** duck
     return (lo + hi) * g_o[:, None] + (y - lo - hi) * g_v[:, None]
+
+
+# ------------------------------------------------------------------ vocal-to-music guarantee (the review's masking check)
+def _band_power(x, sr, lo, hi, win_s, hop_s, rate=16000):
+    """power of x (mono) in [lo, hi] Hz per hop: Hann-windowed FFT frames of win_s seconds centred every hop_s, at 16 kHz
+    (the measure `cves review` uses for its vocal-to-music ratio, so the guard and the review agree)"""
+    from scipy.signal import resample_poly
+    from math import gcd
+    x = np.asarray(x, np.float64)
+    if sr != rate: g = gcd(int(sr), rate); x = resample_poly(x, rate // g, int(sr) // g)
+    win, hop = int(win_s * rate), max(1, int(hop_s * rate)); hann = np.hanning(win)
+    fr = np.fft.rfftfreq(win, 1 / rate); band = (fr >= lo) & (fr <= hi)
+    xp = np.pad(x, (win // 2, win // 2)); n = len(x) // hop + 1; out = np.empty(n)
+    for a in range(0, n, 256):                     # chunks of frames: bounded memory on long videos
+        ks = np.arange(a, min(n, a + 256)) * hop
+        F = np.abs(np.fft.rfft(np.stack([xp[k:k + win] for k in ks]) * hann, axis=1)) ** 2
+        out[a:a + len(ks)] = F[:, band].sum(1)
+    return out
+
+
+def _fit_len(x, n):
+    return x[:n] if len(x) >= n else np.pad(x, (0, n - len(x)), mode="edge")
+
+def vmr_guard(vo, mus, sr, S, words=None, log=None):
+    """music bed (N, ch) -> the bed with its speech band trimmed wherever the voice would not clear it.
+
+    Envelope ducking sets the depth from the voice's own level, so a quiet word over a busy, bright bar can still sit
+    under the music in the 1-4 kHz band where consonants live (`cves review`: vocal-to-music ratio under
+    `review.vmr_min_db` in more than `review.mask_share` of speech windows). Here the voice and the ducked bed are
+    measured in that band (`mix.vmr_band_hz`) over `mix.vmr_window_s` Hann windows while a word is spoken (words.json,
+    else the voice envelope); wherever the ratio is under `mix.vmr_min_db` (default: the review's limit plus
+    `mix.vmr_margin_db`) the bed's band is cut by the shortfall, at most `mix.vmr_max_cut_db`, held over the window and
+    smoothed (`mix.vmr_attack_ms` / `mix.vmr_release_ms`). Only that band of the music moves, only when needed: a
+    dynamic, band-aware bed trim. Two passes (the first cut changes the next measurement). Returns (bed, info)."""
+    from scipy.signal import butter, sosfiltfilt
+    from scipy.ndimage import maximum_filter1d
+    if not _on(S.get("mix.vmr_guard", True)): return mus, {"vmr_guard": "off"}
+    lo, hi = [float(x) for x in (S.get("mix.vmr_band_hz") or [1000, 4000])]
+    target = float(S.get("mix.vmr_min_db") if S.get("mix.vmr_min_db") is not None else float(S.get("review.vmr_min_db", 6.0)) + float(S.get("mix.vmr_margin_db", 2.0)))
+    mx = float(S.get("mix.vmr_max_cut_db", 12.0)); win = int(float(S.get("mix.vmr_window_s", 0.4)) * sr); hop = max(1, int(.01 * sr))
+    dm = lambda x: x.sum(1) / np.sqrt(x.shape[1]) if x.ndim > 1 else x      # ffmpeg's -ac 1 downmix (what `cves review` measures)
+    N = len(vo); mono = dm(mus)
+    if N < win or not np.abs(mono).max() > 0: return mus, {"vmr_guard": "nothing to guard"}
+    t = np.arange(0, N // hop + 1) * hop / sr
+    if words:
+        sp = np.zeros(len(t), bool)
+        for w in words:
+            a, b = float(w[0]) - .05, float(w[1]) + .05; sp[(t >= a) & (t <= b)] = True
+    else:
+        e = _fit_len(10 * np.log10(_band_power(vo, sr, 250, 5000, .02, hop / sr) + 1e-14), len(t)); sp = e > e.max() - 30
+    ws = win / sr; vdb = _fit_len(10 * np.log10(_band_power(vo, sr, lo, hi, ws, hop / sr) + 1e-14), len(t))
+    sp &= vdb > np.median(vdb[sp]) - 20 if sp.any() else sp                       # the gaps between words do not count
+    bandsos = butter(4, [max(20.0, lo * .8), min(sr / 2 * .95, hi * 1.25)], "band", fs=sr, output="sos")
+    y = np.asarray(mus, np.float64); cut_db = np.zeros(len(t)); info = {"target_db": round(target, 1), "band_hz": [lo, hi]}
+    for it in range(2):
+        m = dm(y)
+        mdb = _fit_len(10 * np.log10(_band_power(m, sr, lo, hi, ws, hop / sr) + 1e-14), len(t))
+        short = np.where(sp, np.clip(target - (vdb - mdb), 0, mx), 0.0)
+        if it == 0: info["share_under_before"] = round(float((short[sp] > 2.0).mean()) if sp.any() else 0.0, 3)
+        if not short.any(): break
+        need = maximum_filter1d(short, size=max(1, win // hop), mode="nearest")      # the whole window clears, not its centre
+        cut_db = np.minimum(mx, cut_db + need)
+        att, rel = float(S.get("mix.vmr_attack_ms", 30)) / 1000, float(S.get("mix.vmr_release_ms", 250)) / 1000
+        aa, ar = 1 - np.exp(-hop / (att * sr)), 1 - np.exp(-hop / (rel * sr))
+        sm = np.zeros(len(cut_db)); lv = 0.0
+        for k in range(len(cut_db) - 1, -1, -1):        # backwards first: the cut is in place before the word (look-ahead)
+            x = cut_db[k]; lv += (x - lv) * (aa if x > lv else ar); sm[k] = lv
+        lv = 0.0
+        for k in range(len(sm)):
+            x = sm[k]; lv += (x - lv) * (aa if x > lv else ar); sm[k] = max(sm[k], lv)
+        g = 10 ** (-np.interp(np.arange(N) / hop, np.arange(len(sm)), sm) / 20)
+        band = sosfiltfilt(bandsos, np.asarray(mus, np.float64), axis=0)
+        y = np.asarray(mus, np.float64) - band * (1 - (g[:, None] if y.ndim > 1 else g))
+    m = dm(y)
+    mdb = _fit_len(10 * np.log10(_band_power(m, sr, lo, hi, ws, hop / sr) + 1e-14), len(t)); r = (vdb - mdb)[sp]
+    info.update(share_under_after=round(float((r < target - 2.0).mean()) if len(r) else 0.0, 3), max_cut_db=round(float(cut_db.max()), 1),
+                trimmed_s=round(float((cut_db > .5).sum() * hop / sr), 2))
+    if log is not None: log.append(info)
+    return y.astype(np.float32), info

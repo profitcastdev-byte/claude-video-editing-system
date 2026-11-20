@@ -59,8 +59,13 @@ def audio_args(S):
     return ["-c:a", str(A.get("codec", "aac")), "-ar", str(A.get("sample_rate", 48000)), "-b:a", str(A.get("bitrate", "256k"))]
 
 
-def encode(pr, out=None, frames="frames", audio=None, proxy=False):
-    """proxy=True: fast preview video settings (proxy_video_args); the full-quality path is unchanged"""
+DRAFT_TAG = "cves-draft"          # container comment of a `cves build --draft` master: delivery refuses it
+
+
+def encode(pr, out=None, frames="frames", audio=None, proxy=False, draft=False):
+    """proxy=True: fast preview video settings (proxy_video_args); the full-quality path is unchanged.
+    draft=True: proxy settings + the container tagged `comment=cves-draft` (deliver.is_draft refuses it)"""
+    proxy = proxy or draft
     S = STY.load(pr); fr, (w, h) = stream_params(pr)
     title = (pr.edit.get("project", {}) or {}).get("title", "edit").replace(" ", "_")
     out = out or pr.p("Export", f"{title}.mp4"); os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
@@ -74,5 +79,5 @@ def encode(pr, out=None, frames="frames", audio=None, proxy=False):
         raise SystemExit(f"frames are {im.shape[1]}x{im.shape[0]} but timeline.json says {w}x{h}: re-run `cves render`")
     subprocess.run([C.get("ffmpeg"), "-v", "error", "-y", "-framerate", fr, "-i", src, "-i", mixf,
                     "-map", "0:v", "-map", "1:a"] + (proxy_video_args(S) if proxy else video_args(S))
-                   + audio_args(S) + ["-shortest", out], check=True)
+                   + audio_args(S) + (["-metadata", f"comment={DRAFT_TAG}"] if draft else []) + ["-shortest", out], check=True)
     return out

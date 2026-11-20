@@ -165,7 +165,7 @@ def main():
     clips, segs, faces = [], [], {}
     for cid, beat, text in script:
         ws = [w for w in words if w[3] == cid]; t0 = max(0, ws[0][0] - .1); t1 = ws[-1][1] + .1
-        clips.append({"id": cid, "in": round(t0, 3), "out": round(t1, 3), "beat": beat})
+        clips.append({"id": cid, "in": round(t0, 3), "out": round(t1, 3), "beat": beat, "text": text})
     # continuous cut times: segment k runs from clip k start (or previous end) to clip k+1 start
     bounds = [0.0] + [c["in"] for c in clips[1:]] + [round(dur, 3)]
     fr = lambda t: int(round(t * fps))

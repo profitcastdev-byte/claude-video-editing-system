@@ -5,22 +5,14 @@ allowed-tools: Bash, Read, Glob, Grep
 ---
 
 # /cves:install: set up the system
+Options: `$ARGUMENTS`. `CVES_ROOT` per skill §0; no clone → ask where (suggest `~/claude-video-editing-system`), clone, suggest `CVES_HOME`.
 
-Options: `$ARGUMENTS`. Follow the `video-editor` skill §0 to find `CVES_ROOT`. If there's no clone, ask the user where to clone the repo (suggest `~/claude-video-editing-system`), clone it, and suggest setting `CVES_HOME`.
+1. `CVES_ROOT/INSTALL.md` is the source of truth: its steps for this OS, in order, nothing improvised. macOS `setup/install_mac.sh` (Python 3.12 venv `~/.cves/venv`, models `~/.cves/models`, RVM on MPS); Windows `setup/install_windows.ps1` (venv `%USERPROFILE%\.cves\venv`; CUDA with an NVIDIA GPU else CPU; ffmpeg + whisper.cpp release binaries).
+2. **Stop** before each download / system-wide install (Homebrew, winget, model weights, Resolve, Kdenlive): what, from where, rough size; wait for OK. The user types any password / `sudo`.
+3. Connectors / MCP (Resolve bridge, Kdenlive MCP, ElevenLabs, Magnific, Openverse): `TOOLS-REGISTRY.md`, only those wanted; the user enters API keys.
+4. Installers run `setup/install_skills.py` (plugins superpowers, lemo-opuscar; skills effects, motionmaxxing, three.js, hypit, Remotion; `setup/skills.json`). Report the manual ones (hadi-got-motion: paid per-person licence; real-sfx, real-sound, business-motion-film, earshot: source from the repo maintainer); tell the user to restart Claude Code.
+5. `cves doctor` (or `python setup/doctor.py` in the venv): all OK; fix FAILs per INSTALL.md.
 
-## Run
-1. Read `CVES_ROOT/INSTALL.md`. It is the source of truth. Follow its steps for this OS, in order. Don't improvise steps that aren't in it.
-   - macOS: `setup/install_mac.sh` (Python 3.12 venv in `~/.cves/venv`, models in `~/.cves/models`, RVM on MPS).
-   - Windows: `setup/install_windows.ps1` (venv in `%USERPROFILE%\.cves\venv`; CUDA if there's an NVIDIA GPU, otherwise CPU; ffmpeg and whisper.cpp release binaries).
-2. Before each step that downloads or installs something system-wide (Homebrew, winget, model weights, apps such as DaVinci Resolve or Kdenlive), say what it is, where it comes from and roughly how big it is, and get the user's OK. The user enters any password or `sudo` prompt themselves.
-3. Connectors and MCP servers (Resolve bridge, Kdenlive MCP, ElevenLabs, Magnific, Openverse) are listed in `TOOLS-REGISTRY.md`. Set up only the ones the user wants, and leave API keys for the user to enter.
-4. The installers also run `setup/install_skills.py`: Claude Code plugins (superpowers, lemo-opuscar) and skills (effects, motionmaxxing, three.js, hypit, Remotion) from `setup/skills.json`. Report the manual ones it lists (hadi-got-motion is a paid per-person licence; real-sfx, real-sound, business-motion-film and the earshot skill need their source from the repo maintainer). Tell the user to restart Claude Code afterwards.
-5. Run the doctor: `cves doctor` (or `python setup/doctor.py` inside the venv). Every line must be OK. Fix the FAILs by following INSTALL.md.
+`--check-only`: step 4 only.
 
-With `--check-only`, run only step 4.
-
-## Show the user
-What was installed, the doctor output summary, and anything left for them to do (a key to enter, an app to open, the Resolve bridge to enable).
-
-## Stop?
-Wait for the user's OK before each download or system-wide install, and for any password or key.
+**Show:** what was installed, doctor summary, what's left for the user (a key, an app, the Resolve bridge).

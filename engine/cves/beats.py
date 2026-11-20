@@ -31,6 +31,9 @@ def cfg(pr, S=None, mode=None):
     base = dict(S.get("music") or {})
     E = (pr.edit.get("music") or {}) if pr is not None else {}
     c = {**base, **{k: v for k, v in E.items() if v is not None}}
+    from . import structure as STR                  # hook / turn / drop beats left null follow grammar.structure
+    for k, v in STR.music_beats(S).items():
+        if not c.get(k): c[k] = v
     if mode: c["sync"] = mode
     return c
 

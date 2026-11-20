@@ -30,6 +30,16 @@ def master_path(pr, video=None):
     if not vids: raise SystemExit("no Export/*.mp4 master: run `cves encode` (or `cves build`) first, or pass --video")
     return vids[-1]
 
+def is_draft(pr, master):
+    """True for a `cves build --draft` render (half size, proxy encode): inside Edit/draft/, or tagged comment=cves-draft"""
+    from .encode import DRAFT_TAG
+    m = os.path.abspath(master); d = os.path.abspath(pr.e("draft"))
+    try:
+        if os.path.commonpath([m, d]) == d: return True
+    except ValueError: pass                 # another drive (Windows)
+    r = subprocess.run([C.get("ffprobe"), "-v", "error", "-show_entries", "format_tags=comment", "-of", "default=nw=1:nk=1", m], capture_output=True, text=True)
+    return DRAFT_TAG in (r.stdout or "")
+
 def check_stamp(pr, master):
     """-> (stamp or None, master sha256, [problems]). No problems = deliverable."""
     st = pr.json("qc.json"); sha = sha256(master); probs = []
@@ -202,6 +212,8 @@ def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, kee
     from .encode import stream_params
     S = STY.load(pr); E = pr.edit
     master = master_path(pr, video)
+    if is_draft(pr, master):            # never, not even with --force-unchecked: a draft is half size with a proxy encode
+        raise SystemExit(f"delivery refused: {os.path.basename(master)} is a draft render (`cves build --draft`): run `cves build` for the full-quality master")
     stamp, msha, probs = check_stamp(pr, master)
     if probs and not force_unchecked:
         raise SystemExit("delivery refused: " + " | ".join(probs) + "   (override only with --force-unchecked, which is written into the manifest)")

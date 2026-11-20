@@ -386,17 +386,34 @@ def part_pad(size):
 
 def split_alpha(a, parts, pad):
     """partition a frame (alpha HxW, or RGBA HxWx4) into the layers of its parts + the rest ('' id), without overlap:
-    each pixel goes to the smallest visible part whose padded box holds it, the rest to ''. Compositing the
-    layers in any order gives the frame back exactly. Yields (part id, masked array)."""
+    each pixel goes to the smallest visible part whose padded box holds it; stray pixels just outside a padded box (the
+    anti-aliased row between two stacked blocks) go to the nearest part within another `pad`, so they never become a
+    1 px 'rest' element whose box jumps as the blocks move (MOT-01 on the first real job); the true rest goes to ''.
+    Compositing the layers in any order gives the frame back exactly. Yields (part id, masked array)."""
     import numpy as np
-    H, W = a.shape[:2]; claimed = np.zeros((H, W), bool)
+    H, W = a.shape[:2]; claimed = np.zeros((H, W), bool); masks = []
     for p in sorted(parts or [], key=lambda p: (p[4] - p[2]) * (p[5] - p[3])):     # smallest first: nested parts claim their box
         pid, x0, y0, x1, y1, o = p[0], p[2], p[3], p[4], p[5], p[6]
         if o < .02: continue
         x0, y0, x1, y1 = max(0, x0 - pad), max(0, y0 - pad), min(W, x1 + pad), min(H, y1 + pad)
         if x1 <= x0 or y1 <= y0: continue
         m = np.zeros((H, W), bool); m[y0:y1, x0:x1] = True; m &= ~claimed; claimed |= m
-        if not m.any(): continue
+        if m.any(): masks.append((pid, m, (x0, y0, x1, y1)))
+    alpha = a[..., 3] if a.ndim == 3 else a
+    stray = (alpha > 0) & ~claimed
+    if masks and stray.any():
+        r = max(1, int(pad))
+        for pid, m, (x0, y0, x1, y1) in masks:                                       # same order: smallest part first
+            g = np.zeros((H, W), bool); g[max(0, y0 - r):min(H, y1 + r), max(0, x0 - r):min(W, x1 + r)] = True
+            take = stray & g
+            if take.any(): m |= take; claimed |= take; stray &= ~take
+    if masks and stray.any():            # a thin sliver further out (a glyph tail mid-rise): never its own element
+        ys, xs = np.nonzero(stray)
+        if ys.max() - ys.min() < 8 or xs.max() - xs.min() < 8:
+            cy, cx = ys.mean(), xs.mean()
+            pid, m, box = min(masks, key=lambda q: max(q[2][0] - cx, 0, cx - q[2][2]) + max(q[2][1] - cy, 0, cy - q[2][3]))
+            m |= stray; claimed |= stray
+    for pid, m, _ in masks:
         out = a.copy()
         if out.ndim == 3: out[..., 3] = np.where(m, out[..., 3], 0)
         else: out = np.where(m, out, 0)
@@ -405,6 +422,52 @@ def split_alpha(a, parts, pad):
     if out.ndim == 3: out[..., 3] = np.where(claimed, 0, out[..., 3])
     else: out = np.where(claimed, 0, out)
     yield "", out
+
+
+def split_boxes(a, parts, pad):
+    """split_alpha for an RGBA frame, cheaply: the same partition, but each layer as (part id, RGBA crop, (x0, y0)), the
+    crop being the box that holds all of the layer's pixels (outside it the layer is transparent). Every pixel lands in
+    the same layer with the same value as split_alpha gives it, so compositing the crops gives the frame back exactly;
+    the work is per part box, not per full frame."""
+    import numpy as np
+    H, W = a.shape[:2]; alpha = a[..., 3]; claimed = np.zeros((H, W), bool); masks = []
+    for p in sorted(parts or [], key=lambda p: (p[4] - p[2]) * (p[5] - p[3])):     # smallest first, as split_alpha
+        pid, x0, y0, x1, y1, o = p[0], p[2], p[3], p[4], p[5], p[6]
+        if o < .02: continue
+        x0, y0, x1, y1 = max(0, x0 - pad), max(0, y0 - pad), min(W, x1 + pad), min(H, y1 + pad)
+        if x1 <= x0 or y1 <= y0: continue
+        sub = ~claimed[y0:y1, x0:x1]
+        if sub.any():
+            claimed[y0:y1, x0:x1] |= sub
+            masks.append([pid, (x0, y0, x1, y1), (x0, y0, x1, y1), sub])          # [id, box, mask box, mask in mask box]
+    stray = (alpha > 0) & ~claimed
+    if masks and stray.any():
+        r = max(1, int(pad))
+        for m in masks:
+            x0, y0, x1, y1 = m[1]; ex0, ey0, ex1, ey1 = max(0, x0 - r), max(0, y0 - r), min(W, x1 + r), min(H, y1 + r)
+            take = stray[ey0:ey1, ex0:ex1]
+            if take.any():
+                big = np.zeros((ey1 - ey0, ex1 - ex0), bool); big[y0 - ey0:y1 - ey0, x0 - ex0:x1 - ex0] = m[3]
+                take = take.copy(); big |= take; m[2], m[3] = (ex0, ey0, ex1, ey1), big
+                claimed[ey0:ey1, ex0:ex1] |= take; stray[ey0:ey1, ex0:ex1] &= ~take
+    if masks and stray.any():            # as split_alpha: a thin sliver further out joins the nearest part
+        ys, xs = np.nonzero(stray)
+        if ys.max() - ys.min() < 8 or xs.max() - xs.min() < 8:
+            cy, cx = ys.mean(), xs.mean()
+            m = min(masks, key=lambda q: max(q[1][0] - cx, 0, cx - q[1][2]) + max(q[1][1] - cy, 0, cy - q[1][3]))
+            (mx0, my0, mx1, my1), sy0, sy1, sx0, sx1 = m[2], int(ys.min()), int(ys.max()) + 1, int(xs.min()), int(xs.max()) + 1
+            ux0, uy0, ux1, uy1 = min(mx0, sx0), min(my0, sy0), max(mx1, sx1), max(my1, sy1)
+            big = np.zeros((uy1 - uy0, ux1 - ux0), bool); big[my0 - uy0:my1 - uy0, mx0 - ux0:mx1 - ux0] = m[3]
+            big |= stray[uy0:uy1, ux0:ux1]; m[2], m[3] = (ux0, uy0, ux1, uy1), big
+            claimed |= stray; stray[:] = False
+    for pid, _, (x0, y0, x1, y1), mk in masks:
+        out = a[y0:y1, x0:x1].copy(); out[..., 3] = np.where(mk, out[..., 3], 0)
+        yield pid, out, (x0, y0)
+    ys, xs = np.nonzero(stray.any(1))[0], np.nonzero(stray.any(0))[0]          # the rest: alpha > 0 and claimed by no part
+    if not len(ys): yield "", np.zeros((1, 1, 4), a.dtype), (0, 0); return
+    y0, y1, x0, x1 = ys[0], ys[-1] + 1, xs[0], xs[-1] + 1
+    out = a[y0:y1, x0:x1].copy(); out[..., 3] = np.where(claimed[y0:y1, x0:x1], 0, out[..., 3])
+    yield "", out, (int(x0), int(y0))
 
 
 def optical_nudge(page, job, pad):

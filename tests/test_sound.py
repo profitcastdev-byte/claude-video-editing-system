@@ -44,6 +44,9 @@ def song(path, plan, seed=3):
 STRUCT = [("intro", 4, .18, .18), ("build", 4, .2, .55), ("drop", 8, 1.0, 1.0), ("outro", 4, .35, .08)]
 
 
+pytestmark = pytest.mark.xdist_group("sound")      # the module fixture is built once, on one worker (--dist loadgroup)
+
+
 @pytest.fixture(scope="module")
 def built_song(tmp_path_factory):
     return song(str(tmp_path_factory.mktemp("song") / "song.wav"), STRUCT)

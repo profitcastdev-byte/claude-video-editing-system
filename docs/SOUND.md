@@ -34,9 +34,9 @@ Boundaries are:
 
 | moment | default | set it by hand |
 |---|---|---|
-| hook | the first `music.hook_beats` clip (`[H]`) | `music.hook_cut` |
-| turn | the first `music.turn_beats` clip (`[P, A]`); without one, the end of the hook | `music.turn_cut` |
-| payoff | the drop moment: `music.drop_cut`, else the first `music.drop_beats` clip (`[PR, O]`), else the reveal (the `aroll.snap` punch-in) | `music.drop_cut` |
+| hook | the first `music.hook_beats` clip (default from `grammar.structure`: `[H]`) | `music.hook_cut` |
+| turn | the first `music.turn_beats` clip (default from `grammar.structure`: problem `[P, A]`, offer `[M]`, story `[T]`); without one, the end of the hook | `music.turn_cut` |
+| payoff | the drop moment: `music.drop_cut`, else the first `music.drop_beats` clip (default from `grammar.structure`: problem `[PR, O]`, offer and story `[PR]`), else the reveal (the `aroll.snap` punch-in) | `music.drop_cut` |
 
 **Phrase alignment** (`music.phrase_align: true`) applies in the `drop` / `cuts` / `full` sync modes when `drop_pick` is `auto`. Among the drops that need no silent lead-in, `plan()` prefers the one whose build starts on the turn. The score is the candidate's own score minus `music.phrase_turn_weight` per bar of distance.
 
@@ -78,6 +78,16 @@ In both modes:
 - **The bed level is unchanged.** After ducking, the bed is still corrected to `sound.bed_lu` (SND-04), and the master is still set to −14 LUFS / −1 dBTP (SND-01/02).
 
 What changes in envelope mode: the bed comes back between phrases instead of holding the dip, and stays down through the syllables.
+
+**The bed clears every word** (`mix.vmr_guard`, after ducking). Envelope ducking sets its depth from the voice's own level,
+so a quiet word over a bright bar can still sit under the music in 1-4 kHz, where the consonants are (`cves review`'s
+"music masks the voice"). `sound.vmr_guard` measures the voice and the bed exactly as the review does (1-4 kHz,
+`mix.vmr_window_s` 0.4 s Hann windows centred on words from `words.json`, ffmpeg's mono downmix of the bed) and, where the
+ratio is under `review.vmr_min_db` + `mix.vmr_margin_db` (6 + 2 dB), cuts the bed's speech band (800 Hz-5 kHz) by the
+shortfall, at most `mix.vmr_max_cut_db` (12 dB), held over the window and smoothed (`mix.vmr_attack_ms` 30 /
+`vmr_release_ms` 250, in place before the word). The bed is then re-levelled to `sound.bed_lu` and checked once more.
+Only that band moves, only while a word needs it. `mix.json vmr_guard` records the target, the share of windows under
+it before and after, the deepest cut and how long the bed was trimmed.
 
 `mix.json duck` records the mode, attack, release, syllable rate and look-ahead.
 
@@ -140,11 +150,32 @@ So:
 
 Automatic risers are judged by SND-32 and SND-07, not by SND-08 (transition whooshes). The reasons are in `knowledge-base/DECISIONS.md` ("Senior sound").
 
-## 6. Checking it
+## 6. Cue sync: every sound on its picture event, at any frame rate
+
+A template puts a cue on the frame of its visual event, but the sound file starts there: its onset (10 % of the 10 ms RMS
+peak, the SND-07 measure) comes 17-40 ms later. At 30 fps that is under a frame; at 60 fps it is 1-3 frames, and SND-07
+failed a third of the cues on the first 60 fps job. Some cues also carried offsets tuned at 30 fps (the snap's -0.01 s).
+
+After render the picture events are known, so `mix._finalize` calls `sound.sync_cues` (`sound.cue_sync: true`):
+- the events are `qc.extra.visual_events`, the list SND-07 judges: element entries and logged bbox changes (the element
+  log), cuts, transitions and the snap; plus pixel-change onsets on graphic frames, measured on the rendered frames;
+- each cue's anchor is its onset (a riser: its peak), measured on the file (`sound.onset_offset` / `mix.peak_offset`);
+- the cue moves so its anchor lands exactly on the nearest event within `sound.cue_sync_max_f` (6) frames of the time the
+  template asked for: a logged element or cut first, a pixel onset only without one and only a strong one
+  (>= `sound.cue_sync_pixel_min` quarter-res px: weak onsets differ between the rendered frames and the encoded master);
+- peak-placed cues (transition whooshes, automatic risers: SND-08 / SND-32), media audio and cues with `sync: false` keep
+  their time; a synced cue is not beat-nudged afterwards. A cue with no event that close keeps its time.
+
+The pixel onsets are cached in `Edit/cue_sync.json` with the render they were measured on (element log + timeline), so
+`cves qc` rebuilds exactly the cue list the mix used. `mix.json cue_sync` lists every move (`from`, `to`, the event, the
+anchor in ms). A template whose sound belongs to a drawn state the element log does not see should make that state its own
+logged part (`data-el` in a motion piece), as `m_list_build` does for its check / cross mark.
+
+## 7. Checking it
 
 ```
 cves beats --sync drop                 # sections, story alignment, the drop on the payoff
-cves mix && jq '.accents, .duck, .music.story' Edit/mix.json
+cves mix && jq '.accents, .duck, .vmr_guard, .cue_sync.moved, .music.story' Edit/mix.json
 cves qc --fast | grep SND-3            # SND-32 / SND-33
 earshot timeline Edit/mix.wav          # listen: the riser resolves on the drop, the bed breathes under the voice
 ```

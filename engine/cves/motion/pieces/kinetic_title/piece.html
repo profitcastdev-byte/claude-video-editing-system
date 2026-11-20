@@ -25,7 +25,7 @@
       hd.style.setProperty('--k', P.scale || 1);
       if (P.eyebrow) { eb.textContent = C.plain(P.eyebrow); eb.dataset.text = eb.textContent; } else eb.remove();
       if (P.sub) { sub.textContent = C.plain(P.sub); sub.dataset.text = sub.textContent; } else sub.remove();
-      W = C.words(hd, P.text);
+      W = C.words(hd, P.text); hd.dataset.text = C.plain(P.text);   // the headline is its own logged text block (else it lands in the piece's rest layer, MOT-01)
       const sw = root.clientWidth - 2 * ctx.u * 2, sh = root.clientHeight * (P.sub || P.eyebrow ? 0.62 : 0.8);
       C.fit(hd, sw, sh, Math.min(4, Math.max(2, Math.ceil(W.words.length / 3))));
       lines = C.lines(W.words);

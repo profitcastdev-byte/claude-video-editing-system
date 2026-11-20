@@ -49,6 +49,8 @@ cves deliver --variants 4:5,cut15,music_b
 
 So re-encoding without re-running QC blocks the delivery. The error names the exact reason and the fix.
 
+`cves qc --draft` (docs/QC.md) never writes `Edit/qc.json`: its stamp is `Edit/qc_draft.json` with `"deliverable": false`, so a draft run can never unlock `cves deliver`. Full stamps carry `"tier": "full"` or `"fast"`.
+
 `--force-unchecked` delivers anyway. It prints a banner and writes `"WARNING"`, `"forced_unchecked": true` and the reasons at the top of `manifest.json`. The plugin hook denies `--force-unchecked` to Claude while QC is not clean, so only a human can force a delivery, from their own terminal.
 
 ## 3. The delivery folder (`Export/vNNN/`)

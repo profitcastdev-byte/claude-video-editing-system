@@ -43,7 +43,7 @@ EDIT = {
     "style": "style",
     "edl": "str",
     "aroll": {"zoom": "zoommap", "creep": "number", "snap": {"start!": "time", "end!": "time", "zoom!": "number"},
-              "exposure_match": "bool", "lift": "bool"},
+              "exposure_match": "bool", "shot_match": "bool", "lift": "bool"},
     "captions": "captions",
     "cutaways": [CUT],
     "roto": [SEGREF],
@@ -582,7 +582,7 @@ def _edit_specific(v, E):
                 snapped.append((s0, s1, j))
             snapped.sort()
             for (a0, a1, ja), (b0, b1, jb) in zip(snapped[:-1], snapped[1:]):
-                if b0 < a1 - 1e-6 and b1 > b0 and a1 > a0:
+                if b0 < a1 - (.5 / v.fps if v.fps else 1e-3) and b1 > b0 and a1 > a0:   # abutting within half a frame is a clean hand-off, not an overlap
                     v.err(f"cutaways[{jb}]", f"after snapping to segment boundaries it overlaps cutaways[{ja}] ({a0:.2f}-{a1:.2f} s); set snap: false on one")
     # ---- roto / chest
     seen = {}
@@ -628,7 +628,8 @@ def _edit_specific(v, E):
 
 
 # ------------------------------------------------------------------ selects.yaml
-SELECT_CLIP = {"id!": "str|int", "in!": "number", "out!": "number", "beat": "str", "src": "str", "note": "str", "text": "str", "keep": "any"}
+SELECT_CLIP = {"id!": "str|int", "in!": "number", "out!": "number", "beat": "str", "src": "str", "note": "str", "text": "str", "keep": "any",
+               "align": "bool"}
 
 def _selects(v):
     p = v.pr.e("selects.yaml")
@@ -639,8 +640,15 @@ def _selects(v):
         v.err("selects.yaml", f"YAML syntax error: {_yerr(e)}"); return
     clips = sel.get("clips") if isinstance(sel, dict) else sel
     if not isinstance(clips, list): v.err("selects.yaml", "expected a list of clips (or {clips: [...]})"); return
-    beats = _default_style().get("grammar", {}).get("beats") or []
-    ids = {}
+    from . import structure as STR, style as STY
+    try: S = STY.load(v.pr)
+    except Exception: S = STY.Style(_default_style())
+    beats = STR.beats_of(S); g = S.get("grammar.structure")
+    if g is not None and str(g).strip().lower() not in STR.NAMES:
+        v.warn("grammar.structure", f"'{g}' is not a story structure ({', '.join(STR.NAMES)}){_did_you_mean(str(g), list(STR.NAMES))}")
+    if str(g or "").strip().lower() == "custom" and not S.get("grammar.beats"):
+        v.warn("grammar.structure", "custom needs grammar.beats (the beat order), e.g. [H, M, PR, R, C]; using problem until then")
+    ids, no_text = {}, []
     for j, c in enumerate(clips):
         path = f"selects.yaml clips[{j}]"
         if not isinstance(c, dict): v.err(path, f"expected {{id, in, out}}, got {_tname(c)}"); continue
@@ -650,10 +658,15 @@ def _selects(v):
             ids.setdefault(c["id"], j)
         if _num(c.get("in")) and _num(c.get("out")) and c["out"] <= c["in"]: v.err(f"{path}.out", f"{c['out']:g} s is not after in {c['in']:g} s")
         if isinstance(c.get("beat"), str) and beats and c["beat"] not in beats + ["X"]:
-            v.warn(f"{path}.beat", f"'{c['beat']}' is not a story beat ({', '.join(beats)}, X){_did_you_mean(c['beat'], beats)}")
+            v.warn(f"{path}.beat", f"'{c['beat']}' is not a beat of this structure ({', '.join(f'{b} {STR.label(b)}' for b in beats)}, X)"
+                                   f"{_did_you_mean(c['beat'], beats)}; set grammar.structure or grammar.beats")
+        if c.get("beat") != "X" and not (isinstance(c.get("text"), str) and c["text"].strip()): no_text.append(str(c.get("id", j)))
         if isinstance(c.get("src"), str):
             q = c["src"] if os.path.isabs(c["src"]) else v.pr.p(c["src"])
             if not os.path.exists(q): v.err(f"{path}.src", f"source not found: {c['src']} (relative to the project folder, e.g. Raw/<file>)")
+    if no_text:
+        v.warn("selects.yaml", f"{len(no_text)} clip(s) without text: ({', '.join(no_text[:8])}{' ...' if len(no_text) > 8 else ''}): "
+                               "take alignment (cves select) and STORY-17 need each clip's spoken words")
 
 
 def _yerr(e):

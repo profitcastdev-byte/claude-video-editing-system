@@ -5,33 +5,19 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 ---
 
 # /cves:story: step 3, beats and selects
+Project: `$ARGUMENTS` (or the current one). Rules: RULEBOOK §2 + RULEBOOK-CORE "Story" (takes, backwards order, joins, hook timings, loops, brand last); structures `skills/video-editor/reference/formats.md`; viral `reference/viral.md` (Story). Text only: **open no image at this step.**
 
-Project: `$ARGUMENTS` (or the current project). Follow the `video-editor` skill: §0 paths, §1 load the RULEBOOK (§2 Story) and ES.
+`cves story` prints `Edit/raw_transcript.txt` (raw timestamps, from `cves ingest`) and the structure + beats in force (e.g. `structure: offer  beats: H Hook > M Mechanism > PR Proof > R Risk reversal > C CTA`). Raw times drift 1-3 s around retakes and pauses: `cves select` re-times each clip from its `text:`.
 
-## Run
-- `cves story` prints `Edit/raw_transcript.txt` (the whole take, with raw timestamps), written by `cves ingest` at step 2.
-- Work only from text. **Don't open any image at this step.**
+## You decide
+- **Structure** from the brief → `Edit/NOTES.md` + style `grammar.structure` (`edit.yaml style: {grammar: {structure: offer}}`, or the client's `Brand/style.yaml`); `custom` = `grammar.beats`, which also overrides any preset. Beats in its order (problem H→P→A→PR→O→C, offer H→M→PR→R→C, story H→S→T→PR→C); a weak join is fixed only by another take or re-ordering, never synthesised speech.
+- Pick takes for warmth and energy, not only accuracy. Hook also names a "you/your" pain. Write the setup→payoff table; cut orphans.
+- **Viral:** the structure's beat order is a guide; tag parts with the closest beats, re-hooks every 5-8 s, and name the structure in the cut list.
+- **`Edit/selects.yaml`**: `clips: [{id, in, out, beat, text}]`, raw seconds, **story order** (re-ordering allowed), **`text:` = the take's exact words** (required by alignment and STORY-17). Example: demo project in `examples/` (`tools/make_demo.py`).
+- **`cves select`** aligns each take (re-transcribes a window, finds `text:`, snaps `in` / `out` into the pauses around it; one line per clip: moved, match score). `WARNING` = not found, hand times kept: fix `text:` (as spoken) or the times. `align: false` keeps hand times; `--align-only` reports without cutting. Then voice clean (DeepFilterNet + podcast chain, no generative models), pauses ≤ 0.25 s, frame-snap, slivers < 4 frames dropped → `Edit/edl.json`, `voice_final.wav`, `voice_raw.wav`.
+- **`cves qc --stage story`**: pauses, verbatim stutters, STORY-17 (each clip's span must contain its `text:`; FAIL lists missing words), sign-off, length, structure from your tags (all beats, in order; problem ≤ 25 % where there is a P; proof ≤ 50 %; offer after proof, or for `offer` the risk reversal after proof; CTA in the last 15 %). Fix in `selects.yaml`, re-run both. Tick `CHECKLISTS.md` §2.
 
-## You decide (RULEBOOK §2)
-- Label every sentence H / P / A / PR / O / C / X.
-- **Work backwards:** lock the complete sign-off first, then the offer, then the problems it pays off, then the proof, and pick the hook last.
-- Keep the last complete take of each group that passes the stutter gate. Pick for warmth and energy, not only for accuracy.
-- Order H→P→A→PR→O→C. Every boundary joins with *therefore* or *but*, never *and then*. Fix a weak join only by choosing another take or re-ordering, never with synthesised speech.
-- The hook: first word ≤ 0.25 s, the topic named ≤ 2 s, a "you/your" pain, done by about 5-6 s.
-- Write the setup→payoff table and cut the orphans. Close every open loop before the CTA. The brand is the last word.
-- **`goal: viral`:** design the hook first (playbook §1: the first second as picture and words, the hook line re-ordered to the top), then the payoff (in the last 20 %), then the middle as re-hooks every 5-8 s. The ad beat order (H→P→A→PR→O→C) is a guide here, not a rule: tag the structure's parts with the closest beats and say in the cut list which structure you used.
-- Write **`Edit/selects.yaml`**: `clips: [{id, in, out, beat}]` in raw seconds, **in story order** (re-ordering is allowed), each tagged with its `beat` (H hook, P problem, A agitation, PR proof, O offer, C CTA). Example: the demo project in `examples/`.
-- Run **`cves select`**. It cleans the voice (DeepFilterNet + podcast chain, no generative models), tightens pauses to ≤ 0.25 s, frame-snaps, drops slivers under 4 frames, and writes `Edit/edl.json`, `voice_final.wav` and `voice_raw.wav`.
-- Run **`cves qc --stage story`**: pauses, verbatim stutters, sign-off, length, and the story structure from your beat tags (all beats present and in order; problem ≤ 25% of runtime; proof ≤ 50%; price after proof; CTA in the last 15%). Fix any FAIL by changing `selects.yaml` (another take or other in/out points), then re-run both.
-- Tick `CHECKLISTS.md` §2.
+## Show: the cut list as text
+Structure; table `# | beat | in-out (s) | take | text` (aligned, from `edl.json`); alignment moves > 0.3 s and clips at hand times; runtime and % problem + agitation; connector chain per boundary ("…so… but…"); setup→payoff table; flags (missing proof, weak take, drops and why); viral: hook type + first second, structure, payoff, loop (at the top).
 
-## Show the user: the cut list as text
-A table with one row per kept sentence: `# | beat | in-out (s) | take | text`. Then:
-- The runtime, and the % in problem + agitation.
-- The connector chain, one line per boundary (for example "…so… but…").
-- The setup→payoff table.
-- Flags: missing proof, a weak take, anything you dropped and why.
-- For `goal: viral`: the hook type and its first second, the structure, the payoff moment, and whether it loops.
-
-## Stop: approval 1
-**End your turn and wait.** Continue only on a clear yes ("approved", "go"). For change requests, revise `selects.yaml`, re-run `cves select` and show the cut list again. Record the approval with its date in `Edit/NOTES.md`. The approved, re-ordered script becomes the words-gate reference. Next: `/cves:plan`.
+**Stop: approval 1** (skill §2). Changes: revise `selects.yaml`, `cves select`, show again. Record it dated in `Edit/NOTES.md`; the approved re-ordered script is the words-gate reference. Next `/cves:plan`.

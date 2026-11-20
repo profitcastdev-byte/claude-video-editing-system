@@ -175,7 +175,9 @@ graphics gets gates that match:
 | `grammar.max_cutaway_s` | RET-22 / RET-22b longest stretch without the face |
 | `grammar.face_on_first_frame` | RET-13 face on frame 0 (only when true) |
 | `grammar.roto_max` | GFX-25 behind-the-head moments |
-| `grammar.beats` | story-stage beat order |
+| `grammar.structure`, `grammar.beats` | STORY-01 beat order (STORY-07 / STORY-13 apply only where their beats exist), the beat labels, the music hook / turn / drop beats |
+| `qc.words_recall_min`, `qc.words_edges` (or the same `edit.yaml qc:` keys) | STORY-17 word recall of each clip's `text:`, and its first / last word |
+| `story.align*` | take alignment in `cves select` (not a gate; its result is in `edl.json` clips `aligned:`) |
 | `framing.min_step` | CUT-05 scale change at every direct A-roll cut |
 | `framing.extreme_max` | FRAME-09 extreme punch-ins |
 | `sound.master_lufs`, `sound.true_peak` | SND-01, SND-02 |
@@ -213,9 +215,19 @@ number) is a warning. Maps whose keys are data (`colors`, `font_files`, `caption
   `edge_alpha_range` is treated as wall / subject, so RVM's soft tails do not spread graded subject light over the wall.
   Phone cameras sharpen dark-on-bright edges: the wall within `edge_dehalo_px` of the silhouette is clamped to the wall
   level just beyond it. Never widen a feather to hide an edge: it reads as an aura (LESSONS #4).
-- **Exposure balance** (`grade.exposure_*`): one gain per shot, fitted so that consecutive shots meet at their cut
-  frames and at their shot medians (COL-06 / COL-07), weakly anchored to the common median. Cached in
-  `Edit/exposure.json` with the timeline it was solved for (any segment or cutaway change re-solves it).
+- **Shot colour match** (`grade.shot_match_*`, on by default; `engine/cves/shotmatch.py`): every A-roll shot is matched to
+  a reference shot (`hook` = the first A-roll shot on screen, `median`, or a segment id) in linear light, before the look.
+  Skin (the two cheek patches, as QC COL-06 measures them) and wall (matte background 50-130 px round the head, above the eye line,
+  as QC measures it) are measured every `shot_match_step_f` plate frames. The subject gets a per-channel gain that maps its skin onto
+  the reference skin, the background one that maps its wall onto the reference wall, blended through the matte; the two
+  never differ by more than `shot_match_split_max`. Inside a shot, `shot_match_drift` of the drift onto the shot's own
+  median is followed, smoothed over `shot_match_smooth_s` (slow light drift: yes; a head turn: no). Gain only: a gain +
+  offset fit on two anchors at about the same level (a pale wall) is ill-conditioned and lifts the blacks. Cached in
+  `Edit/shot_match.json` (reference, per-shot stats, samples, gains) with the signature it was solved for.
+- **Exposure balance** (`grade.exposure_*`): used only when `grade.shot_match` is off (the colour match includes it). One
+  gain per shot, fitted so that consecutive shots meet at their cut frames and at their shot medians (COL-06 / COL-07),
+  weakly anchored to the common median. Cached in `Edit/exposure.json` with the timeline it was solved for (any segment
+  or cutaway change re-solves it).
 
 ## Key reference
 
@@ -298,7 +310,15 @@ project.size` wins over it.
 | `grade.shoulder` | `0.0` | filmic highlight roll-off |
 | `grade.shoulder_gain` | `1.0` | output scale after the shoulder (keeps white below clip when shoulder > 0) |
 | `grade.black_lift` | `[0.0, 0.0, 0.0]` | RGB lift of the blacks (matte / faded look), 0..0.06 |
-| `grade.exposure_match` | `true` | per-shot skin balance across cuts |
+| `grade.exposure_match` | `true` | per-shot skin balance across cuts (only when `shot_match` is off) |
+| `grade.shot_match` | `true` | per-shot colour match to a reference shot, in linear light, before the look (COL-06 / COL-07); `edit.yaml aroll.shot_match: false` turns it off for one video |
+| `grade.shot_match_reference` | `hook` | hook (the first A-roll shot on screen) / median (the visible shot nearest the median: least correction) / a segment id |
+| `grade.shot_match_strength` | `1.0` | 0..1 blend of the correction toward identity |
+| `grade.shot_match_drift` | `0.5` | 0..1: how much of the light drift inside a shot is followed |
+| `grade.shot_match_smooth_s` | `0.8` | Gaussian smoothing of the in-shot correction, s |
+| `grade.shot_match_step_f` | `4` | sample every N plate frames (plus the first / last visible frames) |
+| `grade.shot_match_gain_range` | `[0.7, 1.45]` | clamp on every linear-light gain |
+| `grade.shot_match_split_max` | `0.18` | max difference (log, per channel) between the subject's gain (skin) and the wall's gain |
 | `grade.exposure_mode` | `rgb` | `rgb`: luminance gain plus a small per-channel trim so skin colour matches across cuts (COL-06); `luma`: luminance only |
 | `grade.exposure_chroma_max` | `0.06` | cap on that per-channel trim (log units, about 6 %) |
 | `grade.exposure_gain_range` | `[0.85, 1.18]` | clamp on the per-shot balance gain |
@@ -342,6 +362,7 @@ project.size` wins over it.
 | `captions.lower_third_y` | `0.68` | position lower_third: top as a fraction of the canvas height |
 | `captions.line_height` | `1.32` | line spacing as a multiple of the size |
 | `captions.lead_s` | `0.03` | a word shows this long before its spoken start |
+| `captions.min_on_s` | `0.83` | no caption fragment shorter than this round a cutaway / snap / hide window: its words move into the next event, the previous one holds them, or (words spoken under the cover) it is skipped (PLAT-06 / 07); 0 = off |
 | `captions.reveal_s` | `0.06` | word_reveal fade-in per word |
 | `captions.pop_s` | `0.16` | pop / bounce / one_word entry duration per word |
 | `captions.karaoke_dim` | `0.55` | unspoken words in karaoke, as a fraction of the text colour |
@@ -392,7 +413,31 @@ pacing rules the QC gates enforce; null = not enforced for this client
 | `grammar.roto_max` | `4` | behind-the-head moments per video (GFX-25) |
 | `grammar.face_on_first_frame` | `false` | frame 0 must show the presenter (RET-13) |
 | `grammar.topic_by_s` | `2.0` | topic keyword spoken / shown by this time, s (RET-01/12) |
-| `grammar.beats` | `["H", "P", "A", "PR", "O", "C"]` | story beat order the story gates expect (hook problem agitate proof offer cta) |
+| `grammar.structure` | `problem` | the story structure, `cves.structure`: `problem` H P A PR O C (hook, problem, agitation, proof, offer, CTA), `offer` H M PR R C (hook / promise, mechanism, proof, risk reversal, CTA), `story` H S T PR C (hook, setup, turn, proof, CTA), `custom` (= `grammar.beats`). Sets the STORY-01 order, the labels and the music beats |
+| `grammar.beats` | `null` | an explicit beat order; overrides the structure's (e.g. `[H, M, PR, R, C]`). null = from `grammar.structure` |
+
+#### `story`
+
+the story step: take alignment in `cves select` (`cves.align`, [INGEST.md](INGEST.md) "Take alignment")
+
+| key | default | meaning |
+|---|---|---|
+| `story.align` | `true` | re-time every `selects.yaml` clip that has `text:` from a local word-level transcript (per clip: `align: false`) |
+| `story.align_window_s` | `1.5` | transcribe `in` - this .. `out` + this around each clip (narrowed / widened per pass) |
+| `story.align_passes` | `3` | windows per clip; their edge estimates are pooled (median, or the one nearest the hand time when they disagree) |
+| `story.align_min_score` | `0.8` | a fuzzy match of `text:` to the heard words below this keeps the hand times (and warns) |
+| `story.align_pad_s` | `[0.04, 0.08]` | pad before the first word / after the last word, kept inside the pause |
+| `story.align_search_s` | `0.5` | how far an edge looks for a pause beyond the word estimate, s |
+| `story.align_quiet_db` | `12` | a pause is quieter than the window's noise floor (10th percentile) + this, dB |
+
+#### `qc`
+
+story-stage thresholds (an `edit.yaml qc:` key of the same name wins for one video)
+
+| key | default | meaning |
+|---|---|---|
+| `qc.words_recall_min` | `0.85` | STORY-17: share of each clip's `text:` words heard in its own span of `voice_final.wav` |
+| `qc.words_edges` | `true` | STORY-17 also fails a clip whose first or last `text:` word is not heard (the signature of a clipped take), whatever its recall |
 
 #### `sound`
 
@@ -420,6 +465,9 @@ pacing rules the QC gates enforce; null = not enforced for this client
 | `sound.repeat_pitch_st` | `1` | SND-09: an identical back-to-back cue is pitched +/- this many semitones (alternating, deterministic) |
 | `sound.repeat_gain_db` | `1.5` | ... and its gain moved by -/+ this much |
 | `sound.phrase_tolerance_s` | `0.05` | SND-33: the drop section must start this close to the payoff, s |
+| `sound.cue_sync` | `true` | after render, every cue's onset (a riser: its peak) lands exactly on its logged picture event (SND-07 at any frame rate; [SOUND.md](SOUND.md) §6) |
+| `sound.cue_sync_max_f` | `6` | the event must be within this many frames of the time the template asked for |
+| `sound.cue_sync_pixel_min` | `40` | a pixel-change onset (no logged element near) counts only when this many quarter-res px start changing |
 | `sound.accents` |  | automatic risers / impacts on the story moments ([SOUND.md](SOUND.md)); budget `creative.sound_accents_per_30s` |
 | `sound.accents.enabled` | `true` | false (or edit.yaml `sfx.auto: false`) = no automatic accents |
 | `sound.accents.reveals` | `true` | also an impact on reveal cues that carry no low hit of their own |
@@ -447,6 +495,27 @@ how the music sits under the voice ([SOUND.md](SOUND.md))
 | `mix.duck_release_ms` | `auto` | envelope: how fast it comes back; auto = 1.25 x the measured syllable period, within `mix.duck_release_range_ms` |
 | `mix.duck_release_range_ms` | `[250, 400]` | clamp for the auto release, ms |
 | `mix.duck_range_db` | `30` | envelope: voice this far under its loud level does not duck; full depth (`sound.duck_voice_band_db` / `duck_other_db`) from 6 dB under it |
+| `mix.vmr_guard` | `true` | after ducking, trim the bed's speech band wherever a word would not clear it ([SOUND.md](SOUND.md) §3) |
+| `mix.vmr_band_hz` | `[1000, 4000]` | band the vocal-to-music ratio is measured and trimmed in |
+| `mix.vmr_min_db` | `null` | guaranteed ratio while speaking; null = `review.vmr_min_db` + `mix.vmr_margin_db` |
+| `mix.vmr_margin_db` | `2.0` | headroom over the review's limit |
+| `mix.vmr_max_cut_db` | `12.0` | deepest band trim |
+| `mix.vmr_window_s` | `0.4` | measurement window (the review's) |
+| `mix.vmr_attack_ms` / `mix.vmr_release_ms` | `30` / `250` | trim smoothing: in place before the word, back after it |
+
+#### `voice`
+
+The voice chain after DeepFilterNet ([INGEST.md](INGEST.md) "Voice chain").
+
+| key | default | meaning |
+|---|---|---|
+| `voice.gate.enabled` | `true` | the adaptive downward expander at the end of the chain (`engine/cves/voicegate.py`, SND-19) |
+| `voice.gate.floor_pct` / `speech_pct` | `10` / `90` | room tone between words / speech level = these percentiles of the take's 10 ms voice-band envelope |
+| `voice.gate.open_frac` | `0.3` | threshold = floor + this share of (speech - floor), kept `open_min_db` (6) .. `open_max_db` (14) over the floor |
+| `voice.gate.ratio` | `6.0` | expander ratio under the threshold |
+| `voice.gate.floor_target_db` | `-72.0` | the depth takes the room to this level, within `range_min_db` (10) .. `range_max_db` (40); a take with less than `min_snr_db` (12) between speech and room gets `range_min_db` |
+| `voice.gate.attack_ms` / `lookahead_ms` / `hold_ms` / `release_ms` | `2` / `8` / `15` / `40` | timing: open early (onsets), hold briefly, fade in dB |
+| `voice.gate.band_hz` | `[150, 6000]` | detector band |
 
 #### `music`
 
@@ -459,7 +528,7 @@ beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these pe
 | `music.beats_per_bar` | `4` | bar length for bar-line edits |
 | `music.tempo_range` | `[60, 150]` | BPM range the detected tempo is folded into (double/half-time fix); e.g. [120, 190] for drum & bass |
 | `music.snap_tolerance_s` | `0.12` | cuts mode: a cut point / graphic entry moves only to a beat this close |
-| `music.drop_beats` | `["PR", "O"]` | default drop moment: first clip tagged with one of these story beats (music.drop_cut > 0 wins) |
+| `music.drop_beats` | `null` | drop moment: first clip tagged with one of these story beats (music.drop_cut > 0 wins); null = from `grammar.structure` (problem `[PR, O]`, offer and story `[PR]`) |
 | `music.drop_pick` | `auto` | auto (strongest drop candidate that needs no silent lead-in) / an index into beats.json drops |
 | `music.drop_min_rise_db` | `3.0` | a drop candidate's next 2 bars are this much louder than the 4 before |
 | `music.loop_xfade_s` | `0.08` | equal-power crossfade on a loop seam (seams sit on downbeats) |
@@ -475,8 +544,8 @@ beat sync + music fit (docs/MUSIC.md); edit.yaml `music:` keys override these pe
 | `music.build_min_rise_db` | `2.0` | a build rises at least this much into its drop |
 | `music.build_step_db` | `1.0` | ... and each of its bars at least this much over the bar before |
 | `music.phrase_turn_weight` | `1.0` | drop pick: score points lost per bar between the build start and the turn |
-| `music.hook_beats` | `["H"]` | story beats of the hook (riser into / out of it) |
-| `music.turn_beats` | `["P", "A"]` | story beats of the turn (the build should start here); default: the end of the hook |
+| `music.hook_beats` | `null` | story beats of the hook (riser into / out of it); null = from `grammar.structure` (`[H]`) |
+| `music.turn_beats` | `null` | story beats of the turn (the build should start here); null = from `grammar.structure` (problem `[P, A]`, offer `[M]`, story `[T]`); none tagged: the end of the hook |
 | `music.hook_cut` | `0` | cut s of the hook when > 0 (else from `music.hook_beats`) |
 | `music.turn_cut` | `0` | cut s of the turn when > 0 (else from `music.turn_beats`) |
 
@@ -687,6 +756,7 @@ text over video (captions, chest, roto): WCAG targets and the auto bed (GFX-15)
 | `legibility.large_px` | `48` | text this size or larger uses `large_contrast` |
 | `legibility.video_bg` | `#B4B4B4` | assumed worst-case background behind text on video |
 | `legibility.video_bg_broll` | `#C8C8C8` | the same for captions over B-roll / footage with no presenter on screen (full-bleed footage runs brighter and varies more) |
+| `legibility.measure` | `true` | captions also size their bed for the brightest part (p98) of the real frame behind them, when it is brighter than `video_bg` |
 | `legibility.plate_max` | `0.85` | strongest bed opacity |
 | `legibility.bed_spread` | `0.18` | bed reach around glyphs, as a fraction of the type size |
 | `legibility.wordmark_bed` | `0.72` | darkness of the soft bed behind a chest wordmark |
@@ -730,6 +800,8 @@ no gate covers, and the loop cap.
 |---|---|---|
 | `review.max_rounds` | `3` | review rounds per loop; at the cap `cves review build` says so and refuses a 4th round until Claude signs off (`ship` / `revise`) and records what is still wrong |
 | `review.cut_offsets` | `[-2, -1, 0, 1, 2]` | frames shown around every cut in `cuts/cut_NN.jpg` (0 = first frame of the incoming shot) |
+| `review.look_unflagged` | `3` | unflagged cuts spot-checked per round: their strips are stacked with every flagged cut's into `strips_N.jpg` |
+| `review.look_px` | `1560` | the tallest `strips_N.jpg` sheet, px (about one image read): strips stack until the next would pass it |
 | `review.hook_s` | `3.0` | length of the hook strip (`hook.jpg`), s; also the hook section of the loudness report |
 | `review.hook_fps` | `10` | frames per second sampled into the hook strip |
 | `review.payoff_frames` | `6` | frames sampled across the payoff window (`structure.payoff_window`) before the end card |
@@ -754,6 +826,17 @@ no gate covers, and the loop cap.
 | `review.earshot` | `auto` | `auto` runs `earshot measure --json --light` on the master when earshot is installed (`audio.json` `earshot`); `off` skips it |
 | `review.earshot_timeout_s` | `180` | give up on earshot after this long; the pack is written without it |
 
+#### `render`
+
+How frames are rendered ([ARCHITECTURE.md](ARCHITECTURE.md) §6b). None of these change a pixel of the final build; they
+are left out of the frame cache key.
+
+| key | default | meaning |
+|---|---|---|
+| `render.cache` | `true` | incremental render (`cves.rcache`): a full final render re-renders only the frames whose inputs changed and rebuilds the element log from the rest; the result equals a full render. `false` (or `--no-cache`) renders every frame |
+| `render.chunk_min` | `24` | the smallest worker job, in frames: segments are split into chunks of about a quarter of a worker's share, so the pool is not left waiting on the longest shot |
+| `render.draft_scale` | `0.5` | `cves build --draft`: fraction of the canvas (even-rounded), the proxy path; encoded with `treatments.proxy_preset` / `proxy_crf`, QC'd with the fast set, never deliverable |
+
 #### `treatments`
 
 `cves treatments` ([TREATMENTS.md](TREATMENTS.md)): 2-3 creative takes on one plan, rendered as fast proxies and compared.
@@ -770,6 +853,18 @@ no gate covers, and the loop cap.
 | `treatments.compare_max_s` | `12` | seconds of each treatment in the comparison MP4 |
 | `treatments.compare_layout` | `stacked` | `stacked` (side by side, or one above the other on landscape; audio of the first) or `sequential` (one after another, each with its own sound) |
 
+#### `roto`
+
+Cards drawn behind the presenter (`map_card`, `listing_card`, `top3_card`) and their QC (GFX-27).
+
+| key | default | meaning |
+|---|---|---|
+| `roto.place` | `auto` | `auto`: the card finds the free space beside / above the head from the subject matte over its slot (the largest scale that fits, the brightest wall among the spots that fit); `fixed`: the designed position. A card's `place` param overrides it |
+| `roto.max_cover` | `0.2` | `auto`: the most of the card the subject may cover (it tucks behind the head a little) |
+| `roto.min_scale` | `0.25` | `auto`: the smallest card scale; when nothing fits at it the card keeps its designed position and GFX-27 judges it |
+| `roto.occlusion_warn` | `0.40` | GFX-27 WARNs when the subject covers more than this share of a card over its hold |
+| `roto.occlusion_fail` | `0.65` | GFX-27 FAILs above this share (the card reads as a dark rectangle) |
+
 #### `craft`
 
 Motion craft (docs/MOTION.md "Craft"): text behind the speaker, speed ramps, camera moves, match cuts and the transition
@@ -777,7 +872,7 @@ library. Every move counts against the `creative` budget; transitions are also r
 
 | key | default | meaning |
 |---|---|---|
-| `craft.behind.size` | `300` | `text_behind` type size, px at a 1080 short side (shrinks to fit `max_width`) |
+| `craft.behind.size` | `300` | `text_behind` type size, px at a 1080 short side (shrinks to fit `max_width` at the shot's tightest zoom). Every instance without its own `size` param uses ONE size per video: the smallest any of them fits at (GFX-20) |
 | `craft.behind.weight` | `xb` | font weight slot (m / sb / b / xb) |
 | `craft.behind.tracking` | `-4` | tracking, px at a 1080 short side |
 | `craft.behind.case` | `upper` | upper / as_is |
@@ -786,10 +881,13 @@ library. Every move counts against the `creative` budget; transitions are also r
 | `craft.behind.position` | `above` | above (the head covers the lower `overlap` of the type) / behind (centred on the eyes) / low (behind the shoulders) |
 | `craft.behind.overlap` | `0.42` | fraction of the cap height the head covers in `above` |
 | `craft.behind.one_line_min` | `0.42` | keep the text on one line when it fits at >= this fraction of `size` (no orphan word on its own line), else wrap |
-| `craft.behind.track` | `0.6` | how much of the head's motion the type follows: 0 locked at its entry, 1 glued |
-| `craft.behind.smooth_frames` | `9` | face-landmark smoothing radius, frames (triangular window) |
-| `craft.behind.color` | `text` | type colour (palette slot or hex) |
-| `craft.behind.accent` | `accent` | colour of `*starred*` words |
+| `craft.behind.track` | `0.4` | how much of the head's motion the type follows: 0 locked at its entry, 1 glued (keep it subtle) |
+| `craft.behind.smooth_s` | `0.2` | face-track smoothing, seconds (zero-phase Gaussian sigma over the segment's track; the clamped path is smoothed the same way). In seconds, so 60 fps footage is as calm as 30 fps (MOT-03) |
+| `craft.behind.color` | `auto` | `auto`: measure the wall behind the type over its hold (graded plate, person masked out) and use the `light` or `dark` token, whichever reaches the GFX-15 contrast (light wins a tie); else a palette slot or hex |
+| `craft.behind.light` | `text` | `color: auto`'s light token |
+| `craft.behind.dark` | `card` | `color: auto`'s dark token |
+| `craft.behind.auto_bed` | `true` | `color: auto` adds a soft legibility bed when neither token reaches the contrast on that wall |
+| `craft.behind.accent` | `accent` | colour of `*starred*` words. With `color: auto` an accent that fails the contrast becomes its darker (`accent_dark`, then mixed toward black) or lighter variant |
 | `craft.behind.entry` | `rise` | rise (the letters rise out from behind the head) / slam (whole on its first frame, oversized, settling: a hard visual event) |
 | `craft.behind.entry_s` | `0.5` | entry length, s |
 | `craft.behind.exit_s` | `0.25` | exit length (ends 0.25 s before the shot by default) |

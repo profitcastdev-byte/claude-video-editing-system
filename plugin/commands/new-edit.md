@@ -5,35 +5,21 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 ---
 
 # /cves:new-edit: step 1, setup (and step 2, ingest)
+Arguments: `$ARGUMENTS`. Skill §0-§1 first; read `skills/video-editor/reference/formats.md` (canvas, spine), and `reference/viral.md` for an organic post.
 
-Arguments: `$ARGUMENTS`
-
-Follow the `video-editor` skill. Resolve `CVES_ROOT`, `cves` and the project (skill §0), then load the RULEBOOK and ES (skill §1).
-
-## Ask first (one message, only for what's missing)
-- **Client** and **video name** (from the arguments, if given).
-- **Raw file(s)**: the path to the take as shot.
-- **Inspirations**: 1-3 reference edits for this client. These are the style spec. For an existing client, reuse `<projects root>/<Client>/STYLE.md` and its style profile, and ask only whether this video should differ.
-- **Brand**: logo (png/svg), colours, approved claims (a client name plus a number for the proof), wordmark.
-- **Mode**: vibe (default) or control.
-- **Goal**: a paid **ad** (default) or an organic **viral** post. For viral, also ask the hook type, the structure, the platform (`platform.target`), whether it loops, and the trending sound if any (skill §5b, `knowledge-base/modules/viral-playbook.md`).
-- **Format and spine** (skill §2a, `docs/FORMATS.md`): where it runs (sets `canvas.size`: 9:16 default, 4:5, 1:1, 16:9, 2.39:1) and what drives the cut: a presenter (`aroll`, default), a voiceover (`voiceover`: a recorded VO or an ElevenLabs VO the user asked for), the music (`music`) or the shots (`broll`).
-
-Don't continue without a raw file (aroll), a VO (voiceover) or the music / footage (music, broll). Missing inspirations, brand or proof is not a blocker; carry it forward as a flag.
+## Ask first (one message, only what's missing)
+**Client**, **video name** (from the arguments if given), **raw file(s)** as shot; **inspirations** (1-3 reference edits = the style spec; existing client: reuse `<projects root>/<Client>/STYLE.md` + profile, ask only whether this video differs); **brand** (logo png/svg, colours, approved claims = client name + a number for the proof, wordmark); **mode** (vibe default, or control); **goal** (paid **ad** default, or organic **viral** + the viral brief questions, `knowledge-base/modules/viral-playbook.md`); **format and spine** (where it runs → `canvas.size`; `aroll` default / `voiceover` / `music` / `broll`; `docs/FORMATS.md`).
+Blocking: no raw file (aroll), VO (voiceover) or music / footage (music, broll). Missing inspirations, brand or proof: carry as a flag.
 
 ## Run
-1. `cves new "<Client>" "<Video>" --raw "<raw file>"`. It creates `~/CVES Projects/<Client>/<YYYY-MM-DD Video>/` (root: `$CVES_CLIENTS`, else config `clients_root`) with `Raw/ Inspirations/ Brand/ Music/ Edit/ Moodboard/ Export/` (ARCHITECTURE §2). Copy the inspirations and brand files the user gave into `Inspirations/` and `Brand/`. Put claims in `Brand/claims.md`.
-2. Probe the source: `ffprobe` colour tags, resolution and fps (RULEBOOK §1). Note them in `Edit/NOTES.md`.
-3. Set the canvas and spine in `edit.yaml` (`style: {canvas: {size: [w, h]}}`, `spine:`; `voiceover: {asset | file}`; `music.file` + `duration`), then `cves ingest`. This step is local. On the aroll spine: the raw transcript (then the story step). On a voiceover spine: voice_raw / voice_final.wav (pauses tightened), words.json, edl.json. On music / broll: edl.json only. If it fails, read the error text, fix the cause or report it. Don't hand-roll a replacement.
+1. `cves new "<Client>" "<Video>" --raw "<raw file>"` → the project with `Raw/ Inspirations/ Brand/ Music/ Edit/ Moodboard/ Export/` (ARCHITECTURE §2). Copy the user's files into `Inspirations/`, `Brand/`; claims into `Brand/claims.md`.
+2. `ffprobe` colour tags, resolution, fps (RULEBOOK §1) → `Edit/NOTES.md`.
+3. `edit.yaml`: `style: {canvas: {size: [w, h]}}`, `spine:`, `voiceover: {asset | file}`, `music.file` + `duration`; then `cves ingest` (local): aroll → raw transcript; voiceover → voice_raw / voice_final.wav (pauses tightened), words.json, edl.json; music / broll → edl.json. On failure fix the cause or report it; never hand-roll a replacement.
 
 ## You decide
-- **The brief**, written to `Edit/NOTES.md`: the ad's emotion in one line; the viewer's want plus obstacle; the proof (client name plus number), or "MISSING: ask the client"; the sound moments (hook hit, first cutaway, offer, CTA).
-- **STYLE, for a new client only** (`<projects root>/<Client>/STYLE.md` plus the style profile). Run `cves inspire` to measure the inspirations into `PROJECT/Edit/style.yaml`, and put brand tokens (logo colours, fonts) in `PROJECT/Brand/style.yaml`. Study the inspirations as text first: their transcripts and the `ffprobe` facts. Then look at **one** contact sheet of their key frames, not frame by frame. Write the palette, type, card style, transitions, caption style, music feel and pacing in `STYLE.md`, and check each one is reflected in the style profile (docs/STYLE.md). Name a `style.preset` only if one genuinely matches; the default is neutral, and no preset is a house look. Never replace the inspirations' look with your own pick (RULEBOOK §0.1).
-- **Goal and platform.** Write `goal: viral` into `edit.yaml` for organic posts (the viral style layer then applies), and the target under `style: {platform: {target: <platform>}}`. For viral, the brief also records the hook type, the structure, the loop choice and the trending sound (`music: {slot: platform, guide: ..., sound: ...}`; ads never use the slot).
+- **Brief** → `Edit/NOTES.md`: emotion in one line; viewer's want + obstacle; proof (client name + number) or "MISSING: ask the client"; sound moments (hook hit, first cutaway, offer, CTA).
+- **STYLE (new client only):** `cves inspire` (`/cves:inspire`) → `PROJECT/Edit/style.yaml`; brand tokens (logo colours, fonts) → `PROJECT/Brand/style.yaml`. Study inspirations as text first (transcripts, `ffprobe`), then **one** contact sheet. Write palette, type, card style, transitions, caption style, music feel, pacing in `STYLE.md`; check each is in the profile (docs/STYLE.md). A `style.preset` only if one genuinely matches (no house look); never your pick over the inspirations (RULEBOOK §0.1).
+- **Goal / platform:** `goal: viral` for organic posts; `style: {platform: {target: <platform>}}`; viral brief also records hook type, structure, loop, trending sound (`music: {slot: platform, guide: ..., sound: ...}`; never for ads).
 - Tick `CHECKLISTS.md` §1.
 
-## Show the user
-The project path, the brief, the STYLE summary (new client only), and a list of flags (missing proof, logo or claims).
-
-## Stop?
-No approval is needed here. Continue to `/cves:story` unless something blocking is missing.
+**Show:** project path, brief, STYLE summary (new client), flags. No approval: continue to `/cves:story` unless something blocking is missing.
