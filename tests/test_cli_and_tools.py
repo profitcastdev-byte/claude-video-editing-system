@@ -31,6 +31,23 @@ def test_hook_blocks_unchecked_delivery(demo_copy):
     assert "deny" in out or rc == 2, out
     out, rc = hook("ls Export", demo_copy)
     assert "deny" not in out and rc == 0, out
+    # a shell glob that matches a real file out of Export is still blocked
+    out, rc = hook("cp Export/*.mp4 ~/Desktop/", demo_copy)
+    assert "deny" in out or rc == 2, out
+
+
+def test_hook_ignores_export_words_that_are_not_files(tmp_path):
+    """prose, commit messages and heredocs that only mention Export paths ('Copy', 'move', 'Export/v001') are not
+    deliveries, even in a project whose QC has not run yet"""
+    proj = tmp_path / "proj"; (proj / "Edit").mkdir(parents=True)
+    cmd = "cat > notes.md <<EOF\nTo deliver, move the files in Export/v001 to Drive\nEOF"
+    out, rc = hook(cmd, str(proj))
+    assert "deny" not in out and rc == 0, out
+    out, rc = hook('git commit -m "copy Export/v002 notes"', str(proj))
+    assert "deny" not in out and rc == 0, out
+    (proj / "Export").mkdir(); (proj / "Export" / "m.mp4").write_bytes(b"x")    # a real file: still blocked
+    out, rc = hook("cp Export/m.mp4 ~/Desktop/", str(proj))
+    assert "deny" in out or rc == 2, out
 
 def test_selftest_export():
     r = subprocess.run([sys.executable, "-m", "cves.cli", "export", "selftest", "--no-gui"], capture_output=True, text=True, cwd=ROOT)
