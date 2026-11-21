@@ -9,7 +9,7 @@ PreToolUse (Bash): BLOCKS
   It answers {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": ...}}.
 PostToolUse (Bash): reminds Claude to run `cves qc` after render/mix/encode and surfaces a QC FAIL count (never blocks).
 Any error inside the guard itself lets the command through (a broken guard must not wedge the session)."""
-import hashlib, json, os, re, shlex, sys
+import glob, hashlib, json, os, re, shlex, sys
 
 COPY = re.compile(r"(^|[\s;&|(])(cp|mv|rsync|scp|rclone|ditto|robocopy|xcopy|copy|move|install|gsutil|aws\s+s3|gh\s+release\s+(create|upload)|curl|wget)\b", re.I)
 UPLOAD_CURL = re.compile(r"\bcurl\b.*(\s-T\s|\s--upload-file\b|\s-F\s*\S*=@|\s--form\s*\S*=@|\s--data-binary\s+@)", re.I)
@@ -84,7 +84,10 @@ def paths_in(cmd, cwd):
         if not t or t.startswith("-"): continue
         if re.search(r"(^|[\\/])Export([\\/]|$)", t):
             p = os.path.expanduser(t)
-            res.append(p if os.path.isabs(p) else os.path.join(cwd, p))
+            p = p if os.path.isabs(p) else os.path.join(cwd, p)
+            # only real files can leave: a word like "Export/v001" in prose, a commit message or a heredoc is not a path
+            # (a shell glob counts when it matches something)
+            if os.path.exists(p) or (re.search(r"[*?\[]", p) and glob.glob(p)): res.append(p)
     return toks, res
 
 
@@ -103,8 +106,9 @@ def pre(d):
     if not paths: return
     last = toks[-1].lstrip("@") if toks else ""
     srcs = paths
-    if len(paths) >= 2 and re.search(r"(^|[\\/])Export([\\/]|$)", last):   # the destination is itself inside an Export/ folder
-        droot = project_of(paths[-1]); srcs = paths[:-1]
+    if re.search(r"(^|[\\/])Export([\\/]|$)", last):   # the destination is itself inside an Export/ folder (it may not exist yet)
+        dp = os.path.expanduser(last); dp = dp if os.path.isabs(dp) else os.path.join(cwd, dp)
+        droot = project_of(dp); srcs = [q for q in paths if os.path.abspath(q) != os.path.abspath(dp)]
         if srcs and all(project_of(q) == droot for q in srcs): return   # Export -> Export of the same project: not a delivery
     for p in srcs:
         root = project_of(p)

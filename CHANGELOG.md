@@ -120,6 +120,7 @@ result per gate and the master file (sha256) are identical to the old build's.
   every matte operation still shows. The halo is min(absolute step, added step).
 
 ### Fixed (first real job, integration)
+- QC guard hook: only real files count as leaving `Export/`. Words like `Export/v001` in prose, commit messages or heredocs next to "copy" / "move" no longer block the command; real files and shell globs that match them are still checked.
 - Prep no longer reuses a stale plate / matte after a re-cut that keeps segment ids (render ran out of frames); legacy plates are adopted when their length matches.
 - FRAME-03 judges the halo the pipeline added (output vs the source plate at the same edge), not the room's own edges.
 - `cves qc --stage plan` validates like `cves build`; abutting cutaways within half a frame no longer error.
