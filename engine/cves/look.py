@@ -4,8 +4,8 @@ Relight (optional): the subject matte lets the background be pulled down. The ed
 a feather: every edge pixel of the plate is a mix `a*subject + (1-a)*wall`, so the wall behind it is estimated from the
 nearby pure-background pixels, the subject colour is un-mixed, and the pixel is rebuilt as `a*graded subject +
 (1-a)*darkened wall`. The old soft matte (1 px erode + 3 px blur) gave every wall pixel 2-7 px outside the edge a few
-percent of the UN-darkened plate, which read as a bright ring (QC FRAME-03, +11..+22 Y over the wall).
-NEVER widen a feather to hide an edge: it leaks the bright wall round the head and reads as an "aura" (LESSONS #4)."""
+percent of the UN-darkened plate, which read as a bright ring (+11..+22 Y over the wall).
+Widening a feather to hide an edge leaks the bright wall round the head and reads as an "aura"."""
 import numpy as np, cv2
 
 LUMA = np.array([.2126, .7152, .0722], np.float32)

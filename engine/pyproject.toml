@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cves"
-version = "0.5.1"
-description = "Claude Video Editing System: edit.yaml-driven talking-head ad editor with automated QC"
+version = "0.6.0"
+description = "Claude Video Editing System: edit.yaml-driven talking-head video and ad editor"
 requires-python = ">=3.11"
 dependencies = ["numpy", "opencv-python", "av", "pillow", "soundfile", "scipy", "librosa", "pyyaml", "torch", "opentimelineio"]
 

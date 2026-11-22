@@ -1,7 +1,7 @@
 # Architecture
 
-Claude Video Editing System (CVES): an autonomous, Claude-driven editor for talking-head videos and ads.
-**Claude makes the decisions; local code does the work; humans tweak in a real editor.**
+Claude Video Editing System (CVES): a Claude-driven editing tool for talking-head videos and ads.
+**Claude does what the user asks; local code does the work; humans tweak in a real editor.**
 
 The engine has no house look. Every visual, pacing and sound choice comes from a **style profile** (§9), normally measured
 from the client's own reference edits. The **canvas** is configurable (style `canvas.size`: 9:16, 4:5, 1:1, 16:9, 2.39:1 or any
@@ -17,8 +17,8 @@ claude-video-editing-system/
   CHANGELOG.md, CONTRIBUTING.md, CLAUDE.md
   engine/cves/            Python package (CLI: `cves ...`)
     cli.py                entry point
-    out.py                console output: third-party noise filter (fd 2, workers included), short QC summaries, one-line errors + Edit/logs/cves.log
-    status.py             `cves status`: stage reached, last QC, open FAILs, the next command (read-only)
+    out.py                console output: third-party noise filter (fd 2, workers included), one-line errors + Edit/logs/cves.log
+    status.py             `cves status`: stage reached, the next command (read-only)
     tlist.py              `cves templates [NAME] [--kinds] [--json]`: the registry in a few lines, one template's params + docs
     project.py            project folder layout, edit.yaml load/save/validate
     ingest.py             transcribe, pause-tighten, plate extract, matte, faces, voice chain
@@ -34,7 +34,7 @@ claude-video-editing-system/
     templates/            cutaway / roto / chest / end-card templates (one file each, registry in __init__)
     render.py             edit.yaml -> frames (vibe mode) and -> layered clips (control mode)
     rcache.py             the frame cache: per-frame input keys, so a build re-renders only the frames that changed (§6b)
-    build.py              `cves build` (render + mix + encode + qc) and `--draft` (Edit/draft/ Variant, half size, never deliverable)
+    build.py              `cves build` (render + mix + encode) and `--draft` (Edit/draft/ Variant, half size)
     moodboard.py          the edit plan: timeline + shot-by-shot build frames (same renderer) -> EDIT-PLAN.html/.md + moodboard.jpg
     mix.py                voice + music (drop-synced, frequency-split ducking) + SFX -> master + stems
     music.py              Openverse search/download with licence + credits; ElevenLabs / Magnific notes
@@ -43,14 +43,12 @@ claude-video-editing-system/
     encode.py             single x264 encode with bt709 tags
     learn.py              `cves learn`: project journal (Edit/journal.jsonl) -> mined candidate patterns -> human-approved promotion
                           into the learned style layers; taste study of great videos (docs/LEARNING.md)
-    critique.py           `cves critique`: contact sheet + energy timeline + CRITIQUE.md rubric (senior-editor review)
-    review.py             `cves review`: watches the render: cut strips, hook, payoff, end card, audio -> findings.json + REVIEW.md; safe patches; sign-off (docs/REVIEW.md)
     treatments.py         `cves treatments`: 2-3 creative treatments of one plan, half-size proxies, comparison sheet, pick (docs/TREATMENTS.md)
-    deliver.py, variants.py  `cves deliver`: QC-stamped Export/vNNN/ (master, captions, cover, qc.json, style snapshot) + variants (reframes, cut-downs) that pass their own QC
-    qc/                   `cves qc` gates (+ `--stage story|plan`) -> Edit/QC-REPORT.txt
+    deliver.py, variants.py  `cves deliver`: Export/vNNN/ (master, captions, cover, style snapshot) + variants (reframes, cut-downs)
+    events.py             picture events (element entries, cuts, pixel onsets) for the SFX cue sync; BS.1770 loudness
     export/               resolve.py (FCPXML + media + bridge), kdenlive.py (.kdenlive via OTIO), layers.py (shared)
   plugin/                 Claude Code plugin: commands/*.md + skills/video-editor/SKILL.md
-  knowledge-base/         RULEBOOK, CREATIVE (senior-editor method), CHECKLISTS, QA-REVIEW, QC-GATES, DECISIONS, TASTE + taste/learned.yaml (shared learned taste), modules/, transcripts/, tools/
+  knowledge-base/         TASTE.md + taste/learned.yaml (shared learned taste)
   assets/                 fonts (OFL), icons (Material, Apache-2.0), sfx (CC0), logos/
   setup/                  install_mac.sh, install_windows.ps1, requirements*.txt, doctor.py
   examples/               a demo project (edit.yaml, edl.json, notes; no client footage)
@@ -63,41 +61,37 @@ claude-video-editing-system/
   Inspirations/   reference edits for this client (the style spec; `cves inspire` measures them)
   Brand/          logo.png/svg, colours, approved claims (claims.md), wordmarks, optional style.yaml (brand tokens)
   Music/          licensed tracks + CREDITS.md
-  Edit/           edit.yaml, style.yaml (from `cves inspire`), edl.json, words.json, faces.json, voice_*.wav, plate/, matte/, frames/, QC-REPORT.txt, qc.json
+  Edit/           edit.yaml, style.yaml (from `cves inspire`), edl.json, words.json, faces.json, voice_*.wav, plate/, matte/, frames/
   Moodboard/      EDIT-PLAN.html, EDIT-PLAN.md, moodboard.jpg, frames/
   Export/         final MP4 + control/ (Resolve / Kdenlive projects, layered media, stems, SRT)
 ```
 `cves new "<Client>" "<Video>" --raw <file>` creates it (`--root` picks another projects folder). The full list of `Edit/` files is in `docs/CONTRACTS.md` §3.
 
-## 3. The workflow (both modes share steps 1-7)
+## 3. The workflow (both modes share steps 1-6; each step runs when the user asks for it)
 | Step | Command | Who | Output |
 |---|---|---|---|
 | 1 Setup | `cves new`, then `cves inspire` | Claude + local | project folders; the client's style profile (`Edit/style.yaml`, measured from `Inspirations/`) and `STYLE.md` notes (first video per client) |
 | 2 Ingest | `cves ingest` | local | `raw_audio.wav`, `raw_words.json`, `raw_transcript.txt` |
-| 3 Story | `cves story` → Claude writes `selects.yaml` → `cves select` → `cves qc --stage story` | Claude (text) + local | `edl.json`, `voice_final.wav` (clean, pauses ≤ 0.25 s); **user approves the cut list** |
-| 4a Direction | Claude writes `Edit/DIRECTION.md` | Claude (text) | concept, emotional arc, the one signature moment, motif, what we will not do (knowledge-base/CREATIVE.md); shown with the cut list or the edit plan, not a third approval |
-| 4 Plan | `cves prep` → `cves plan` → Claude fills `edit.yaml` → `cves qc --stage plan` | local + Claude (text) | `words.json`, plate/, matte/, `faces.json` (box + landmarks), `edit.yaml` |
-| 5 Edit plan | `cves moodboard` | local + Claude reads EDIT-PLAN.md, reviews 1 image | `Moodboard/EDIT-PLAN.html`: multi-track timeline + every shot with rendered build frames, words, sound; **user approves** |
-| 5b Treatments (open brief) | `cves treatments make / render / compare / pick` | local + Claude picks 2-3 treatments, reviews 1 sheet | `Edit/treatments/compare/sheet.jpg` + `compare.mp4`; **user picks one** (docs/TREATMENTS.md) |
+| 3 Story | `cves story` → Claude writes `selects.yaml` → `cves select` | Claude (text) + local | `edl.json`, `voice_final.wav` (clean, pauses ≤ 0.25 s) |
+| 4 Plan | `cves prep` → `cves plan` → Claude fills `edit.yaml` | local + Claude (text) | `words.json`, plate/, matte/, `faces.json` (box + landmarks), `edit.yaml` |
+| 5 Edit plan | `cves moodboard` (+ `cves review-plan` / `cves plan apply-notes` for editor notes) | local + Claude reads EDIT-PLAN.md | `Moodboard/EDIT-PLAN.html`: multi-track timeline + every shot with rendered build frames, words, sound |
+| 5b Treatments | `cves treatments make / render / compare / pick` | local + Claude | `Edit/treatments/compare/sheet.jpg` + `compare.mp4`; the user picks one (docs/TREATMENTS.md) |
 | 6 Render + mix | `cves build` (or `cves render && cves mix && cves encode`; `cves beats` for beat sync); `cves build --draft` for a fast half-size look (§6b) | local | final MP4 + stems + `elements.jsonl` (incremental: only changed frames re-render, §6b) |
-| 7 QC | `cves qc` | local; Claude fixes edit.yaml until it passes | `QC-REPORT.txt` + `qc.json`; thresholds for per-client choices come from the style profile |
-| 7b Critique | `cves critique` | local + Claude scores the rubric, fixes anything < 7, logs it (`cves learn rate --by claude`) | `Edit/critique/` contact sheet, energy timeline, `CRITIQUE.md` (knowledge-base/CREATIVE.md) |
-| 7c Review loop | `cves review build` → `cves review apply` → re-render → again; `cves review signoff` | local measures; Claude looks at the pack, answers the rubric, fixes; max `review.max_rounds` (3) rounds | `Edit/review/rNNN/` cut strips, hook / payoff / end card strips, `audio.json`, `findings.json`, `REVIEW.md` ([REVIEW.md](REVIEW.md)) |
-| 8a Vibe delivery | `cves deliver [--variants 4:5,1:1,cut15]` | local + Claude | a new `Export/vNNN/` (master, SRT/WebVTT, cover, qc.json, style snapshot, variants that passed QC; `docs/DELIVERY.md`); refused unless `qc.json` has 0 FAIL for that exact master; user gives notes in words |
-| 8b Control delivery | `cves export resolve` / `cves export kdenlive` | local + Claude via MCP | layered project; Claude drives the editor live (Resolve) or by project file (Kdenlive); user edits by hand |
+| 7a Vibe delivery | `cves deliver [--variants 4:5,1:1,cut15]` | local + Claude | a new `Export/vNNN/` (master, SRT/WebVTT, cover, style snapshot, variants; `docs/DELIVERY.md`); user gives notes in words |
+| 7b Control delivery | `cves export resolve` / `cves export kdenlive` | local + Claude via MCP | layered project; Claude drives the editor live (Resolve) or by project file (Kdenlive); user edits by hand |
 
 ## 4. edit.yaml (the single source of truth for a video)
 ```yaml
-goal: ad                                     # ad (default) | viral: goal layer, retention QC profile, music slot rules (docs/VIRAL.md)
+goal: ad                                     # ad (default) | viral: the goal style layer (docs/VIRAL.md)
 project: {client: "Client", title: "Video Title", raw: "Raw/take.MP4"}   # fps and size come from the source / style profile (canvas.size)
 spine: aroll                                 # aroll (default) | voiceover | music | broll: what drives the timeline (FORMATS.md)
 style: {preset: null, captions: {position: lower_third}}   # optional preset + inline per-video overrides (§9)
 edl: edl.json                                # segments (raw in/out, frame-snapped) from `cves story`
 aroll:
-  zoom: {"01_hook_0": 1.0, "05_every_day_0": 1.18}   # every direct cut changes scale by >= style framing.min_step (CUT-05)
+  zoom: {"01_hook_0": 1.0, "05_every_day_0": 1.18}   # auto zoom changes scale at each direct cut by >= style framing.min_step
   creep: 0.015                                       # slow push per segment (default from style framing.creep)
-  snap: {start: 31.13, end: 31.80, zoom: 1.55}       # the one extreme punch-in (FRAME-09)
-  exposure_match: true                               # per-shot skin balance (COL-06/07)
+  snap: {start: 31.13, end: 31.80, zoom: 1.55}       # a punch-in
+  exposure_match: true                               # per-shot skin balance
 captions: {auto: true, hide: [[21.23, 24.57]], fixes: {"web site": "website"}}   # built from words.json; look from style captions:
 cutaways:
   - {id: c1, template: search_rows, start: 1.63, end: 7.55,          # in/out omitted = style transitions.in/out
@@ -106,9 +100,9 @@ roto:   [{segment: "05_every_day_0", template: big_words, params: {words: [["EVE
 chest:  [{segment: "08a", template: wordmark, params: {lines: ["Client", "Name"], sub: "TAGLINE", at: 21.80}}]
 end_card: {template: logo_end, duration: 1.25, params: {label: "SERVICE NAME", pill: "OFFER"}}
 music: {file: "Music/track.wav", drop_track: 38.70, drop_cut: 31.13, credits: "..."}   # bed_lu omitted = style sound.bed_lu
-# organic post on a trending sound: music: {slot: platform, guide: 128, sound: "..."}  -> no music in the master (docs/VIRAL.md §4)
+# organic post on a trending sound: music: {slot: platform, guide: 128, sound: "..."}  -> no music in the master (docs/VIRAL.md §3)
 sfx: {auto: true, extra: [{t: 31.12, name: boom, gain: -16}]}   # templates emit their own cues
-qc: {topic_keywords: [topic, words], brand_tail: [brand, name], duration: [30, 60]}   # duration omitted = style platform.duration
+qc: {topic_keywords: [topic, words], brand_tail: [brand, name]}   # words cut-down variants keep first (cves.variants)
 broll:                                       # footage on the timeline (FORMATS.md §5): cutaways over A-roll, or the picture of a
   - {src: Raw/street.mp4, start: 12.4, end: 14.1, in: 3.0, framing: fill}            # voiceover / music / broll edit
   - {asset: hero_img, start: 14.1, end: 15.6, kenburns: {zoom: [1.0, 1.1]}}
@@ -132,10 +126,10 @@ New template = new file + registry entry + a moodboard sample in `docs/TEMPLATES
 tall / square / wide arrangement) and read every
 colour and font through `gfx` from the style profile, never as literal values (`docs/CONTRACTS.md` §4, FORMATS.md §3).
 
-## 6. Element log (unlocks the remaining QC gates)
+## 6. Element log
 `render.py` writes `Edit/elements.jsonl`: one line per element per frame:
 `{"f": 123, "id": "c1.row2.tag", "role": "caption|cutaway|roto|chest|end|icon", "bbox": [x0,y0,x1,y1], "alpha": 0.8, "scale": 1.02, "font": "Poppins-Bold", "size": 34, "fill": "#4C8DFF", "text": "near me", "asset": "assets/icons/search.svg", "keyword_t": 3.99}`
-QC gates for motion (MOT-*), graphics (GFX-*), captions (PLAT-*), safe zones and spoken-before-shown read it.
+The SFX cue sync (`cves.events`), the cover picker, reframes and the moodboard read it.
 
 ## 6b. Incremental render and draft builds
 A final render keeps a **frame cache** (`engine/cves/rcache.py`): every frame is keyed by a hash of what decides its
@@ -147,9 +141,8 @@ identical to a full render's (tests/test_render_cache.py). One cutaway tweak re-
 delivery tweak re-renders nothing. `--no-cache` / style `render.cache: false` render everything.
 
 `cves build --draft` is the fast look while iterating: a `project.Variant` in `Edit/draft/` (own frames, cache, element
-log, mix and QC stamp), rendered at `render.draft_scale` (0.5) through the proxy path, encoded with the proxy settings,
-tagged `comment=cves-draft` and QC'd with the fast gate set. It never touches the final build, and `cves deliver`
-refuses a draft even with `--force-unchecked`.
+log, mix), rendered at `render.draft_scale` (0.5) through the proxy path, encoded with the proxy settings and tagged
+`comment=cves-draft`. It never touches the final build; `cves deliver --video Edit/draft/<file>` delivers it at its own size.
 
 ## 7. Control mode export contract (`Export/control/`)
 ```
@@ -189,7 +182,7 @@ The learned layers apply only sections whose scope matches the project, and ever
 (`docs/LEARNING.md`).
 
 Sections: `canvas` (size, safe zones per aspect), `platform` (fps, 9:16 safe zone, margin, duration), `broll`, `autocut`, `stage`, `colors`, `font_files`, `grade`, `captions`, `transitions`,
-`framing`, `grammar` (cutaway share band, shot lengths, roto count, beat order), `sound` (bed level, ducking, master loudness),
+`framing`, `grammar` (the references' pacing, beat order), `sound` (bed level, ducking, master loudness),
 `motion`. The schema is in `docs/STYLE.md`.
 
 The defaults are deliberately plain: a neutral stage, a blue accent, no relight, plain cuts into cutaways, captions under the chin,
@@ -197,6 +190,4 @@ a -10 LU music bed, no cutaway-share band. A preset is just data. `profitcast-da
 accent, warm moody A-roll, whip in / glitch out, a 40–55% cutaway-share band, a -7 LU bed), measured from the reference edits of
 the agency where CVES was first tested.
 
-The QC gates are engine invariants, but their thresholds for per-client choices (cutaway share, bed level, transition kinds,
-caption position) are read from the merged profile; a `grammar` key set to `null` means that rule is not enforced for the
-client. `docs/CONTRACTS.md` §1 lists what is not style (frame-snapped edits, a single lossless source path, face-smoothed punch-ins).
+`docs/CONTRACTS.md` §1 lists what is not style (frame-snapped edits, a single lossless source path, face-smoothed punch-ins).

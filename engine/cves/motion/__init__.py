@@ -27,7 +27,7 @@ INSTALL_HINT = "run `python -m playwright install chromium` (in the CVES venv) t
 PIP_HINT = "pip install playwright==1.58.0 && python -m playwright install chromium"
 DEFAULT_MOTION = {"ease": "expo", "energy": 0.5, "overshoot": 1.6, "blur_on_fast": True, "blur_max_u": 1.6, "exit_s": 0.32,
                   "entry_s": 0.28, "stagger_s": 0.12, "shutter": 0.5, "type_ratio": 1.25, "radius_u": 2.6,
-                  "glass_alpha": 0.72, "safe": None, "safe_fallback": [0.06, 0.07, 0.94, 0.93], "hero_min_gap_s": 8.0}
+                  "glass_alpha": 0.72, "safe": None, "safe_fallback": [0.06, 0.07, 0.94, 0.93]}
 PARAM_TYPES = {"str", "number", "int", "bool", "list", "dict", "time", "path", "color", "asset", "any"}
 PATH_TYPES = ("path", "asset", "icon")      # icon: a name in assets/icons (svg) or a path
 
@@ -471,7 +471,7 @@ def split_boxes(a, parts, pad):
 
 
 def optical_nudge(page, job, pad):
-    """{part: dx} so blocks that share an axis by layout also share it in ink (QC GFX-08 measures drawn ink, and glyph
+    """{part: dx} so blocks that share an axis by layout also share it in ink (glyph
     side bearings / trailing tracking leave 2-12 px near-misses). Measured on a settled frame: parts whose boxes share a
     centre are moved so their ink centres sit on it; parts whose boxes share a left edge, so their ink starts on it."""
     import io
@@ -545,10 +545,10 @@ def render_piece(piece, params, S, size, fps, duration, out_dir, exit=False, res
 # ------------------------------------------------------------------ timeline hook
 def prerender(pr, TL, log=print):
     """render every motion piece the timeline uses ONCE, before render's spawn pool starts (workers only read PNGs).
-    Also points the workers at PROJECT/Edit/motion and warns when hero pieces sit closer than motion.hero_min_gap_s."""
+    Also points the workers at PROJECT/Edit/motion."""
     from .. import templates as TPL
     os.environ["CVES_MOTION_CACHE"] = pr.e("motion")
-    jobs, heroes = [], []
+    jobs = []
     def add(name, params, ctx):
         fns = TPL.REGISTRY.get(name)
         job_fn = getattr(fns[0], "motion_job", None) if fns else None
@@ -556,7 +556,6 @@ def prerender(pr, TL, log=print):
         job = job_fn(params or {}, ctx)
         if job is None: return
         jobs.append(job)
-        if job.piece.hero: heroes.append((job.start, name))
     for c in TL.cuts: add(c["template"], c.get("params"), TL.ctx(c["start"], c["end"]))
     segs = {s["id"]: s for s in TL.segs}
     for r in TL.E.get("roto", []) or []:
@@ -567,10 +566,6 @@ def prerender(pr, TL, log=print):
         if s:
             for c in lst: add(c["template"], c.get("params"), TL.ctx(s["t0"], s["t1"], chin=None, chin_hold=None))
     if TL.END: add(TL.E["end_card"]["template"], TL.E["end_card"].get("params"), TL.ctx(TL.T_END, TL.T_END + TL.END))
-    gap = float(motion_cfg(TL.S).get("hero_min_gap_s") or 0)
-    heroes.sort()
-    for (a, n1), (b, n2) in zip(heroes, heroes[1:]):
-        if gap and b - a < gap and log: log(f"motion: hero pieces {n1} @{a:.2f}s and {n2} @{b:.2f}s are {b - a:.1f}s apart (motion.hero_min_gap_s {gap:g}): restraint")
     seen = set()
     for j in jobs:
         if j.key in seen: continue

@@ -7,8 +7,7 @@ The edit is cut to a guide (a reference track, a beats.json or a bare tempo), bu
 voice + SFX only. The poster adds the sound in the app (where the platform licenses it), so the master never holds music
 we have no rights to. Mix writes the guide as its own stem (Edit/stems/guide.wav: the reference track laid where the edit
 expects it, or a click track for a tempo), `cves deliver` ships it next to the master with POSTING.md (which sound, where
-to start it in the track, where the drop lands). Ads never use the slot (schema error): an ad carries licensed music in
-the file (RULEBOOK §0.12).
+to start it in the track, where the drop lands).
 
 Times returned here are CUT seconds (the video's timeline) unless named `track`."""
 import os, re, json
@@ -43,7 +42,7 @@ def spec(pr):
 
 
 def problems(pr):
-    """[messages] that make the slot unusable (schema errors and the QC FAIL use them)"""
+    """[messages] that make the slot unusable (schema errors use them)"""
     s = spec(pr)
     if s is None: return []
     if s["kind"] is None: return ["music.slot: platform needs music.guide: a reference track, a beats.json or a tempo (e.g. 120)"]
@@ -78,7 +77,7 @@ def grid(pr, T, S=None, TL=None):
         cut = lambda xs: [float(x) - off for x in xs if 0 <= float(x) - off <= T + 1e-6]
         return {"kind": "beats", "tempo": B.get("tempo"), "beats": cut(B.get("beats") or []), "downbeats": cut(B.get("downbeats") or []),
                 "offset": off, "drop_cut": s["drop_cut"], "notes": notes, "spec": s}
-    # a reference track: placed exactly as `cves beats` places music (beats.plan), so cut snapping and QC agree
+    # a reference track: placed exactly as `cves beats` places music (beats.plan), so cut snapping agrees
     from . import beats as BT
     P = BT.plan(pr, TL, S=S, need_beats=True)
     if P is None: return None
@@ -160,5 +159,4 @@ def posting_md(pr, S, master_name, guide_name, T, g, cuts=()):
         for c in list(cuts)[:8]:
             b = float(bt[int(np.argmin(np.abs(bt - c)))]); L.append(f"| {c:.3f} | {b:.3f} | {1000 * (c - b):+.0f} |")
         L.append("")
-    L += ["Ads never use this slot: an ad carries licensed music in the file (RULEBOOK §0.12).", ""]
     return "\n".join(L)

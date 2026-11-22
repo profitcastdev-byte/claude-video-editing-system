@@ -32,7 +32,7 @@ style:
 structure:
   pace: slow
   max_shot_s: null
-  min_shot_s: 2.4             # merged holds never exceed grammar.max_shot_s (no QC gate is loosened)
+  min_shot_s: 2.4             # merged holds never exceed grammar.max_shot_s
   cutaways_per_30s: null
   punch_ins: gentle           # filmic: no snap punch-in (a slow push carries the hook instead)
   transitions: fade

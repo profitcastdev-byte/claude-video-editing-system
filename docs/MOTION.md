@@ -28,7 +28,7 @@ A motion template's clock starts at `at` (a cut-time second; default: the slot's
 | slot | role in the element log | exit animation |
 |---|---|---|
 | `cutaways:` | `cutaway` (drawn on the style's stage) | off (the cutaway's transition cuts it) |
-| `chest:` | `chest` (every chest / text-over-video gate applies) | on: plays during the last `motion.exit_s` |
+| `chest:` | `chest` | on: plays during the last `motion.exit_s` |
 | `roto:` (`m_<piece>_roto`) | `roto` (composited behind the presenter) | on |
 | `end_card:` (`m_<piece>_end`) | `end` | off |
 
@@ -51,7 +51,7 @@ Later folders override earlier ones. A folder name `foo` becomes the template `m
 title: Glass card
 description: One sentence: what moves and how (shown by `cves templates <name>` and `-v`, and in TEMPLATES.md).
 kinds: [cutaway, overlay]      # cutaway | overlay | roto | end. The first is the main kind; roto / end add m_<name>_roto / _end
-hero: false                    # a hero moment counts against motion.hero_min_gap_s
+hero: false                    # marks a hero piece (`cves motion list` shows [hero])
 duration: 3.0                  # default length for previews / slots without an end
 params:                        # types: str number int bool list dict time path asset icon color any; required: true
   title: {type: str, required: true, help: "*stars* mark accent words"}
@@ -146,14 +146,11 @@ Inside a project, `--project .` previews with its style and its `Brand/motion/` 
 Every built-in piece follows these rules:
 - **Motion:** eased on the house curves; staggered (never all at once); overshoot used once per piece at most; velocity blur only on fast frames; entries fade with their travel, so nothing pops in.
 - **Layout:** type from the scale, shrunk to fit rather than clipped; inside the safe zone; legible over video (plates or shadows on overlay pieces).
-- **Restraint:** the skill allows one hero piece per ~8-10 s (`motion.hero_min_gap_s`), and `cves render` warns when two hero pieces sit closer.
 
 ## Craft (motion moves between and inside shots)
 Code: `engine/cves/craft.py` (pure functions: the same inputs give the same pixels in every worker) and
-`engine/cves/templates/craft.py` (`text_behind`). Every look and every limit comes from the style (`craft.*`,
-`transitions.<kind>_s`; [STYLE.md](STYLE.md)). **No effect soup:** each move counts against the restraint budget
-(`creative.craft_per_30s`, and transitions against `creative.transition_kinds_max`); `cves render` warns when an edit is
-over it and `cves critique` reports it. Transitions are also rate-limited at render (below).
+`engine/cves/templates/craft.py` (`text_behind`). Every look comes from the style (`craft.*`,
+`transitions.<kind>_s`; [STYLE.md](STYLE.md)).
 
 ### Text behind the speaker
 `roto: [{segment: 01_hook_0, template: text_behind, params: {text: "2 *SECONDS*", at: 0.45}}]`
@@ -163,13 +160,13 @@ occludes the letters (the roto slot's order: plate -> type -> subject). It is pl
 (eye midpoint, head top, chin), smoothed with a zero-phase Gaussian whose sigma is in seconds (`craft.behind.smooth_s`, so
 60 fps is as calm as 30), and follows the head by `craft.behind.track` of its motion (0 = locked where it entered, 1 =
 glued; default 0.4, subtle). The path is kept in the safe zone and the clamped path is smoothed again, so the type never
-stops dead on the safe edge (MOT-03). `position: above` (default) sets the
+stops dead on the safe edge. `position: above` (default) sets the
 last line's baseline so the head covers its lower `craft.behind.overlap`; `behind` centres it on the eyes; `low` puts it
 behind the shoulders. The letters rise out from behind the head (`entry_s`), breathe in their tracking and hold with a
-slow 2.5 % push. One element per block (`behind.text`, role `roto`): QC measures its contrast with the person masked out.
+slow 2.5 % push. One element per block (`behind.text`, role `roto`).
 
 **Colour.** `craft.behind.color: auto` (default) measures the graded plate behind the type's box over its hold (the person
-masked out) and picks the light or dark token (`craft.behind.light` / `dark`) that reaches the GFX-15 target; an accent
+masked out) and picks the light or dark token (`craft.behind.light` / `dark`) that reaches the legibility target; an accent
 that fails becomes its darker (on a light wall) or lighter variant, and when neither token reads a soft bed is added
 (`auto_bed`). A `color` param or a fixed style colour skips the measurement.
 
@@ -225,6 +222,5 @@ fade:
 | `light_leak` | a procedural warm leak (seeded blobs + a streak, screen-blended), no third-party media | `leak_color`, `leak_strength` |
 | `dip` | a soft dip to a style colour | `dip_color` |
 
-Each lasts `transitions.<kind>_s` either side of the cut and is seeded by its cut time (deterministic). Rate limit
-(`craft.transitions.enforce`): a non-cut transition within `craft.transitions.min_gap_s` of the previous kept one, or a kind
-beyond `creative.transition_kinds_max`, becomes a cut (and loses its whoosh); `cves render` prints each downgrade.
+Each lasts `transitions.<kind>_s` either side of the cut and is seeded by its cut time (deterministic). Every transition
+the plan asks for is rendered.

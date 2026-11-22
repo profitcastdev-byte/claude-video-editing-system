@@ -1,13 +1,13 @@
-"""`cves build` (render + mix + encode + qc) and its draft mode (docs/ARCHITECTURE.md §3 step 6, docs/CONTRACTS.md §6).
+"""`cves build` (render + mix + encode) and its draft mode (docs/ARCHITECTURE.md §3, docs/CONTRACTS.md §6).
 
 Final build: the full-quality master in Export/, rendered incrementally (cves.rcache: only frames whose inputs changed),
-mixed, encoded with the style `delivery:` settings and QC'd (the fast gate set), as before.
+mixed and encoded with the style `delivery:` settings.
 
 Draft build (`cves build --draft`): a quick look while iterating. It is a project.Variant in `Edit/draft/` (its own
-frames, frame cache, element log, timeline, mix, QC stamp), rendered at `render.draft_scale` of the canvas (the treatments
+frames, frame cache, element log, timeline, mix), rendered at `render.draft_scale` of the canvas (the treatments
 proxy path: plates and mattes resized as they decode), encoded with the proxy settings (`treatments.proxy_preset` /
-`proxy_crf`) into `Edit/draft/<title>_draft.mp4`, tagged `comment=cves-draft`, and QC'd with the fast gate set. The
-final build's frames, cache and stamp are never touched. Delivery refuses a draft (`deliver.is_draft`)."""
+`proxy_crf`) into `Edit/draft/<title>_draft.mp4`, tagged `comment=cves-draft`. The final build's frames and cache are
+never touched."""
 import os, shutil, time
 from .project import Variant
 
@@ -33,8 +33,8 @@ def draft_project(pr):
 
 
 def build(pr, draft=False, cache=None, log=print):
-    """-> (master path, QC fail count, QC report, {stage: seconds}). draft: see the module doc."""
-    from . import render as R, mix as MX, encode as EN, qc, schema, style as STY
+    """-> (master path, {stage: seconds}). draft: see the module doc."""
+    from . import render as R, mix as MX, encode as EN, schema, style as STY
     schema.require_valid(pr); T = {}
     tgt = draft_project(pr) if draft else pr
     k = float(STY.load(pr).get("render.draft_scale", 0.5) or 0.5) if draft else None
@@ -48,5 +48,4 @@ def build(pr, draft=False, cache=None, log=print):
     else:
         v = EN.encode(pr)
     T["encode"] = time.time() - t
-    t = time.time(); nf, rep = qc.run(tgt, v, tier="draft") if draft else qc.run(tgt, v, fast=True); T["qc"] = time.time() - t   # drafts: the draft tier
-    return v, nf, rep, T
+    return v, T

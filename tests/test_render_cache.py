@@ -88,21 +88,18 @@ def test_keys_follow_code_and_visual_style(warm, monkeypatch):
     assert all(a != b for a, b in zip(k0, rcache.frame_keys(TL)))
 
 
-def test_draft_build_is_small_separate_and_never_delivered(warm, tmp_path):
+def test_draft_build_is_small_separate_and_deliverable(warm, tmp_path):
     from cves import build, deliver
-    pr = project.Project(warm); render.render(pr); before = _hashes(warm); stamp = _read(warm, "qc.json") if os.path.exists(pr.e("qc.json")) else None
-    v, nf, rep, T = build.build(pr, draft=True, log=lambda *a: None)
-    assert os.path.dirname(v) == pr.e("draft") and os.path.exists(pr.e("draft", "qc_draft.json"))
-    assert not os.path.exists(pr.e("draft", "qc.json"))                    # the draft QC tier never writes a delivery stamp
+    pr = project.Project(warm); render.render(pr); before = _hashes(warm)
+    v, T = build.build(pr, draft=True, log=lambda *a: None)
+    assert os.path.dirname(v) == pr.e("draft")
     s = json.loads(subprocess.run([C.get("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", v],
                                   capture_output=True, text=True).stdout)["streams"][0]
     assert (s["width"], s["height"]) == (540, 960)
-    assert json.load(open(pr.e("draft", "qc_draft.json"), encoding="utf-8"))["deliverable"] is False
     assert _hashes(warm) == before                                          # the final build's frames and cache are untouched
-    assert (_read(warm, "qc.json") if os.path.exists(pr.e("qc.json")) else None) == stamp
-    with pytest.raises(SystemExit, match="draft"): deliver.deliver(pr, video=v, force_unchecked=True)
-    cp = str(tmp_path / "renamed.mp4"); shutil.copy(v, cp)                  # moved out of Edit/draft: the container tag still says so
-    with pytest.raises(SystemExit, match="draft"): deliver.deliver(pr, video=cp, force_unchecked=True)
+    out, man = deliver.deliver(pr, only="master", video=v)                  # a draft is delivered like any master, at its own size
+    assert man["master"] == os.path.basename(v) and man["size"] == [540, 960]
+    cover = next(f for f in man["files"] if f["path"].endswith(".cover.jpg")); assert (cover["width"], cover["height"]) == (540, 960)
     build.build(pr, draft=True, log=lambda *a: None)
     from cves import render as R
     assert R.LAST["frames"] == 0                                            # a second draft of the same plan renders nothing

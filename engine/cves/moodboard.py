@@ -1,7 +1,7 @@
 """Moodboard = the complete EDIT PLAN, rendered by the same renderer as the final (true replicas, not mockups).
 Outputs in PROJECT/Moodboard/:
   EDIT-PLAN.html   for the user: summary, multi-track timeline, and every shot in order with its build frames, spoken words,
-                   on-screen content, framing, transitions, captions and sound cues; pre-render gate results. Per shot: Approve,
+                   on-screen content, framing, transitions, captions and sound cues. Per shot: Approve,
                    quick actions and a note (docs/PLAN-REVIEW.md; `cves review-plan` serves it so Send saves Edit/plan_notes.json).
   plan_state.json  per shot hash + frames of this round: the next round re-renders only changed shots and badges them
   EDIT-PLAN.md     the same plan as text (what Claude reads; no images needed)
@@ -118,9 +118,6 @@ def moodboard(pr, full=False):
     from .mix import all_cues
     try: cues = sorted(all_cues(TL), key=lambda c: c[0])
     except SystemExit: cues = []
-    try:
-        from .qc import run_stage; nf, gates = run_stage(pr, "plan")
-    except Exception as e: gates = f"plan-stage gates not run: {e}"
     want = sorted(set(f for sh in S for f in sh["frames"])); todo = [f for f in want if f not in reuse]
     tmp = pr.e("frames_plan"); shutil.rmtree(tmp, ignore_errors=True)
     if todo: render(pr, only=todo, out_dir=tmp)       # only the changed shots' frames (all of them on the first round / --full)
@@ -138,8 +135,8 @@ def moodboard(pr, full=False):
     cut_share = sum(sh["end"] - sh["start"] for sh in S if sh["kind"] == "cutaway") / max(TL.T_END, 1e-6)
     n_cuts = len(S) - 1; aroll_lens = [sh["end"] - sh["start"] for sh in S if sh["kind"] == "aroll"]
     M = E.get("music") or {}
-    stats = [("Runtime", f"{T:.1f} s"), ("Shots", str(len(S))), ("Cuts / min", f"{n_cuts / T * 60:.0f}"), ("Cutaway share", f"{cut_share:.0%}" + (" ({:.0%}–{:.0%})".format(*TL.S.get("grammar.cutaway_share")) if TL.S.get("grammar.cutaway_share") else "")),
-             ("Median A-roll shot", f"{sorted(aroll_lens)[len(aroll_lens)//2]:.1f} s" if aroll_lens else "-"), ("Roto moments", f"{len(TL.roto)} (≤ {TL.S.get('grammar.roto_max', 4)})"),
+    stats = [("Runtime", f"{T:.1f} s"), ("Shots", str(len(S))), ("Cuts / min", f"{n_cuts / T * 60:.0f}"), ("Cutaway share", f"{cut_share:.0%}"),
+             ("Median A-roll shot", f"{sorted(aroll_lens)[len(aroll_lens)//2]:.1f} s" if aroll_lens else "-"), ("Roto moments", str(len(TL.roto))),
              ("Captions on screen", str(sum(1 for ca, cb, ws in TL.caps if _cap_visible(TL, ca, min(cb, TL.T_END))))), ("SFX cues", str(len(cues))),
              ("Music", (os.path.basename(M.get("file") or "none") + (f", drop at {M.get('drop_cut')} s" if M.get("drop_cut") else "") + f", bed {M.get('bed_lu', TL.S.get('sound.bed_lu', -10))} LU")),
              ("Style", " + ".join(TL.S.get("_sources", ["default"])))]
@@ -150,7 +147,6 @@ def moodboard(pr, full=False):
     for i, sh in enumerate(S, 1):
         sfx = ", ".join(f"{c[1]}@{c[0]:.2f}" for c in cues if sh["start"] - .3 <= c[0] < sh["end"])
         md.append(f"| {i} | {sh['start']:.2f}–{sh['end']:.2f} | {sh['end'] - sh['start']:.2f} | {describe(sh)} | {sh['trans_in']} → {sh['trans_out']} | {sh['words']} | {' / '.join(sh['captions'])} | {sfx} |")
-    md += ["", "## Pre-render gates", "```", gates if isinstance(gates, str) else str(gates), "```"]
     open(os.path.join(out, "EDIT-PLAN.md"), "w", encoding="utf-8").write("\n".join(md) + "\n")
 
     # ---------------- contact sheet (Claude's one-image review)
@@ -236,7 +232,6 @@ Approve each shot, use the quick actions, or leave a note under it; then Send to
 <div class="stats">{stat_html}</div>{rv_bar}
 <h2>Timeline</h2>{"".join(svg)}
 <h2>Shot by shot</h2>{"".join(cards)}
-<h2>Pre-render checks</h2><pre>{html.escape(gates if isinstance(gates, str) else str(gates))}</pre>
 {rv_tail}
 </body></html>"""
     open(os.path.join(out, "EDIT-PLAN.html"), "w", encoding="utf-8").write(page)

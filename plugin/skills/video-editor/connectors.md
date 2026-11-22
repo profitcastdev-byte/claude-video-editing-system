@@ -21,17 +21,16 @@ their own auth.
    cves assets add "<PROJECT>" --id <id> --file "<PROJECT>/Assets/<id>.<ext>" --source magnific|elevenlabs|stock \
         --prompt "<the exact prompt sent>" --model "<model name>" --licence "<plan / licence the provider states>" [--url "<stock page>"]
    ```
-6. **Check it.** `cves assets check "<PROJECT>"` must print 0 problems, then `cves render --only <cutaway id>`. Read the rendered frame
-   before showing it to the user.
+6. **Check it.** `cves assets check "<PROJECT>"` lists any asset with no file, no source or licence, no prompt (generated), or a file
+   that changed after it was registered (sha256). Then `cves render --only <cutaway id>`.
 
-Provenance is mandatory: QC gate AST-01 fails on an asset with no source or licence, on a generated asset with no prompt, and on a file
-that changed after it was registered (sha256). If you edit a file after registering it (crop, upscale, background removal), register the result
-as a **new id** with `--source` of the tool that made it and `--notes "from <old id>"`.
+If you edit a file after registering it (crop, upscale, background removal), register the result as a **new id** with `--source` of the
+tool that made it and `--notes "from <old id>"`.
 
 ## Which tool for which asset
 | `generate.kind` | provider | MCP tool (typical name) | notes |
 |---|---|---|---|
-| `image` | magnific (Freepik) | `images_generate` | Ask for the edit's aspect (`aspect: "9:16"` full bleed, `"1:1"` or `"4:5"` for a card). If the result is smaller than the box it fills, run `images_upscale` (MOT-14 fails above 1.0x raster scale). |
+| `image` | magnific (Freepik) | `images_generate` | Ask for the edit's aspect (`aspect: "9:16"` full bleed, `"1:1"` or `"4:5"` for a card). If the result is smaller than the box it fills, `images_upscale` keeps it sharp. |
 | `rgba` / `cutout` | magnific | `images_remove_background` (stills), `video_remove_background` (clips) | PNG / ProRes with alpha → `overlay_render` or a card with `fit: contain`. |
 | `upscale` | magnific | `images_upscale`, `video_upscale` | Register as a new id. |
 | `video` | magnific | `video_generate` (image-to-video: generate or pick the still first, then animate it) | 5–10 s clips; set `in`/`out` in the template. Check that people, logos and text in the clip are acceptable for an ad. |
@@ -43,11 +42,9 @@ as a **new id** with `--source` of the tool that made it and `--notes "from <old
 | client file | – | – | `--source client --licence client-owned`. |
 
 ## Writing prompts
-- Describe what the frame must *show* for the spoken line it covers, not the brand look. The look comes from the style (cards,
-  radii, colours) and the grade.
-- Vertical first: put the subject in the centre 60 % of the frame, so the Ken Burns crop and the platform UI never cut it.
-- Never generate a real person, a client's logo, a competitor's brand, or text that makes a claim. Claims come from `Brand/claims.md` and
-  are drawn by templates.
+- Describe what the frame must *show* for the spoken line it covers. The look comes from the style (cards, radii, colours) and the grade.
+- On a vertical canvas a subject in the centre of the frame survives the Ken Burns crop and the platform UI.
+- Don't generate the likeness of a real person.
 - Keep the prompt you sent verbatim. It goes into `--prompt`.
 
 ## Example

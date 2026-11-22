@@ -1,55 +1,40 @@
 """`cves deliver`: the only way a file leaves the project (docs/DELIVERY.md).
 
-Writes a new, never-overwritten Export/vNNN/ folder: the QC'd master, SRT + WebVTT + plain transcript, a cover JPG,
-qc.json + QC-REPORT.txt, edit.yaml + the merged style snapshot, every variant that passed its own QC, and manifest.json
+Writes a new, never-overwritten Export/vNNN/ folder: the master (the newest Export/*.mp4, or --video), SRT + WebVTT +
+plain transcript, a cover JPG, edit.yaml + the merged style snapshot, every variant that rendered, and manifest.json
 (files, sha256, durations, sizes, fps, cves version, variant definitions and results).
 
 `music.slot: platform` (organic posts): the master has no music; the delivery adds the guide stem (`<master>.guide.wav`)
-and POSTING.md (which sound to add in the app, where to start it, where the drop lands; cves.guide).
-
-Refuses unless Edit/qc.json exists, has fail == 0 and its sha256 equals the master's: re-encoding without re-running QC
-blocks. `--force-unchecked` delivers anyway and writes a loud warning into the manifest."""
-import os, re, sys, json, shutil, tempfile, datetime, subprocess
+and POSTING.md (which sound to add in the app, where to start it, where the drop lands; cves.guide)."""
+import os, re, sys, json, shutil, hashlib, tempfile, datetime, subprocess
 import numpy as np
 from fractions import Fraction
 from . import config as C, style as STY, __version__
-from .qc import sha256
-
-FORCE_WARNING = ("UNCHECKED DELIVERY: --force-unchecked was used. This master did NOT pass `cves qc` (or the QC stamp does not "
-                 "match it). Objective faults may reach the viewer. Do not publish before a human has reviewed it.")
 
 
-# ------------------------------------------------------------------ the QC stamp
+def sha256(path, bs=1 << 20):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(bs), b""): h.update(b)
+    return h.hexdigest()
+
+
+# ------------------------------------------------------------------ the master
 def master_path(pr, video=None):
     if video: return os.path.abspath(video)
-    st = pr.json("qc.json")
-    if st and os.path.exists(st.get("video", "")) and os.path.dirname(os.path.abspath(st["video"])) == os.path.abspath(pr.p("Export")):
-        return st["video"]
     ex = pr.p("Export")
     vids = sorted([os.path.join(ex, f) for f in os.listdir(ex) if f.endswith(".mp4")], key=os.path.getmtime) if os.path.isdir(ex) else []
     if not vids: raise SystemExit("no Export/*.mp4 master: run `cves encode` (or `cves build`) first, or pass --video")
     return vids[-1]
 
-def is_draft(pr, master):
-    """True for a `cves build --draft` render (half size, proxy encode): inside Edit/draft/, or tagged comment=cves-draft"""
-    from .encode import DRAFT_TAG
-    m = os.path.abspath(master); d = os.path.abspath(pr.e("draft"))
-    try:
-        if os.path.commonpath([m, d]) == d: return True
-    except ValueError: pass                 # another drive (Windows)
-    r = subprocess.run([C.get("ffprobe"), "-v", "error", "-show_entries", "format_tags=comment", "-of", "default=nw=1:nk=1", m], capture_output=True, text=True)
-    return DRAFT_TAG in (r.stdout or "")
-
-def check_stamp(pr, master):
-    """-> (stamp or None, master sha256, [problems]). No problems = deliverable."""
-    st = pr.json("qc.json"); sha = sha256(master); probs = []
-    if st is None: probs.append("Edit/qc.json missing: run `cves qc`")
-    else:
-        if st.get("fail", 1) != 0: probs.append(f"QC has {st.get('fail')} FAIL (Edit/QC-REPORT.txt): fix them and re-run `cves qc`")
-        if st.get("sha256") != sha: probs.append(f"Edit/qc.json judged a different file (sha {str(st.get('sha256'))[:12]}..., master {sha[:12]}...): "
-                                                 "the master changed since QC (re-encoded?); re-run `cves qc`")
-    return st, sha, probs
-
+def _owner(pr, master):
+    """the project view a master belongs to: a `cves build --draft` master (Edit/draft/) has its own timeline, element log
+    and size, so its captions and cover come from the draft Variant"""
+    from .project import Variant
+    d = os.path.abspath(pr.e("draft"))
+    try: inside = os.path.isdir(d) and os.path.commonpath([os.path.abspath(master), d]) == d
+    except ValueError: inside = False          # another drive (Windows)
+    return Variant(pr.root, d) if inside else pr
 
 # ------------------------------------------------------------------ captions
 def _ts(t, sep): t = max(0.0, t); h, r = divmod(int(round(t * 1000)), 3600000); m, r = divmod(r, 60000); s, ms = divmod(r, 1000); return f"{h:02d}:{m:02d}:{s:02d}{sep}{ms:03d}"
@@ -189,7 +174,7 @@ def _platform_slot(pr, S, stage, base, master):
     from . import guide as GD
     if not GD.is_slot(pr): return None
     src = pr.e("stems", "guide.wav")
-    if not os.path.exists(src): raise SystemExit("music.slot: platform but Edit/stems/guide.wav is missing: run `cves mix` (and encode + qc) again")
+    if not os.path.exists(src): raise SystemExit("music.slot: platform but Edit/stems/guide.wav is missing: run `cves mix` (and encode) again")
     from .variants import probe
     T = float(probe(master).get("format", {}).get("duration", 0))
     g = GD.grid(pr, T, S)
@@ -205,19 +190,13 @@ def _platform_slot(pr, S, stage, base, master):
 
 
 # ------------------------------------------------------------------ deliver
-def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, keep_temp=False):
+def deliver(pr, variants=None, only=None, video=None, keep_temp=False):
     import yaml
     from . import variants as VAR
-    from .qc import write_stamp
     from .encode import stream_params
+    master = master_path(pr, video); msha = sha256(master)
+    pr = _owner(pr, master)
     S = STY.load(pr); E = pr.edit
-    master = master_path(pr, video)
-    if is_draft(pr, master):            # never, not even with --force-unchecked: a draft is half size with a proxy encode
-        raise SystemExit(f"delivery refused: {os.path.basename(master)} is a draft render (`cves build --draft`): run `cves build` for the full-quality master")
-    stamp, msha, probs = check_stamp(pr, master)
-    if probs and not force_unchecked:
-        raise SystemExit("delivery refused: " + " | ".join(probs) + "   (override only with --force-unchecked, which is written into the manifest)")
-    if probs: print("\n" + "!" * 100 + f"\n{FORCE_WARNING}\nreasons: " + " | ".join(probs) + "\n" + "!" * 100 + "\n", file=sys.stderr)
     if only and only != "master": raise SystemExit("--only takes `master` (deliver the master without variants)")
     specs = [] if only == "master" else VAR.plan(pr, None if variants is None else [v for v in variants.split(",")])
     title = (E.get("project", {}) or {}).get("title", "edit").replace(" ", "_")
@@ -227,8 +206,6 @@ def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, kee
     try:
         mfile = os.path.join(stage, os.path.basename(master)); shutil.copy2(master, mfile)
         if sha256(mfile) != msha: raise SystemExit("copy of the master does not match its sha256: disk problem? nothing delivered")
-        if os.path.exists(pr.e("qc.json")): shutil.copy2(pr.e("qc.json"), os.path.join(stage, "qc.json"))
-        if os.path.exists(pr.e("QC-REPORT.txt")): shutil.copy2(pr.e("QC-REPORT.txt"), os.path.join(stage, "QC-REPORT.txt"))
         base = os.path.join(stage, os.path.splitext(os.path.basename(master))[0])
         written = write_captions(caption_events(pr), base)
         img, ct, how, fbox = pick_cover(pr, S, master); fi = int(round(ct * float(Fraction(stream_params(pr)[0])))); txt = []
@@ -242,56 +219,38 @@ def deliver(pr, variants=None, only=None, force_unchecked=False, video=None, kee
             f.write(f"# merged style profile used for this delivery; sources (later wins): {', '.join(S.get('_sources') or [])}\n")
             yaml.safe_dump({k: v for k, v in S.items() if k != "_sources"}, f, sort_keys=False, allow_unicode=True, width=140)
         results = []
-        qdir = os.path.join(stage, "qc")
         rf = [s for s in specs if s["kind"] == "reframe"]
         if rf:
-            os.makedirs(qdir, exist_ok=True)
             res = VAR.reframe_all(pr, S, master, rf, work, title)
             for sp in rf:
                 r = res[sp["id"]]
                 if r.get("status") == "failed": results.append({"id": sp["id"], "kind": "reframe", "definition": sp, "status": "failed", "reason": r["reason"]}); continue
-                R = VAR.qc_reframe(pr, S, master, r, sp["aspect"], stamp if not probs else dict(stamp or {}, fail=max(1, (stamp or {}).get("fail", 1))))
-                st = write_stamp(pr, r["file"], R, fast=True, out=os.path.join(qdir, f"{sp['id']}.qc.json"))
-                rep = [f"QC REPORT (reframe {sp['aspect']})  {os.path.basename(r['file'])}", f"{st['fail']} FAIL   {st['warn']} WARN   {st['pass']} PASS", ""]
-                for gid, s_, m_, d_ in R:
-                    rep.append(f"[{s_:4s}] {gid:10s} {m_}")
-                    if s_ != "PASS" and d_: rep.append("             " + d_)
-                open(os.path.join(qdir, f"{sp['id']}.QC-REPORT.txt"), "w", encoding="utf-8").write("\n".join(rep) + "\n")
-                nt = r["notes"]; ok = st["fail"] == 0
-                ent = {"id": sp["id"], "kind": "reframe", "definition": sp, "status": "delivered" if ok else "failed",
-                       "qc": {k: st[k] for k in ("fail", "warn", "pass", "sha256")},
+                nt = r["notes"]
+                ent = {"id": sp["id"], "kind": "reframe", "definition": sp, "status": "delivered", "file": os.path.basename(r["file"]),
                        "notes": {"caption_frames_cropped": len(nt["caption_cut"]), "face_frames_cropped_for_captions": len(nt["face_cut"]),
                                  "graphics_cropped": nt["gfx_cut"], "moving_crop_shots": nt["moving_shots"], "source": r["source_frames"],
                                  "geometry": {"out": list(r["geometry"]["out"]), "crop_h": r["crop_h"], "axis": r["geometry"].get("axis", "y"), "fill": bool(r["geometry"]["wide"])}}}
-                if ok: shutil.copy2(r["file"], os.path.join(stage, os.path.basename(r["file"]))); ent["file"] = os.path.basename(r["file"])
-                else: ent["reason"] = "QC FAIL: " + "; ".join(f"{g} {m}" for g, s_, m, _ in R if s_ == "FAIL")
+                shutil.copy2(r["file"], os.path.join(stage, os.path.basename(r["file"])))
                 results.append(ent)
         for sp in [s for s in specs if s["kind"] != "reframe"]:
-            os.makedirs(qdir, exist_ok=True)
             out = os.path.join(work, f"{title}_{sp['id']}.mp4"); print(f"variant {sp['id']} ({sp['kind']}) ...", file=sys.stderr)
             try: r = VAR.render_variant(pr, S, sp, work, out, master)
             except SystemExit as e: r = {"status": "failed", "reason": str(e)}
             except Exception as e: r = {"status": "failed", "reason": f"{type(e).__name__}: {e}"}
-            ent = {"id": sp["id"], "kind": sp["kind"], "definition": sp, "status": "delivered" if r["status"] == "passed" else "failed", "notes": r.get("notes", [])}
-            if r.get("qc"):
-                ent["qc"] = {k: r["qc"][k] for k in ("fail", "warn", "pass", "sha256")}
-                json.dump(r["qc"], open(os.path.join(qdir, f"{sp['id']}.qc.json"), "w", encoding="utf-8"), indent=1, ensure_ascii=False)
-                open(os.path.join(qdir, f"{sp['id']}.QC-REPORT.txt"), "w", encoding="utf-8").write(r["report"] + "\n")
-            if r["status"] == "passed":
+            ent = {"id": sp["id"], "kind": sp["kind"], "definition": sp, "status": "delivered" if r["status"] == "rendered" else "failed", "notes": r.get("notes", [])}
+            if r["status"] == "rendered":
                 dst = os.path.join(stage, os.path.basename(out)); shutil.copy2(out, dst); ent["file"] = os.path.basename(out)
                 if sp["kind"] in ("hook", "cutdown", "end_card"):
                     written += write_captions(caption_events(r["project"]), os.path.splitext(dst)[0])
             else: ent["reason"] = r.get("reason")
             results.append(ent)
         man = {"project": (E.get("project") or {}), "version": None, "created": created, "cves_version": __version__,
-               "qc_verified": not probs, "master": os.path.basename(master), "master_sha256": msha,
-               "qc": {k: (stamp or {}).get(k) for k in ("fail", "warn", "pass", "sha256", "created", "fast")},
+               "master": os.path.basename(master), "master_sha256": msha,
                "fps_rational": None, "cover": {"t": round(ct, 3), "how": how, "title": (E.get("delivery") or {}).get("cover_title")},
                "style_sources": S.get("_sources"), "variants": results}
         if slot_info: man["music_slot"] = slot_info
         from .encode import stream_params
         fr, size = stream_params(pr); man["fps_rational"] = fr; man["size"] = list(size)
-        if probs: man = {"WARNING": FORCE_WARNING, "forced_unchecked": True, "unchecked_reasons": probs, **man}
         # pick the final name last: never overwrite an existing version, even if another delivery ran meanwhile
         while True:
             vname = f"v{n:03d}"; final = os.path.join(export, vname)

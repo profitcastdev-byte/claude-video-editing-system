@@ -14,8 +14,7 @@ analyse(path) -> dict, one reference:
   silences     near-silent moments (>= 25 dB under the running 2 s median, >= 0.15 s, not the first/last 0.3 s); with
                music present they are drop-outs used as a device, without music they are pauses
   energy       music level per second (dB re median) and its shape (inspire_feel.arc_shape); full-mix level per second
-               (for the FEEL energy arc)
-Thresholds: knowledge-base/DECISIONS.md "Inspire v2"."""
+               (for the FEEL energy arc)"""
 import os, subprocess, tempfile, wave
 import numpy as np
 

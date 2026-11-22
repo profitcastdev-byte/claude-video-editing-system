@@ -17,6 +17,6 @@ grade:
   black_lift: [0.010, 0.007, 0.004]
 captions: {style: word_reveal, size: 50, case: sentence, position: chin, max_chars: 34}
 transitions: {in: whip, out: glitch, whip_s: 0.15, glitch_s: 0.10}
-framing: {zoom_levels: [1.0, 1.18, 1.38], min_step: 1.15, creep: 0.015, extreme_max: 1}
-grammar: {cutaway_share: [0.40, 0.55], max_cutaway_s: 8, max_shot_s: 4, roto_max: 4, face_on_first_frame: true, topic_by_s: 2.0}
+framing: {zoom_levels: [1.0, 1.18, 1.38], min_step: 1.15, creep: 0.015}
+grammar: {cutaway_share: [0.40, 0.55], max_cutaway_s: 8, max_shot_s: 4, face_on_first_frame: true}
 sound: {bed_lu: -7, duck_voice_band_db: -8, duck_other_db: -3, duck_lookahead_s: 0.12, sfx_offset_db: -3}

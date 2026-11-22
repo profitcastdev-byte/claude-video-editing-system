@@ -13,7 +13,7 @@ cves treatments compare [NAMES] [--sequential]   Edit/treatments/compare/: sheet
 cves treatments pick NAME                     -> Edit/edit.yaml (backup kept) + Edit/treatment.yaml, journaled
 ```
 
-Then `cves build` renders the picked plan in full, and QC, critique and delivery go on as usual.
+Then `cves build` renders the picked plan in full, and delivery goes on as usual.
 
 ## 1. What a treatment is
 A YAML file with:
@@ -72,8 +72,7 @@ still win, as the merge order says.
 | grade + stage | a touch of contrast, light vignette; dotted stage | relit (darker, desaturated) background, highlight roll-off, vignette, warm skin / cool wall, lifted blacks; plain glowing stage | neutral, a little roll-off; flat stage |
 | sound | bed −8 LU, SFX at full share, `music.sync: cuts` | bed −12 LU, SFX −6 dB, `music.sync: drop` | bed −13 LU, SFX −6 dB, `music.sync: drop` |
 
-None of them loosens a QC gate: thresholds stay what the client's style says (punchy's B-roll splits and cinematic's
-holds stay inside `grammar.max_shot_s` and `rhythm.interrupt_max_s`).
+Punchy's B-roll splits and cinematic's holds stay inside the style's `grammar.max_shot_s` and `rhythm.interrupt_max_s`.
 
 ## 3. Proxies
 `render` (with or without `--proxy`) renders each treatment at `treatments.proxy_scale` (0.5) of the canvas through the

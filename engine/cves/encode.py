@@ -59,12 +59,12 @@ def audio_args(S):
     return ["-c:a", str(A.get("codec", "aac")), "-ar", str(A.get("sample_rate", 48000)), "-b:a", str(A.get("bitrate", "256k"))]
 
 
-DRAFT_TAG = "cves-draft"          # container comment of a `cves build --draft` master: delivery refuses it
+DRAFT_TAG = "cves-draft"          # container comment of a `cves build --draft` master
 
 
 def encode(pr, out=None, frames="frames", audio=None, proxy=False, draft=False):
     """proxy=True: fast preview video settings (proxy_video_args); the full-quality path is unchanged.
-    draft=True: proxy settings + the container tagged `comment=cves-draft` (deliver.is_draft refuses it)"""
+    draft=True: proxy settings + the container tagged `comment=cves-draft`"""
     proxy = proxy or draft
     S = STY.load(pr); fr, (w, h) = stream_params(pr)
     title = (pr.edit.get("project", {}) or {}).get("title", "edit").replace(" ", "_")

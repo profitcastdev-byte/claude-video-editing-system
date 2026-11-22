@@ -1,17 +1,16 @@
 ---
-description: Step 6 and 7. Render, mix and encode the approved edit, then run QC and fix until there are no FAILs before showing anything
-argument-hint: "[project folder] [--only <id>]"
+description: Render, mix and encode the edit into the master MP4 (or a fast half-size draft)
+argument-hint: "[project folder] [--only <id>] [--draft]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 ---
 
-# /cves:render: steps 6 and 7, render, mix, encode, QC
-Project / options: `$ARGUMENTS`. Needs approval 2 in `Edit/NOTES.md`, else `/cves:moodboard` (re-renders after notes need none).
+# /cves:render: render, mix, encode
+Project / options: `$ARGUMENTS`.
 
-- `cves build --draft` while iterating: half size, fast, its own `Edit/draft/` and the draft QC tier; never deliverable.
-- `cves build` (render + mix + encode + fast QC, prints the summary; re-renders only frames whose inputs changed) or `cves render && cves mix && cves encode`. Partial: `cves render --only <id>` (one cutaway, roto or chest element), then `cves mix && cves encode`.
-- Engine-fixed quality path: one decode, lossless frames, one x264 encode (crf 16, bt709). No second encode, grain or `tune film`.
-- Long jobs: background if possible; read text logs, not frames.
-- Then always: `cves qc` to **0 FAIL** (`/cves:qc`), the one-image contact-sheet QA pass (`knowledge-base/QA-REVIEW.md`), `cves critique`, the review loop (`/cves:review`) and `cves review signoff`.
-- Decide only how to fix FAILs; change approved story / design only if a gate forces it, and say so.
+- `cves build`: render (incremental: only frames whose inputs changed) + mix + encode → `Export/<title>.mp4`. Or `cves render && cves mix && cves encode`.
+- `cves build --draft`: half size, fast encode, its own `Edit/draft/` (the final build's frames are untouched).
+- One element: `cves render --only <id>` (cutaway / segment ids, `roto.N`, `chest.N`, `end_card`, `12.5-14.0` s, `300-420` frames), then `cves mix && cves encode`.
+- `cves validate` reports edit.yaml errors first (`cves render` / `cves build` stop on them).
+- Long jobs: run in the background; read the text output, not frames.
 
-**Show** (skill §4): MP4 path in `Export/`, duration, LUFS / dBTP, WARNINGs with timecodes, what changed. Then wait for notes (`/cves:notes`) or control mode (`/cves:resolve`, `/cves:kdenlive`).
+**Show:** the MP4 path, duration and what changed. Then wait for the user.

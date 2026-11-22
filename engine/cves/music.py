@@ -14,9 +14,9 @@ CLI (wired as `cves music ...` by cli.py through `main(argv)`; also `python -m c
     cves music generate "warm lo-fi bed, 92 bpm, builds to a drop" --duration 45 --drop 31.1 --out Music/
     cves music credit Music/track.mp3 --provider elevenlabs --prompt "..." [--credits Music/CREDITS.md]
 
-Licence policy (see knowledge-base RULEBOOK and CONTRIBUTING.md): only CC0 / Public Domain Mark / CC BY are
-accepted for client ads. BY-SA (share-alike would bind the ad), NC (ads are commercial) and ND are refused,
-even if asked for explicitly. CC BY needs the credit line in the post caption or description.
+Licences: search defaults to CC0 + CC BY; `--license` takes any Openverse licence code (cc0, pdm, by, by-sa, by-nc, ...).
+Every download records its licence in CREDITS.md; any licence other than CC0 / PDM needs the credit line in the post
+caption or description, and the licence terms (share-alike, non-commercial, no-derivatives) are the user's call.
 """
 from __future__ import annotations
 
@@ -34,8 +34,6 @@ import urllib.request
 
 API = "https://api.openverse.org/v1/audio/"
 UA = "cves-music/0.1 (Openverse API client)"
-ALLOWED = {"cc0", "pdm", "by"}          # what we will ever download for a client ad
-REFUSED = {"by-sa", "by-nc", "by-nd", "by-nc-sa", "by-nc-nd", "sampling+", "nc-sampling+"}
 KINDS = {"music", "sfx"}
 # Openverse "length" buckets (seconds): shortest <30, short 30-120, medium 120-600, long >600
 _BUCKETS = [("shortest", 0, 30), ("short", 30, 120), ("medium", 120, 600), ("long", 600, 10 ** 9)]
@@ -76,15 +74,10 @@ def _get(url: str, params: dict | None = None, timeout: int = 30) -> dict:
 
 
 def _licenses(license: str | None) -> list[str]:
-    # "commercial" (Openverse's license_type word, used as the cli.py default) = our whole allowed set; we never pass
-    # license_type itself because it also admits BY-SA and BY-ND.
+    # "commercial" (Openverse's license_type word) = CC0 + PDM + CC BY; any other value is a comma list of licence codes
     if (license or "").strip().lower() in ("", "commercial", "default", "ok", "allowed"):
         license = "cc0,pdm,by"
-    wanted = [x.strip().lower() for x in license.split(",") if x.strip()]
-    bad = [x for x in wanted if x not in ALLOWED]
-    if bad:
-        raise MusicError(f"licence(s) {', '.join(bad)} not allowed for client ads; use any of: {', '.join(sorted(ALLOWED))}")
-    return wanted
+    return [x.strip().lower() for x in license.split(",") if x.strip()]
 
 
 def _buckets(min_s: float | None, max_s: float | None) -> str | None:
@@ -170,7 +163,7 @@ def _license_label(rec: dict) -> str:
 
 
 def credit_entry(rec: dict, filename: str) -> str:
-    must = rec["license"] == "by"
+    must = rec["license"] not in ("cc0", "pdm")
     lines = [
         f"## {filename}",
         f"- Title: {rec['title']}",
@@ -211,8 +204,6 @@ def download(audio_id: str, dest: str, wav: bool = False, credits: str | None = 
     (default: CREDITS.md in the same folder). wav=True also converts to 48 kHz 24-bit WAV and credits that file.
     Returns the path of the file to use."""
     rec = get(audio_id)
-    if rec["license"] not in ALLOWED:
-        raise MusicError(f"{rec['title']!r} is {rec['license']}; only {sorted(ALLOWED)} may be used in client ads")
     ext = _EXT.get((rec.get("filetype") or "").lower(), "mp3")
     if os.path.isdir(dest) or dest.endswith(("/", os.sep)) or not os.path.splitext(dest)[1]:
         os.makedirs(dest, exist_ok=True)
@@ -331,7 +322,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--kind", choices=sorted(KINDS), default="music")
     s.add_argument("--min", type=float, dest="min_s")
     s.add_argument("--max", type=float, dest="max_s")
-    s.add_argument("--license", default="cc0,by", help="comma list of cc0, pdm, by (default cc0,by)")
+    s.add_argument("--license", default="cc0,by", help="comma list of licence codes: cc0, pdm, by, by-sa, by-nc, ... (default cc0,by)")
     s.add_argument("--limit", type=int, default=15)
     s.add_argument("--json", action="store_true")
     d = sub.add_parser("download", help="download by Openverse id and write CREDITS.md")

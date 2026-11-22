@@ -1,6 +1,6 @@
 """Motion craft (docs/MOTION.md, "Craft"): the editor's moves between and inside shots. Pure functions of their inputs, so
 every frame is deterministic and the same in every worker process. Everything is read from the style (`craft.*`,
-`transitions.*`), and every move counts against the `creative.*` restraint budget (`usage()`; `cves critique` reports it).
+`transitions.*`).
 
   speed ramps      ramp_src / ramp_frame: time remap of a clip along an eased speed curve (keys or a style preset),
                    normalised so the shot's source range lands exactly on its in / out; frame blending (crossfade between
@@ -12,7 +12,7 @@ every frame is deterministic and the same in every worker process. Everything is
                    bright-shape centroid) and the scale + offset that put the incoming frame's shape on it; find_in
                    searches a clip for the in-point whose shape lines up best.
   transitions      transition(): whip_pan, zoom_through, mask_wipe (bar / circle / matte), luma_fade, glitch_lite,
-                   light_leak (procedural), dip (to a style colour). limit_transitions() rate-limits them on a timeline.
+                   light_leak (procedural), dip (to a style colour).
   text behind      face_track / roto_ctx feed the `text_behind` template (templates/craft.py): type composited between the
                    plate and the subject matte, placed from smoothed face landmarks."""
 import math, zlib, json, functools
@@ -389,30 +389,6 @@ def boundary(TL, t):
 def trans_dur(S, kind):
     return 0.0 if kind in (None, "cut") else float(_S(S, f"transitions.{kind}_s", .12))
 
-def limit_transitions(TL):
-    """rate-limit a timeline's transitions (restraint): a non-cut transition within craft.transitions.min_gap_s of the
-    previous kept one becomes a cut, and kinds beyond creative.transition_kinds_max (first come, first kept) become cuts.
-    Patches TL.trans and the cutaways' in / out (so mix gives a downgraded transition no whoosh). Returns notes."""
-    S = TL.S; gap = float(_S(S, "craft.transitions.min_gap_s", 0) or 0); kmax = _S(S, "creative.transition_kinds_max", None)
-    if not _S(S, "craft.transitions.enforce", True): return []
-    notes, kept, kinds, drop = [], [], [], set()
-    for k, (tb, kind) in sorted(enumerate(TL.trans), key=lambda x: x[1][0]):
-        if kind in (None, "cut"): continue
-        if kmax is not None and kind not in kinds and len(kinds) >= int(kmax):
-            drop.add(k); notes.append(f"{kind} at {tb:.2f}s -> cut (creative.transition_kinds_max {kmax}: {', '.join(kinds)} already used)"); continue
-        if gap and kept and tb - kept[-1] < gap - 1e-6 and tb != kept[-1]:
-            drop.add(k); notes.append(f"{kind} at {tb:.2f}s -> cut ({tb - kept[-1]:.2f}s after the last transition < craft.transitions.min_gap_s {gap:g})"); continue
-        if kind not in kinds: kinds.append(kind)
-        kept.append(tb)
-    if drop:
-        gone = {(round(TL.trans[k][0], 6), TL.trans[k][1]) for k in drop}
-        TL.trans = [(tb, "cut" if k in drop else kind) for k, (tb, kind) in enumerate(TL.trans)]
-        for c in TL.cuts:
-            for side, key in (("start", "in"), ("end", "out")):
-                if (round(c[side], 6), c.get(key)) in gone: c[key] = "cut"
-    return notes
-
-
 # ================================================================== text behind the speaker: the face track
 def _gauss(x, sigma):
     """zero-phase Gaussian smoothing of a 1-D series (edges held: reflect would invent motion past the segment ends)"""
@@ -488,29 +464,3 @@ def roto_ctx(TL, s, k):
     def face_at(tt): return face_track(TL, sid, frame_of(tt))
     return {"k": k, "face": face_track(TL, sid, k), "face_at": face_at, "frame_of": frame_of,
             "matte_ok": bool(getattr(TL, "matte_ok", {}).get(sid, True)), "seg_scale": seg_scale(TL, sid), "behind_size": behind_size(TL)}
-
-
-# ================================================================== restraint
-CRAFT_TEMPLATES = ("text_behind",)
-
-def usage(E):
-    """craft moves an edit.yaml asks for: [(kind, where)] (ramps, camera moves, match cuts, text behind). Non-cut
-    transitions are counted by the existing transition-kinds budget."""
-    out = []
-    for j, x in enumerate((E or {}).get("broll") or []):
-        if not isinstance(x, dict): continue
-        if x.get("ramp"): out.append(("ramp", f"broll[{j}]"))
-        cam = x.get("camera")
-        if cam and (cam if isinstance(cam, str) else (cam.get("move") or "none")) != "none": out.append(("camera", f"broll[{j}]"))
-        if x.get("match"): out.append(("match", f"broll[{j}]"))
-    for c in (E or {}).get("cutaways") or []:
-        p = (c or {}).get("params") or {}
-        if p.get("ramp"): out.append(("ramp", f"cutaway {c.get('id')}"))
-        if p.get("camera"): out.append(("camera", f"cutaway {c.get('id')}"))
-    for r in (E or {}).get("roto") or []:
-        if (r or {}).get("template") in CRAFT_TEMPLATES: out.append(("text_behind", f"roto {r.get('segment')}"))
-    return out
-
-def budget(E, S, dur):
-    """(used, allowed) craft moves for a timeline of `dur` s: creative.craft_per_30s, one 30 s allowance minimum"""
-    per = float(_S(S, "creative.craft_per_30s", 4)); return len(usage(E)), round(per * max(1.0, dur / 30.0), 1)

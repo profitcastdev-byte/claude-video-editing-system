@@ -96,7 +96,7 @@ def _load(path):
 
 def measure(path):
     """{duration_s, peak_db, loudness_lufs (BS.1770 integrated; null under 0.4 s), peak_at_s (10 ms RMS argmax)}"""
-    from .qc.extra import bs1770
+    from .events import bs1770
     y = _load(path); dur = len(y) / SR
     pk = float(np.abs(y).max()) if len(y) else 0.0
     l = bs1770(y, SR) if dur >= .4 else float("nan")

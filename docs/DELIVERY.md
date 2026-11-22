@@ -1,13 +1,13 @@
 # Delivery
 
-`cves deliver` is the only way a video leaves a project. It writes a new, versioned, never-overwritten folder `Export/vNNN/`, and it refuses to run unless the master passed QC.
+`cves deliver` packages a master into a new, versioned, never-overwritten folder `Export/vNNN/`.
 
 ```
 cves encode                      # Export/<title>.mp4 (settings: style `delivery:`)
-cves qc                          # Edit/QC-REPORT.txt + Edit/qc.json (the QC stamp)
 cves deliver                     # Export/v001/ with the master + every variant in edit.yaml `variants:`
 cves deliver --only master       # master only
 cves deliver --variants 4:5,cut15,music_b
+cves deliver --video Edit/draft/<title>_draft.mp4   # any master, a `cves build --draft` one included
 ```
 
 ## 1. Encoding (`cves encode`)
@@ -19,11 +19,11 @@ cves deliver --variants 4:5,cut15,music_b
 | key | default | |
 |---|---|---|
 | `delivery.video.codec` | `libx264` | |
-| `delivery.video.crf` | `16` | QC DEL-05 expects crf 16 |
+| `delivery.video.crf` | `16` | |
 | `delivery.video.preset` | `slow` | |
 | `delivery.video.profile` | `high` | |
 | `delivery.video.pix_fmt` | `yuv420p` | |
-| `delivery.video.tune` | `null` | never `film` (DEL-05) |
+| `delivery.video.tune` | `null` | |
 | `delivery.video.x264_params` | `null` | appended to the colour params |
 | `delivery.audio` | `aac`, `48000`, `256k` | |
 | `delivery.faststart` | `true` | |
@@ -31,27 +31,11 @@ cves deliver --variants 4:5,cut15,music_b
 
 `encode.video_args(S)`, `audio_args(S)` and `stream_params(pr)` are shared by the reframe and music variants, so every delivered file is encoded the same way.
 
-## 2. The QC stamp (`Edit/qc.json`)
+## 2. The master
 
-`cves qc` writes `Edit/QC-REPORT.txt` and `Edit/qc.json`:
-
-```json
-{"video": "/abs/path/Export/Title.mp4", "sha256": "…", "size": 59714665,
- "fail": 0, "warn": 15, "pass": 66,
- "gates": [{"id": "DEL-01", "status": "PASS", "summary": "1080x1920"}, …],
- "created": "2026-11-18T12:02:37+00:00", "cves_version": "0.1.0", "fast": true}
-```
-
-`cves deliver` refuses unless:
-1. `Edit/qc.json` exists;
-2. it has `fail == 0`;
-3. its `sha256` equals the master's sha256.
-
-So re-encoding without re-running QC blocks the delivery. The error names the exact reason and the fix.
-
-`cves qc --draft` (docs/QC.md) never writes `Edit/qc.json`: its stamp is `Edit/qc_draft.json` with `"deliverable": false`, so a draft run can never unlock `cves deliver`. Full stamps carry `"tier": "full"` or `"fast"`.
-
-`--force-unchecked` delivers anyway. It prints a banner and writes `"WARNING"`, `"forced_unchecked": true` and the reasons at the top of `manifest.json`. The plugin hook denies `--force-unchecked` to Claude while QC is not clean, so only a human can force a delivery, from their own terminal.
+`cves deliver` delivers the newest `Export/*.mp4`, or the file `--video` names. A `cves build --draft` master (`Edit/draft/`)
+is delivered at its own size: its captions, cover and element log come from the draft (`Edit/draft/`). Nothing is checked
+or refused; the manifest records the master's sha256.
 
 ## 3. The delivery folder (`Export/vNNN/`)
 
@@ -59,19 +43,17 @@ NNN auto-increments. The folder is built in `Export/.staging-*` and renamed at t
 
 | file | what |
 |---|---|
-| `<title>.mp4` | the master, byte-identical to the file QC judged (sha256 checked after the copy) |
+| `<title>.mp4` | the master, byte-identical to the source (sha256 checked after the copy) |
 | `<title>.srt`, `<title>.vtt` | caption events from the renderer's own caption builder (`render.Timeline(pr).caps`, cut-time phrases, fixes applied) |
 | `<title>.transcript.txt` | plain transcript, one sentence per line |
 | `<title>.cover.jpg` | cover / thumbnail (see below) |
-| `qc.json`, `QC-REPORT.txt` | the master's QC stamp and report |
 | `edit.yaml` | the edit as delivered |
 | `style.yaml` | snapshot of the merged style profile (the sources are in the header comment) |
-| `<title>_<variant>.mp4` | each variant that passed its QC (+ `.srt` / `.vtt` for re-timed variants) |
-| `qc/<variant>.qc.json`, `qc/<variant>.QC-REPORT.txt` | each variant's QC, delivered or not |
+| `<title>_<variant>.mp4` | each variant that rendered (+ `.srt` / `.vtt` for re-timed variants) |
 | `manifest.json` | see below |
-| `<title>.guide.wav`, `POSTING.md` | only with `music.slot: platform` (organic posts, [VIRAL.md](VIRAL.md) §4): the guide stem the edit was cut to, and the posting notes (see below) |
+| `<title>.guide.wav`, `POSTING.md` | only with `music.slot: platform` (organic posts, [VIRAL.md](VIRAL.md) §3): the guide stem the edit was cut to, and the posting notes (see below) |
 
-`manifest.json`: `version`, `created`, `cves_version`, `qc_verified`, `master`, `master_sha256`, `qc` (the master stamp summary), `fps_rational`, `size`, `cover` (`t`, `how`, `title`), `style_sources`, `variants` (`id`, `kind`, `definition`, `status` (delivered | failed), `reason`, `qc`, `notes`, `file`) and `files` (`path`, `bytes`, `sha256`, and for media `duration`, `width`, `height`, `fps`, `frames`).
+`manifest.json`: `version`, `created`, `cves_version`, `master`, `master_sha256`, `fps_rational`, `size`, `cover` (`t`, `how`, `title`), `style_sources`, `variants` (`id`, `kind`, `definition`, `status` (delivered | failed), `reason`, `notes`, `file`) and `files` (`path`, `bytes`, `sha256`, and for media `duration`, `width`, `height`, `fps`, `frames`).
 
 ### Platform sound slot (`music.slot: platform`)
 
@@ -84,8 +66,7 @@ in the app. The delivery then also holds:
   in-app steps, and the first cuts against the nearest beat.
 - `manifest.json` gains `music_slot`: `slot`, `guide`, `posting`, `sound`, `tempo`, `start_in_track_s`, `drop_cut_s`, `platform`.
 
-QC for the slot: SND-04 checks the music stem is silent (FAIL if any music reached the master), RET-32 checks the cuts against
-the guide beat, RET-31 counts the guide as sound. Delivery refuses if `Edit/stems/guide.wav` is missing. Ads can't use the slot.
+The slot needs `Edit/stems/guide.wav` (written by `cves mix`); delivery stops with that message if it is missing.
 
 ### Cover
 
@@ -113,12 +94,12 @@ variants:
 
 `--variants` takes a comma list of variant ids, the kinds `reframes|hooks|end_cards|music|cutdowns|all`, or ad-hoc `4:5`, `1:1`, `16:9`, `cut15`, `cut30`. With no `--variants`, every variant in `edit.yaml` is built. `--only master` builds none.
 
-**Every variant goes through QC.** A variant that fails is not copied into the delivery. The manifest lists it as `failed` with the failing gates, and its QC report is kept under `qc/`. A variant cannot pass a gate the master failed, so fix the master first.
+A variant that fails to render is not copied into the delivery; the manifest lists it as `failed` with the reason.
 
 ### Reframes (any master to any aspect: 4:5, 1:1, 16:9, 9:16, 2.39:1 …)
 
 Prefer a native canvas (`canvas.size`, [FORMATS.md](FORMATS.md)) when the edit is designed for one aspect; reframes are the
-fast way to more aspects from one QC'd master, whatever its own aspect:
+fast way to more aspects from one master, whatever its own aspect:
 - **narrower target** (e.g. a 16:9 master to 9:16 or 1:1): the crop keeps the full height and moves horizontally
   (`axis: x`), the face centred, captions and chest text kept whole;
 - **wider target** (e.g. 9:16 to 4:5, or 16:9 to 2.39:1): the crop keeps the full width and moves vertically (`axis: y`);
@@ -126,32 +107,24 @@ fast way to more aspects from one QC'd master, whatever its own aspect:
 - the same aspect as the master is refused.
 Ad-hoc aspects may be decimal (`--variants 2.39:1`).
 
-Reframes are cut from the QC'd master. The source is the lossless `Edit/frames` when they are exactly the master's frames (same count, none newer than the master); otherwise it is the decoded master. The audio is copied from the master.
+Reframes are cut from the master. The source is the lossless `Edit/frames` when they are exactly the master's frames (same count, none newer than the master); otherwise it is the decoded master. The audio is copied from the master.
 
 - **Crop.** Along one axis (above); the rules below are written for the vertical case and apply the same way horizontally.
   - On A-roll shots it follows the face: YuNet is run on every A-roll frame of the master, so zooms, snaps and lifts are already baked in. The face centre sits at `delivery.reframe.face_y` (0.40) of the new frame.
   - **Smoothing.** A shot gets one static crop whenever a single crop can hold the face and the captions for the whole shot. Otherwise the crop follows a smoothed path (`smooth_s`, Gaussian, clamped to the constraints).
   - The crop never moves across a cut. Shots are split at segment starts, cutaway in/out points, snap in/out points and the end card.
-- **Captions.** Caption and chest text boxes from `elements.jsonl` are hard constraints: the crop shifts to keep them whole. If the text and the face cannot both fit, the text wins. The face frames this costs are counted (`RF-FACECUT` WARN, `notes.face_frames_cropped_for_captions`).
-- **Graphics.** On cutaway and end-card shots, one crop per shot is centred on everything drawn in that shot. Elements taller than the frame are listed in `notes.graphics_cropped` (`RF-GFX` WARN).
+- **Captions.** Caption and chest text boxes from `elements.jsonl` are hard constraints: the crop shifts to keep them whole. If the text and the face cannot both fit, the text wins. The face frames this costs are counted (`notes.face_frames_cropped_for_captions`).
+- **Graphics.** On cutaway and end-card shots, one crop per shot is centred on everything drawn in that shot. Elements taller than the frame are listed in `notes.graphics_cropped`.
 - **16:9 from a portrait master.** A `delivery.reframe.wide_fg` (4:5) crop on the same path is placed in the centre, over a blurred (`fill_blur`), dimmed (`fill_dim`) and scaled copy of the frame.
-- **Reframe QC** (`qc/<id>.qc.json`):
-  - `RF-00`: the master stamp is clean;
-  - `DEL-01/02/03`, `COL-01`: size, constant frame rate equal to the master's, codec/profile/pix_fmt/AAC/faststart, bt709 tags;
-  - `RF-LEN`: the frame count matches the master;
-  - `RF-AUD`: the audio is copied;
-  - `RF-CAP`: no caption frame cropped (FAIL);
-  - `RF-FACE`: a face is detected in the encoded reframe on at least 95 % of the sampled A-roll frames where the master had one (WARN from 80 %, FAIL below);
-  - `RF-FACECUT`, `RF-GFX`: WARNs.
 
 ### Re-timed variants (hooks, cut-downs) and end cards
 
 These variants build a variant project in a temp folder:
 - the top-level folders and the large `Edit/` inputs (plates, mattes, faces) are symlinked;
 - the small inputs are copied;
-- outputs (`frames/`, `stems/`, `mix*.wav`, `timeline.json`, `elements.jsonl`, `qc.json`) are never linked, so nothing writes back into the real project.
+- outputs (`frames/`, `stems/`, `mix*.wav`, `timeline.json`, `elements.jsonl`) are never linked, so nothing writes back into the real project.
 
-The variant project then runs `render → mix → encode → qc --fast` and gets its own SRT and VTT.
+The variant project then runs `render → mix → encode` and gets its own SRT and VTT.
 
 **Re-timing.** `edl.json` gets the new segment order. Then:
 - `words.json` and `voice_final.wav` are rebuilt from the segment slices, with 4 ms fades only at new joins;
@@ -166,28 +139,5 @@ Cutaways, roto and chest graphics are rigid: they move with their shots. One who
   - Shots tied together by a cutaway or chest graphic move as one unit.
   - **Sentence coherence.** The fill uses only units that open on a sentence start and can end on a sentence end. A kept shot followed by a dropped one is tail-trimmed back to its last sentence or clause end, cut in the gap before the next word (`edl.json` `out`). Plates decode from their first frame, so heads cannot be trimmed. A shot that opens or ends mid-sentence anyway (usually inside the kept H/C beats) is listed in the variant `notes`. The cut can therefore come in under the target length.
   - Without beat tags, the first and last units are kept and the rest is greedy by word importance. If H plus C alone are too long, they are trimmed by importance too.
-  - QC uses `qc.duration = [0.6 × target, target + tolerance_s]`.
 - **End cards.** `end_card:` is deep-merged over the master's end card, then the variant is re-rendered (no re-timing).
-- **Music.** The keys are deep-merged over `music:`. The variant is re-mixed and re-muxed only: the picture is stream-copied from the master. It is QC'd as a full project.
-
-## 5. The blocking hook (`plugin/hooks/qc_guard.py`)
-
-The hook is registered for `PreToolUse` and `PostToolUse` on Bash. It needs only the standard library and runs under `python3` or `python`.
-
-**PreToolUse** denies (`permissionDecision: deny`, with the reason) when:
-- a command copies, moves or uploads something out of a project's `Export/` and QC is not clean for it;
-  - commands covered: `cp`, `mv`, `rsync`, `scp`, `rclone`, `ditto`, `robocopy`, `xcopy`, `copy`, `move`, `install`, `gsutil`, `aws s3`, `gh release create|upload`, `curl -T|--upload-file|-F x=@file|--data-binary @file`;
-  - "clean" means one of these:
-    - inside `Export/vNNN/`, the folder's `manifest.json` has `qc_verified: true`, no `forced_unchecked`, and the master still matches `master_sha256`;
-    - elsewhere in `Export/`, `Edit/qc.json` exists, has `fail == 0`, and its sha256 matches (the file itself, if it is a master in `Export/`);
-- the command is `cves deliver --force-unchecked` while `Edit/qc.json` is missing, failing or stale.
-
-Copies from `Export/` to `Export/` in the same project are allowed. A bug inside the guard lets the command through rather than blocking the session.
-
-**PostToolUse** keeps the reminder after `cves render|mix|encode`, and the FAIL count after `cves qc|build`.
-
-Test it by piping sample JSON:
-```sh
-echo '{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"<project>","tool_input":{"command":"cp Export/Title.mp4 ~/Desktop/"}}' \
-  | python3 plugin/hooks/qc_guard.py
-```
+- **Music.** The keys are deep-merged over `music:`. The variant is re-mixed and re-muxed only: the picture is stream-copied from the master.

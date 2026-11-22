@@ -1,4 +1,4 @@
-import os, sys, json, subprocess, pytest
+import os, sys, subprocess
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 def test_lint_clean():
@@ -17,37 +17,6 @@ def test_templates_registered_with_kinds():
             "image", "video_broll", "screen_rec", "pip", "split", "overlay_render", "kinetic_caption_emphasis"}
     assert must <= set(T.REGISTRY), must - set(T.REGISTRY)
     assert all(T.KIND[k] in ("cutaway", "roto", "chest", "end", "media", "overlay") for k in T.REGISTRY)
-
-def hook(cmd, cwd):
-    p = os.path.join(ROOT, "plugin", "hooks", "qc_guard.py")
-    inp = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": cmd}, "cwd": cwd}
-    r = subprocess.run([sys.executable, p], input=json.dumps(inp), capture_output=True, text=True, cwd=cwd)
-    return r.stdout + r.stderr, r.returncode
-
-def test_hook_blocks_unchecked_delivery(demo_copy):
-    os.makedirs(os.path.join(demo_copy, "Export"), exist_ok=True)
-    open(os.path.join(demo_copy, "Export", "x.mp4"), "wb").close()
-    out, rc = hook(f'cp "{os.path.join(demo_copy, "Export", "x.mp4")}" ~/Desktop/', demo_copy)
-    assert "deny" in out or rc == 2, out
-    out, rc = hook("ls Export", demo_copy)
-    assert "deny" not in out and rc == 0, out
-    # a shell glob that matches a real file out of Export is still blocked
-    out, rc = hook("cp Export/*.mp4 ~/Desktop/", demo_copy)
-    assert "deny" in out or rc == 2, out
-
-
-def test_hook_ignores_export_words_that_are_not_files(tmp_path):
-    """prose, commit messages and heredocs that only mention Export paths ('Copy', 'move', 'Export/v001') are not
-    deliveries, even in a project whose QC has not run yet"""
-    proj = tmp_path / "proj"; (proj / "Edit").mkdir(parents=True)
-    cmd = "cat > notes.md <<EOF\nTo deliver, move the files in Export/v001 to Drive\nEOF"
-    out, rc = hook(cmd, str(proj))
-    assert "deny" not in out and rc == 0, out
-    out, rc = hook('git commit -m "copy Export/v002 notes"', str(proj))
-    assert "deny" not in out and rc == 0, out
-    (proj / "Export").mkdir(); (proj / "Export" / "m.mp4").write_bytes(b"x")    # a real file: still blocked
-    out, rc = hook("cp Export/m.mp4 ~/Desktop/", str(proj))
-    assert "deny" in out or rc == 2, out
 
 def test_selftest_export():
     r = subprocess.run([sys.executable, "-m", "cves.cli", "export", "selftest", "--no-gui"], capture_output=True, text=True, cwd=ROOT)

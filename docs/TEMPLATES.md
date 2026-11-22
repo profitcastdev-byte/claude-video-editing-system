@@ -1,7 +1,7 @@
 # Templates
 
 Every visual moment in an edit comes from a template. Claude fills in `edit.yaml`; it never writes new drawing code for a video.
-Run `cves templates` to see the live list by kind, `cves templates <name>` for one template's params and its section here (`--json` for both). All times are cut-time seconds (from `Edit/words.json`). Elements must land on or just after their spoken word (gate GFX-01). Each template also emits its own sound-effect cues.
+Run `cves templates` to see the live list by kind, `cves templates <name>` for one template's params and its section here (`--json` for both). All times are cut-time seconds (from `Edit/words.json`). Elements land on or just after their spoken word. Each template also emits its own sound-effect cues.
 
 **What every template guarantees**
 - **No copy in code.** Every string comes from `params`. Defaults are empty: leave a param out and that element is not drawn.
@@ -215,13 +215,12 @@ generic templates.
 | `card_list` | problems (✕) or services (✓) building one by one | `label?`, `label_at`, `items [{icon?, title, sub?, at, state: cross\|check\|xfill, state_at?}]`, `top?` |
 | `browser_list` | website / content deliverables on a page card | `head [[word, at, accent?]]`, `enter`, `hero_at`, `hero_icon`, `rows [{text, at, icon?}]`, `row_icon`, `pill`, `pill_at` |
 
-## Roto (behind the presenter; at most 4 moments, each ≤ 3 s)
+## Roto (behind the presenter; one per segment)
 **Free-space placement.** `map_card`, `listing_card` and `top3_card` place themselves (style `roto.place: auto`, or a
 `place: auto | fixed` param): from the subject matte over the card's slot they take the largest scale (down to
 `roto.min_scale`) at which the presenter covers at most `roto.max_cover` of the card, inside the shot's safe zone, on the
 brightest free wall. On a tight selfie that is a smaller card beside the head instead of a dark rectangle behind it.
-When nothing fits they keep the designed position, and QC GFX-27 flags a card the subject covers (warn > 40 %, fail >
-65 %). Card entries move by whole pixels with steps that never grow (MOT-01 at any frame rate).
+When nothing fits they keep the designed position. Card entries move by whole pixels with steps that never grow (at any frame rate).
 The cards are laid out in fractions of their own box: the 1080×1920 box on 9:16, a box filling the safe-zone height
 (1.35:1 on wide canvases) elsewhere. `big_words` `ys` are 1080×1920 baselines (tall canvases); square and wide canvases
 spread the lines down the safe zone.

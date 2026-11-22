@@ -53,7 +53,7 @@ def _place(name, tall_box, p, ctx):
     """free-space placement of a roto card (style roto.place: auto): the largest scale (<= 1, >= roto.min_scale) at which
     the card sits where the subject matte, unioned over the card's slot, covers <= roto.max_cover of it; positions inside
     the shot's safe zone, the side with more room wins by construction (more room = a larger card). Returns
-    (outer x0, outer y0, s) in layout px, or None (no matte / no fit: the designed position, and QC GFX-27 judges it)."""
+    (outer x0, outer y0, s) in layout px, or None (no matte / no fit: the designed position)."""
     S = ctx.get("S") or G.STYLE; R_ = lambda k, d: (S.get(f"roto.{k}", d) if hasattr(S, "get") else d)
     if str(p.get("place", R_("place", "auto"))) != "auto": return None
     pl, fo = ctx.get("plate_lum"), ctx.get("frame_of")

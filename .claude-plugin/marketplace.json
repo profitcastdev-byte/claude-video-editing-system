@@ -8,7 +8,7 @@
     {
       "name": "cves",
       "source": "./plugin",
-      "description": "Claude Video Editing System: edit, plan, moodboard, render, QC and export 9:16 talking-head ads with the local cves engine.",
+      "description": "Claude Video Editing System: edit, plan, moodboard, render, deliver and export talking-head videos and ads with the local cves engine.",
       "category": "media"
     }
   ]

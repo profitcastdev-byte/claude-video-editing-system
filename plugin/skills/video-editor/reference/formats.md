@@ -8,21 +8,21 @@ Reference: `docs/FORMATS.md`. Decide at setup and record in `Edit/NOTES.md`.
 - **Story structure** (style `grammar.structure`, from the brief): `problem` (default; H hook, P problem, A agitation, PR proof, O offer, C CTA) when the ad sells relief
   from a pain, `offer` (H M PR R C: promise, mechanism, proof, risk reversal, CTA) when it leads with the result or offer,
   `story` (H S T PR C: setup, turn, proof) for a before/after story, `custom` with `grammar.beats`. It sets the beats you
-  tag, the STORY gates, the moodboard labels and the music turn / drop. Every `selects.yaml` clip carries `text:` (its
-  exact words): `cves select` aligns each take from it and STORY-17 checks every word is heard.
+  tag, the moodboard labels and the music turn / drop. Every `selects.yaml` clip carries `text:` (its exact words):
+  `cves select` aligns each take from it.
 - **Spine: what drives the cut** (`edit.yaml spine:`).
   - `aroll` (default): a presenter on camera. The workflow unchanged.
   - `voiceover`: no presenter on screen; a recorded VO, or an ElevenLabs VO the user asked for (cost confirmed, registered
     with `cves assets add --source elevenlabs --prompt "<script>"`), set as `voiceover: {asset: <id>}`. `cves ingest`
-    tightens and transcribes it; the story step is the script itself (approval 1 = the script / VO read).
+    tightens and transcribes it; the story step is the script itself.
   - `music`: no voice; a music video, montage or product loop. Set `music.file` (+ `duration`), `cves beats`, then
     `cves autocut` proposes the shots on the beat; you edit them. Text cards are cutaways (`title_card`).
   - `broll`: shot-led (travel, product, event recap): the shots and their own sound (`audio: true`), an optional music bed.
-  No presenter means no `cves select` / `cves prep`, no roto or chest, no punch-ins; QC reports those gates as N/A.
-- **Writing `broll:`** (cut time, against `words.json` for a VO): one shot per idea, cut on a word or a beat, 0.8-3 s
-  (longer only for a deliberate hold); open on a cut within the first second (RET-09). `fill` for footage that can be
+  No presenter means no `cves select` / `cves prep`, no roto or chest, no punch-ins.
+- **Writing `broll:`** (cut time, against `words.json` for a VO): one entry per shot, cut where the user wants (a word or
+  a beat). `fill` for footage that can be
   cropped to the canvas, `fit` for a picture that must stay whole (a vertical phone clip on 16:9), `kenburns` (default for
   stills) to keep a still alive; `anchor` keeps a subject in a fill crop; `in` picks the best moment of the clip; `speed`
-  slows or speeds a shot (constant). Register every non-footage file as an asset (provenance gate AST-01). Drawn cutaways
+  slows or speeds a shot (constant). Register non-footage files as assets (`cves assets add`). Drawn cutaways
   (title cards, stats) can sit on top and win where they overlap. On the aroll spine the same track is cutaway footage
   over the presenter (the voice and captions continue over it).

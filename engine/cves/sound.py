@@ -7,12 +7,12 @@ Accents (`accents()`, called by mix.all_cues, so `cves mix` and the SND gates se
     the music drop, or an impact placed with it; otherwise it is skipped (a riser into nothing sounds unfinished);
   * an impact (a downbeat hit, layered with the music drop) on the payoff, and on reveals / big text slams whose own
     cues carry no low hit;
-  * rate-limited by the restraint budget `creative.sound_accents_per_30s` (payoff riser, payoff impact, hook riser,
-    then reveals in time order), never on a moment that already has a riser / impact of its own, and only on a target
-    within one frame of a picture event (a cut, a cutaway edge, the end card, the punch-in), so SND-07 holds;
+  * placed in order (payoff riser, payoff impact, hook riser, then reveals in time order), never on a moment that
+    already has a riser / impact of its own, and only on a target within one frame of a picture event (a cut, a cutaway
+    edge, the end card, the punch-in);
   * sounds are chosen from the SFX bank by category + intensity (cves.sfx), the riser by the room before its target and
     only among risers that resolve (peak within `sound.accents.riser_tail_max_s` of their end).
-  Every accent is an ordinary cue (t, id, gain, kw) with kw {accent, target, why}: SND-32 checks the riser peaks.
+  Every accent is an ordinary cue (t, id, gain, kw) with kw {accent, target, why}.
 
 Ducking (`duck_control()` + `apply_duck()`, `mix.duck_mode`):
   envelope  (default) the music gain follows the voice-band RMS envelope: 0 at `mix.duck_range_db` under the voice's
@@ -23,8 +23,8 @@ Ducking (`duck_control()` + `apply_duck()`, `mix.duck_mode`):
   gate      the v0.3 fixed dips: a near-binary speech gate (100 ms |voice| average), 30 ms attack, 400 ms release.
 
 Cue sync (`sync_cues()`, from mix._finalize): after render, every cue's onset (a riser: its peak) lands exactly on its
-logged picture event (SND-07 at any frame rate). Vocal-to-music guard (`vmr_guard()`, from mix): the bed's speech band is
-trimmed wherever a word would not clear it by the review's limit (docs/SOUND.md §3, §6)."""
+logged picture event (at any frame rate). Vocal-to-music guard (`vmr_guard()`, from mix): the bed's speech band is
+trimmed wherever a word would not clear the voice by `mix.vmr_min_db` (docs/SOUND.md §3, §5)."""
 import numpy as np
 
 IMPACT_FAMILY = ("lowhit", "boom", "impact", "hit")
@@ -90,25 +90,25 @@ def _low_frames(pr, frames, size):
         return {f: y for f, y in ex.map(one, frames) if y is not None}
 
 def sync_cues(TL, cues, log=None):
-    """snap every cue's audible anchor onto the picture event it belongs to, exactly, at any frame rate (SND-07).
+    """snap every cue's audible anchor onto the picture event it belongs to, exactly, at any frame rate.
 
     A template quantises a cue to the frame of its visual event, but the sound file starts there: its onset (or a riser's
     peak) comes 10-40 ms later, which is under a frame at 30 fps and 1-3 frames at 60 fps, and a few templates time a cue to
     a drawn state that the element log never records (a check that draws inside its row). After render, the picture
     events are known: the element log's entries, cuts / transitions / the snap, logged bbox changes and pixel-change onsets
-    on graphic frames (the same list SND-07 judges, qc.extra.visual_events). Each cue moves so that its measured onset
+    on graphic frames (cves.events.visual_events). Each cue moves so that its measured onset
     (risers: their peak) lands exactly on the nearest event within `sound.cue_sync_max_f` frames of the time the template
     asked for: a logged element entry / change or a cut first; a pixel onset only when none is that close and only a strong
     one (>= `sound.cue_sync_pixel_min` quarter-res px, so it survives the encode the gate decodes). A cue with no event
     that close keeps its time. Cues placed by their peak (`peak_at`: transition whooshes,
     automatic risers), media audio and `sync: false` cues are left alone. The pixel events are measured once on the
-    rendered frames and cached in Edit/cue_sync.json with the render they belong to, so `cves qc` rebuilds the same list."""
+    rendered frames and cached in Edit/cue_sync.json with the render they belong to."""
     import os, json
     S = TL.S
     if not _on(S.get("sound.cue_sync", True)) or not cues: return cues
     pr = TL.pr; sig = _sig(pr)
     if sig is None: return cues                       # not rendered yet: nothing to sync to
-    from .qc import extra as X
+    from . import events as X
     from .mix import sfx_bank, peak_offset
     cx = X.Ctx(pr, None); FPS = float(cx.FPS); mx = float(S.get("sound.cue_sync_max_f", 6)); find = sfx_bank(TL)
     ev = sorted(set((round(float(t), 6), lab) for t, lab in X.visual_events(cx)))
@@ -187,7 +187,6 @@ def accents(TL, cues, log=None):
     for s_ in cands:      # a riser resolves only if its peak is its end: older manifests without peak_at_s are measured once
         if s_.get("category") == "riser" and s_.get("peak_at_s") is None: s_["peak_at_s"] = SFX.measure(s_["path"])["peak_at_s"]
     risers = [s_ for s_ in cands if s_.get("category") != "riser" or float(s_["duration_s"]) - float(s_["peak_at_s"]) <= tail_max]
-    budget = int(np.floor(float(S.get("creative.sound_accents_per_30s", 3)) * max(1.0, T / 30.0) + 1e-9))
     r_gain, i_gain = float(A.get("riser_gain_db", -14)), float(A.get("impact_gain_db", -11))
     r_min, r_max = float(A.get("riser_min_s", 0.8)), float(A.get("riser_max_s", 2.2))
     gap = float(A.get("min_gap_s", 0.3))
@@ -212,13 +211,12 @@ def accents(TL, cues, log=None):
     for pri, kind, tgt, why, inten in sorted(want, key=lambda w: (w[0], w[2])):
         rec = {"kind": kind, "target": round(tgt, 4), "why": why}; log.append(rec)
         e = _nearest(ev, tgt, fr)
-        if e is None: rec["status"] = f"skipped: no picture event within 1 frame of {tgt:.3f} s (SND-07)"; continue
+        if e is None: rec["status"] = f"skipped: no picture event within 1 frame of {tgt:.3f} s"; continue
         tgt = e; rec["target"] = round(tgt, 4)
         if kind == "riser" and any("riser" in n and abs((kw.get("peak_at") if kw.get("peak_at") is not None else t) - tgt) <= .5 for t, n, _, kw in cues):
             rec["status"] = "skipped: the moment already has a riser"; continue
         if kind == "impact" and any(any(f in n for f in IMPACT_FAMILY) and abs(t - tgt) <= 2 * fr for t, n, _, kw in cues if not kw.get("accent")):
             rec["status"] = "skipped: the moment already has a low hit"; continue
-        if len(out) >= budget: rec["status"] = f"skipped: restraint budget ({budget} accents for {T:.1f} s, creative.sound_accents_per_30s)"; continue
         if kind == "riser" and not landing(tgt): rec["status"] = "skipped: nothing lands on the target (a riser resolves into a hit, a drop or a cut sound)"; continue
         if kind == "riser":
             prev = max([u for u in used if u < tgt - 1e-6] + [0.0])       # a riser starts after the accent before it
@@ -303,10 +301,10 @@ def apply_duck(y, duck, S, sr):
     return (lo + hi) * g_o[:, None] + (y - lo - hi) * g_v[:, None]
 
 
-# ------------------------------------------------------------------ vocal-to-music guarantee (the review's masking check)
+# ------------------------------------------------------------------ vocal-to-music guarantee
 def _band_power(x, sr, lo, hi, win_s, hop_s, rate=16000):
     """power of x (mono) in [lo, hi] Hz per hop: Hann-windowed FFT frames of win_s seconds centred every hop_s, at 16 kHz
-    (the measure `cves review` uses for its vocal-to-music ratio, so the guard and the review agree)"""
+    (the vocal-to-music ratio measure)"""
     from scipy.signal import resample_poly
     from math import gcd
     x = np.asarray(x, np.float64)
@@ -328,20 +326,18 @@ def vmr_guard(vo, mus, sr, S, words=None, log=None):
     """music bed (N, ch) -> the bed with its speech band trimmed wherever the voice would not clear it.
 
     Envelope ducking sets the depth from the voice's own level, so a quiet word over a busy, bright bar can still sit
-    under the music in the 1-4 kHz band where consonants live (`cves review`: vocal-to-music ratio under
-    `review.vmr_min_db` in more than `review.mask_share` of speech windows). Here the voice and the ducked bed are
+    under the music in the 1-4 kHz band where consonants live. Here the voice and the ducked bed are
     measured in that band (`mix.vmr_band_hz`) over `mix.vmr_window_s` Hann windows while a word is spoken (words.json,
-    else the voice envelope); wherever the ratio is under `mix.vmr_min_db` (default: the review's limit plus
-    `mix.vmr_margin_db`) the bed's band is cut by the shortfall, at most `mix.vmr_max_cut_db`, held over the window and
+    else the voice envelope); wherever the ratio is under `mix.vmr_min_db` the bed's band is cut by the shortfall, at most `mix.vmr_max_cut_db`, held over the window and
     smoothed (`mix.vmr_attack_ms` / `mix.vmr_release_ms`). Only that band of the music moves, only when needed: a
     dynamic, band-aware bed trim. Two passes (the first cut changes the next measurement). Returns (bed, info)."""
     from scipy.signal import butter, sosfiltfilt
     from scipy.ndimage import maximum_filter1d
     if not _on(S.get("mix.vmr_guard", True)): return mus, {"vmr_guard": "off"}
     lo, hi = [float(x) for x in (S.get("mix.vmr_band_hz") or [1000, 4000])]
-    target = float(S.get("mix.vmr_min_db") if S.get("mix.vmr_min_db") is not None else float(S.get("review.vmr_min_db", 6.0)) + float(S.get("mix.vmr_margin_db", 2.0)))
+    target = float(S.get("mix.vmr_min_db") if S.get("mix.vmr_min_db") is not None else 8.0)
     mx = float(S.get("mix.vmr_max_cut_db", 12.0)); win = int(float(S.get("mix.vmr_window_s", 0.4)) * sr); hop = max(1, int(.01 * sr))
-    dm = lambda x: x.sum(1) / np.sqrt(x.shape[1]) if x.ndim > 1 else x      # ffmpeg's -ac 1 downmix (what `cves review` measures)
+    dm = lambda x: x.sum(1) / np.sqrt(x.shape[1]) if x.ndim > 1 else x      # ffmpeg's -ac 1 downmix
     N = len(vo); mono = dm(mus)
     if N < win or not np.abs(mono).max() > 0: return mus, {"vmr_guard": "nothing to guard"}
     t = np.arange(0, N // hop + 1) * hop / sr

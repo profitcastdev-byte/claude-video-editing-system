@@ -21,7 +21,7 @@ canvas:
 | 2.39:1 | `[1920, 804]` | cinematic / letterbox look |
 
 Order of precedence: `edit.yaml project.size` > style `canvas.size` > style `platform.size` (legacy alias, `null` by
-default) > 1080×1920. The renderer, the encoder, QC, control-mode layers, the moodboard, `cves inspire` and the reframes all
+default) > 1080×1920. The renderer, the encoder, control-mode layers, the moodboard, `cves inspire` and the reframes all
 follow it. Changing the canvas of an A-roll project after `cves select` needs `cves select` + `cves prep` again (the plates
 are conformed to the canvas); a voiceover / music / broll project needs nothing (B-roll is framed at render time).
 
@@ -44,8 +44,7 @@ landscape canvas is not cropped at all; landscape footage on a vertical canvas g
   4:5 `[.06, .08, .94, .86]`, 1:1 `[.06, .07, .94, .88]`, 16:9 `[.05, .07, .95, .88]`, 2.39:1 `[.05, .08, .95, .88]`;
 - `platform.safe_zone: null` disables it (the canvas inset by `platform.margin` is used for layout).
 
-Captions wrap inside it, sit under the chin when a presenter is on screen and low in it (a lower third) when not. QC
-PLAT-01 / PLAT-02 measure against the same box.
+Captions wrap inside it, sit under the chin when a presenter is on screen and low in it (a lower third) when not.
 
 ## 3. Templates on any canvas
 
@@ -104,10 +103,7 @@ whisper). Claude then writes the `broll:` track against the words.
 **Music.** Set `music.file` (and `duration` to trim), run `cves beats`, then `cves autocut` to propose the track.
 
 **Face-only stages skip.** With no A-roll there are no plates, mattes, faces, punch-ins, exposure balance, roto or chest
-graphics (`cves select` / `cves prep` refuse with a one-line hint; `roto:` / `chest:` are validation warnings). QC reports
-the presenter gates (FRAME-*, COL-03..10/12, CUT-03/05, RET-22, GFX-25/26) as **N/A**, the voice gates (SND-04/11/19/22/30,
-CUT-01/02, RET-01/03, PLAT-11, STORY-09/10) as N/A on music / broll edits, and the caption gates as N/A when there are no
-captions. N/A never blocks delivery; it is counted separately in `qc.json` (`na`).
+graphics (`cves select` / `cves prep` refuse with a one-line hint; `roto:` / `chest:` are validation warnings).
 
 ## 5. The `broll:` track
 
@@ -124,7 +120,7 @@ broll:
 
 | key | default | |
 |---|---|---|
-| `src` \| `asset` | required (one) | footage path (project-relative) or an asset id (`assets:` / `Edit/assets.json`, provenance gate AST-01) |
+| `src` \| `asset` | required (one) | footage path (project-relative) or an asset id (`assets:` / `Edit/assets.json`) |
 | `start`, `end` | required | cut time; frame-snapped |
 | `in` | `0` | source seconds where the shot starts |
 | `speed` | `1` | constant source speed for the shot (0.5 = half speed); the clip's sound is time-stretched to match |
@@ -137,8 +133,7 @@ broll:
 | `id`, `snap`, `note` | `b01`, … | element id `broll.<id>`; snap (aroll spine only) |
 
 Any source works: size, rotation (phone clips stored on their side), SAR and frame rate. Shots are decoded with PyAV (the
-same reader as the media templates), rotation applied, and sampled by time at the timeline rate. QC MOT-14 checks the scale
-a shot applies to source pixels (WARN above 1.0×, FAIL above 1.5×, as FRAME-11 does for A-roll).
+same reader as the media templates), rotation applied, and sampled by time at the timeline rate.
 
 **HDR B-roll.** A PQ (`smpte2084`) or HLG (`arib-std-b67`) clip, in `broll:` or in any media template (`video_broll`,
 `screen_rec`, `pip` / `split` panes, `overlay_render`), goes through the same HDR → SDR BT.709 chain as A-roll ingest
@@ -165,5 +160,5 @@ used again continues where it left off; stills get `kenburns`. Without `--apply`
 `tools/make_demo.py OUT --kind aroll|voiceover|music|broll --size WxH [--small] [--edit legacy]` builds a synthetic project of each spine
 at any canvas: drawn B-roll clips that cover what real footage throws at the engine (16:9, 9:16, a phone clip with a 90°
 rotation flag, 25 fps next to 30 fps, a 3:2 still), a synthetic VO, a 100 BPM track. `tests/test_formats.py` and
-`tests/test_spines.py` build them at 480×270 and run the full render → mix → encode → QC path. `--edit legacy` (aroll, full
+`tests/test_spines.py` build them at 480×270 and run the full render → mix → encode path. `--edit legacy` (aroll, full
 script) uses `tools/demo_edit_legacy.yaml`: the v0.2 UI cutaways and roto cards, to see the tall / square / wide arrangements.

@@ -1,10 +1,10 @@
 """Per-shot colour match (style `grade.shot_match`, docs/STYLE.md "grade"): every A-roll shot is matched to a reference
 shot in linear light before the look is applied, so a cut between takes recorded minutes apart under drifting room
-light does not jump (QC COL-06 skin / wall dE, COL-07 skin Y).
+light does not jump (skin / wall dE, skin Y).
 
 `grade.exposure_match` balanced skin exposure only (one gain per shot, plus a 6 % per-channel trim). It cannot fix a wall
 that changed colour while the skin did not, nor light that drifts inside a shot. This module measures two things on the
-plate, the same two QC judges on the master:
+plate, the same two measures on the master:
 
   * skin: the two cheek patches between eye and mouth corner (YuNet landmarks, faces.json), each summarised by its own
     median and then averaged (side light puts the cheeks 40-80 Y apart; a pooled median flips between them);
@@ -33,7 +33,7 @@ VERSION = 2
 
 
 def eotf(x):
-    """sRGB / BT.709 display value -> linear light (the transfer cv2's Lab and QC assume)"""
+    """sRGB / BT.709 display value -> linear light (the transfer cv2's Lab assumes)"""
     x = np.asarray(x, np.float64)
     return np.where(x <= .04045, x / 12.92, ((x + .055) / 1.055) ** 2.4)
 
@@ -66,8 +66,8 @@ def skin_rgb(rgb, f):
     return np.mean(out, 0)
 
 def wall_rgb(rgb, alpha, f, near=50, far=130):
-    """mean display RGB (0..1) of the wall round the head, or None. alpha: matte uint8 (or float 0..1). The patch QC
-    COL-06 judges, on the plate: background 50-130 px out from the silhouette (60-160 px on the master at the usual
+    """mean display RGB (0..1) of the wall round the head, or None. alpha: matte uint8 (or float 0..1). The patch,
+    on the plate: background 50-130 px out from the silhouette (60-160 px on the master at the usual
     1.2x framing), above the eye line, frame borders excluded."""
     a = alpha.astype(np.float32) / (255 if alpha.dtype == np.uint8 else 1)
     h, w = a.shape[:2]; s = 2                                         # half resolution: plenty for a median

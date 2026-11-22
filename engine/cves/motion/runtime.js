@@ -214,10 +214,10 @@
 
   // ------------------------------------------------------------------ parts (element log)
   // Every text block ([data-text]) and every [data-el] element is a *part*: the engine logs it as its own element
-  // (id <piece>.<part>, its own bbox, text and entry frame), so QC measures each block on its own.
+  // (id <piece>.<part>, its own bbox, text and entry frame).
   function partEls() {
     const els = [...document.querySelectorAll('[data-text], [data-el]')];
-    // stable ids: data-el, else the element id, else its first class; repeats get 0, 1, 2 ... (QC groups digits as one class)
+    // stable ids: data-el, else the element id, else its first class; repeats get 0, 1, 2 ...
     const base = els.map((el) => (el.dataset.el || el.id || String(el.className || '').split(' ')[0] || 'part').replace(/[^\w-]/g, ''));
     const seen = {}, count = {}; base.forEach((b) => { count[b] = (count[b] || 0) + 1; });
     return els.map((el, i) => [count[base[i]] > 1 ? base[i] + (seen[base[i]] = (seen[base[i]] ?? -1) + 1) : base[i], el]);

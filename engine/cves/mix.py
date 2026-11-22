@@ -3,8 +3,8 @@
 `music.slot: platform` (organic posts, cves.guide): no music in the mix at all; the guide the edit is cut to is written as
 Edit/stems/guide.wav instead (never mixed in).
 Levels come from the style (`sound.*`); music placement / fit / beat sync from `music.*` (docs/MUSIC.md).
-Cue post-pass (all_cues): the automatic accents (cves.sound: risers into the hook / payoff, impacts on reveals, within the
-`creative.sound_accents_per_30s` budget) join the template cues, `@category[:intensity]` names are resolved from the SFX
+Cue post-pass (all_cues): the automatic accents (cves.sound: risers into the hook / payoff, impacts on reveals) join the
+template cues, `@category[:intensity]` names are resolved from the SFX
 bank manifest (cves.sfx), transition whooshes are placed by their measured PEAK on the cut (SND-08), identical back-to-back
 repeats get a deterministic pitch / gain variation (SND-09), and in `music.sync: full` transition-type cues are nudged so
 their peak lands on the beat (never more than `music.sfx_snap_max_f` frames, so they stay on their picture event).
@@ -103,7 +103,7 @@ def all_cues(TL, plan=None, log=None, finalize=True, accent_log=None, sync_log=N
     if TL.snap: cues += [(TL.snap[0] - .01, "lowhit", -9, {"reveal": True}), (TL.snap[0] - .01, "boom", -16, {"trim": (0, 1.2), "reveal": True})]
     for x in (TL.E.get("sfx", {}) or {}).get("extra", []): cues.append((x["t"], x["name"], x.get("gain", -18), {k: v for k, v in x.items() if k in ("trim", "pitch", "beat_snap", "speed", "raw", "reveal")}))
     if any(SFX.parse_name(n)[0] for _, n, _, _ in cues): cues = SFX.resolve_cues(cues, SFX.entries(TL.pr))     # @impact:hard -> a bank id
-    cues += SO.accents(TL, cues, accent_log)          # risers into the hook / payoff, impacts on reveals (restraint budget)
+    cues += SO.accents(TL, cues, accent_log)          # risers into the hook / payoff, impacts on reveals
     return _finalize(TL, cues, plan, log, sync_log) if finalize else cues
 
 def _finalize(TL, cues, plan=None, log=None, sync_log=None):

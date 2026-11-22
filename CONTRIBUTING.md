@@ -1,14 +1,13 @@
 # Contributing to CVES
 
-CVES is an open repo. Anyone can propose tools, skills, templates, rules and gates.
+CVES is an open repo. Anyone can propose tools, skills, templates and engine changes.
 The house rules for changing the system are in `CLAUDE.md` ("Rules for changing the system"); this file is the how-to.
 
 ## What you can propose
 | You found... | Where it goes | What the PR must include |
 |---|---|---|
 | a better tool, plugin, skill, model, connector or MCP server | `TOOLS-REGISTRY.md` | a row with status `evaluated` / `optional` / `core`, the exact install command, link, licence, notes. If it becomes core: both installers, `requirements.txt` (Python), a `doctor.py` check, a `cves.config` key if the engine needs its path. See "How to add a tool" in the registry |
-| a rule from client or reviewer feedback | `knowledge-base/RULEBOOK.md` + `DECISIONS.md` | the feedback in the person's own words, the date, and the rule. If it is measurable, a gate too |
-| a new or changed QC gate / threshold | `knowledge-base/QC-GATES.md` + `engine/cves/qc/` | id, metric, threshold, status, implementation state. Thresholds change only by a recorded decision; never loosen a gate to make a video pass |
+| a new style key | `engine/cves/styles/default.yaml` + `docs/STYLE.md` | the key with a comment, the default, what reads it |
 | a new template | `engine/cves/templates/<name>.py` + registry entry | a moodboard sample in `docs/TEMPLATES.md` (ARCHITECTURE section 5) |
 | an install problem (especially Windows) | `setup/` + `INSTALL.md` troubleshooting | what broke, on which OS/version, and the fix |
 
@@ -16,9 +15,9 @@ Not sure it is worth it? Open a GitHub issue first, with a before/after example.
 
 ## Branch and PR flow
 1. `git switch main && git pull`
-2. `git switch -c <type>/<short-name>`, with type one of `tool/`, `rule/`, `gate/`, `template/`, `fix/`, `docs/`.
+2. `git switch -c <type>/<short-name>`, with type one of `tool/`, `template/`, `feature/`, `fix/`, `docs/`.
    Example: `tool/elevenlabs-music`.
-3. Make the change. Run `cves doctor` (and `cves qc` on a test project if you touched the engine, templates or gates).
+3. Make the change. Run `cves doctor` (and `cves build` on a test project if you touched the engine or templates).
 4. Update **CHANGELOG.md** (under `## [Unreleased]`) and, for any tool change, **TOOLS-REGISTRY.md**, in the same PR.
 5. If the plugin changed, bump `version` in `plugin/.claude-plugin/plugin.json` and run
    `claude plugin validate ./plugin` and `claude plugin validate .`.
@@ -34,7 +33,7 @@ update CHANGELOG.md, and open a PR". Claude must not merge its own PR.
 `python -m pytest -n auto tests` runs the suite on every core (pytest-xdist, pinned in `setup/requirements.txt` and
 `engine[test]`). The session demo builds (`make_demo`, its full render, the spine demos) are made once per run for all
 workers under a file lock (`tests/conftest.py`); each worker gets its own copy of the rendered demo to write into.
-Tests that render, mix, encode or QC a demo carry the `e2e` marker (set from the fixtures they use): `-m "not e2e"` is
+Tests that render, mix or encode a demo carry the `e2e` marker (set from the fixtures they use): `-m "not e2e"` is
 the quick loop, and CI runs `unit` and `e2e` as separate jobs on macOS, Windows and Linux. `-p no:xdist` (or no `-n`)
 runs serially, exactly as before. `CVES_DEMO_DIR=<built demo>` reuses a demo you already built.
 

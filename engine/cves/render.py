@@ -73,7 +73,6 @@ class Timeline:
             self.trans.append((c["start"], c.get("in", self.S.get("transitions.in", "cut")))); self.trans.append((c["end"], c.get("out", self.S.get("transitions.out", "cut"))))
         if self.END: self.trans.append((self.T_END, end.get("in", self.S.get("transitions.in", "cut"))))
         for tr in E.get("transitions", []): self.trans.append((self.snap_t(tr["t"]), tr["kind"]))
-        self.craft_notes = CR.limit_transitions(self)                       # restraint: rate-limited transitions (docs/MOTION.md "Craft")
         self.roto = {r["segment"]: r for r in E.get("roto", [])} if self.aroll else {}     # roto / chest need a presenter
         self.matte_ok = {s["id"]: os.path.exists(pr.e("matte", f"{s['id']}.mkv")) for s in self.segs} if self.aroll else {}
         self.chest = {}
@@ -228,7 +227,7 @@ class Timeline:
             if isinstance(c, dict) and c.get("_sig") == sig: return c["gain"]
         import av
         def cheeks_L(rgb, f):
-            """L* of the two cheek patches, each summarised on its own and then averaged (as QC COL-06 measures it):
+            """L* of the two cheek patches, each summarised on its own and then averaged:
             under side light the cheeks sit 40-80 Y apart, so a pooled median flips between them as the head turns"""
             if f is None or len(f) < 14 or not any(f[4:14]): return None
             lm = np.array(f[4:14], float).reshape(5, 2); kk = max(4, int(f[2] * .05)); out = []; rgbs = []
@@ -702,16 +701,13 @@ def render(pr, only=None, out_dir=None, mode="final", workers=None, proxy=None, 
     proxy: a canvas fraction (e.g. 0.5) for a fast preview render (treatments); timeline.json then records `proxy`.
     cache: incremental render (rcache, default style `render.cache`): a full final render re-renders only the frames whose
     inputs changed and rebuilds the element log from the kept frames' records; the result equals a full render.
-    draft: timeline.json records `draft: true` (`cves build --draft`; delivery refuses it).
+    draft: timeline.json records `draft: true` (`cves build --draft`).
     Streams: each worker decodes one segment a frame at a time and writes frames + element records straight to disk;
     nothing holds the timeline's frames or logs in RAM, so memory does not grow with the video's length."""
     from . import rcache as RC
     out_dir = out_dir or pr.e("frames"); os.makedirs(out_dir, exist_ok=True)
     TL = Timeline(pr, proxy=proxy)    # also computes + caches exposure gains before forking
     if isinstance(only, str): only = TL.frames_for(only)
-    for n in TL.craft_notes: print(f"craft: {n}")
-    used, allowed = CR.budget(TL.E, TL.S, TL.N / TL.FPS)
-    if used > allowed: print(f"craft: {used} craft moves (ramps, camera moves, match cuts, text behind) > creative.craft_per_30s budget {allowed}: restraint")
     full = only is None and mode == "final"
     index = full and (cache is True or RC.enabled(TL.S))          # keep a frame cache index for this frames folder
     use_cache = index and cache is not False                       # ... and reuse the frames it vouches for (--no-cache: refresh only)

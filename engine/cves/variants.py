@@ -1,8 +1,8 @@
-"""Delivery variants, driven by edit.yaml `variants:` (docs/DELIVERY.md). Every variant goes through QC; one that fails is not
-delivered (the manifest lists it as failed, with the reason).
+"""Delivery variants, driven by edit.yaml `variants:` (docs/DELIVERY.md). A variant that fails to render is not delivered
+(the manifest lists it as failed, with the reason).
 
   variants:
-    reframes: ["4:5", "1:1", "16:9"]          # face-aware crops of the QC'd master, any master aspect to any target (narrower targets
+    reframes: ["4:5", "1:1", "16:9"]          # face-aware crops of the master, any master aspect to any target (narrower targets
                                               # crop the width, wider ones the height; portrait -> landscape = crop on a blurred fill)
     hooks:    [{id: hook_b, first: [04_competitors_0], title_card: {template: ..., duration: 1.5, params: {...}}}]
     end_cards: [{id: end_b, end_card: {template: logo_end, duration: 1.25, params: {...}}}]
@@ -10,7 +10,7 @@ delivered (the manifest lists it as failed, with the reason).
     cutdowns: [15, 30]                         # or [{id: cut15, seconds: 15, segments: [ids...]}]
 
 Re-timed variants (hooks, cut-downs) build a variant project in a temp folder (symlinks to the plates and mattes, re-timed
-edl.json / words.json / voice_final.wav / edit.yaml) and re-run render + mix + encode + `cves qc --fast` there. End-card
+edl.json / words.json / voice_final.wav / edit.yaml) and re-run render + mix + encode there. End-card
 variants re-render the same way without re-timing. Music variants re-mix and re-mux only (the master picture is copied)."""
 import os, re, json, copy, shutil, subprocess, tempfile
 import numpy as np
@@ -262,58 +262,9 @@ def reframe_all(pr, S, master, specs, outdir, title):
                                 "face": face, "is_gfx": is_gfx, "n": n, "fps": fps, "fr": fr, "source_frames": "Edit/frames (lossless)" if use_png else "decoded master"}
     return res
 
-def qc_reframe(pr, S, master, r, aspect, master_stamp):
-    """delivery gates for a reframe (the master's own gates already ran on the same pixels): size, fps, codec, tags, length,
-    audio identical, captions inside the frame, face inside the frame where the master had one, graphics clipped."""
-    import cv2
-    Rg = []
-    def gate(gid, ok, summary, details="", status=None): Rg.append((gid, status or ("PASS" if ok else "FAIL"), summary, details))
-    v = r["file"]; pj = probe(v); vs = next(s for s in pj["streams"] if s["codec_type"] == "video"); a = next((s for s in pj["streams"] if s["codec_type"] == "audio"), {})
-    pm = probe(master); am = next((s for s in pm["streams"] if s["codec_type"] == "audio"), {})
-    ow, oh = r["geometry"]["out"]
-    gate("RF-00", master_stamp and master_stamp.get("fail", 1) == 0, f"master QC: {master_stamp.get('fail', '?') if master_stamp else '?'} FAIL (a reframe inherits the master's gates)")
-    gate("DEL-01", (vs.get("width"), vs.get("height")) == (ow, oh) and vs.get("sample_aspect_ratio", "1:1") in ("1:1", "N/A"), f"{vs.get('width')}x{vs.get('height')} (want {ow}x{oh}, {aspect})")
-    gate("DEL-02", vs.get("r_frame_rate") == vs.get("avg_frame_rate") and Fraction(vs.get("r_frame_rate", "0/1")) == Fraction(r["fr"]), f"{vs.get('r_frame_rate')} (master {r['fr']})")
-    head = open(v, "rb").read(300000); fs = (head.find(b"moov") < head.find(b"mdat")) if b"mdat" in head else True
-    D = S.get("delivery") or {}
-    ok3 = vs.get("codec_name") == "h264" and str(vs.get("profile", "")).lower() == str((D.get("video") or {}).get("profile", "high")).lower() and vs.get("pix_fmt") == "yuv420p" \
-        and a.get("codec_name") == "aac" and fs == bool(D.get("faststart", True))
-    gate("DEL-03", ok3, f"{vs.get('codec_name')} {vs.get('profile')} {vs.get('pix_fmt')} | {a.get('codec_name')} {a.get('sample_rate')} | faststart {fs}")
-    col = D.get("color", "bt709"); tags = (vs.get("color_space"), vs.get("color_primaries"), vs.get("color_transfer"), vs.get("color_range"))
-    gate("COL-01", tags == (col, col, col, "tv"), "/".join(map(str, tags)))
-    nf = int(vs.get("nb_frames") or 0); gate("RF-LEN", abs(nf - r["n"]) <= 1, f"{nf} frames (master {r['n']})")
-    br, bm = float(a.get("bit_rate") or 0), float(am.get("bit_rate") or 0)   # the stream is copied; its AVERAGE bit rate is container maths
-    gate("RF-AUD", a.get("codec_name") == am.get("codec_name") and a.get("sample_rate") == am.get("sample_rate") and a.get("channels") == am.get("channels")
-         and bm > 0 and abs(br - bm) <= .02 * bm,    # over the (-shortest) trimmed length, so ffmpeg builds report it a few b/s apart
-         f"audio copied from the master ({a.get('codec_name')} {a.get('bit_rate')} b/s)")
-    nt = r["notes"]
-    gate("RF-CAP", not nt["caption_cut"], f"captions/chest text inside the {aspect} frame on every frame" if not nt["caption_cut"] else f"{len(nt['caption_cut'])} frames with text cropped",
-         ", ".join(f"f{i}" for i in nt["caption_cut"][:20]))
-    # face presence in the ENCODED reframe vs the master detections (every 12th A-roll frame)
-    idx = [i for i in range(0, r["n"], 12) if not r["is_gfx"][i] and i in r["face"]]
-    want = set(idx); W2, H2 = ow, oh; sw, sh = W2 // 4 // 2 * 2, H2 // 4 // 2 * 2
-    p = subprocess.run([_ff(), "-v", "error", "-i", v, "-vf", f"select='not(mod(n,12))',scale={sw}:{sh}", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"], capture_output=True)
-    buf = np.frombuffer(p.stdout, np.uint8); det = _yunet(sw, sh); seen = 0; miss = []
-    for k in range(len(buf) // (sw * sh * 3)):
-        i = k * 12
-        if i not in want: continue
-        _, f = det.detect(buf[k * sw * sh * 3:(k + 1) * sw * sh * 3].reshape(sh, sw, 3))
-        if f is not None and len(f): seen += 1
-        else: miss.append(i)
-    share = seen / max(1, len(want))
-    if not want: gate("RF-FACE", True, "no presenter face in the master (B-roll / voiceover / music edit): nothing to keep in frame", status="N/A")
-    else: gate("RF-FACE", share >= .95, f"face found on {seen}/{len(want)} sampled A-roll frames ({share:.0%})", ", ".join(f"f{i}" for i in miss[:20]),
-         status=None if share >= .95 or share < .80 else "WARN")
-    gate("RF-FACECUT", not nt["face_cut"], f"{len(nt['face_cut'])} frames where keeping the captions cost part of the face",
-         ", ".join(f"f{i}" for i in nt["face_cut"][:20]), status="PASS" if not nt["face_cut"] else "WARN")
-    gate("RF-GFX", not nt["gfx_cut"], f"{len(nt['gfx_cut'])} graphic elements taller than the {aspect} frame (cropped)", ", ".join(nt["gfx_cut"][:20]),
-         status="PASS" if not nt["gfx_cut"] else "WARN")
-    return Rg
-
-
 # ------------------------------------------------------------------ variant projects
 NO_LINK = {"edit.yaml", "edl.json", "words.json", "voice_final.wav", "frames", "elements.jsonl", "timeline.json", "mix.wav",
-           "mix_premaster.wav", "mix.json", "stems", "QC-REPORT.txt", "qc.json", "variants", "exposure.json"}
+           "mix_premaster.wav", "mix.json", "stems", "variants", "exposure.json"}
 
 def _link(src, dst):
     try: os.symlink(src, dst, target_is_directory=os.path.isdir(src))
@@ -537,11 +488,8 @@ def cutdown_order(pr, seconds, S):
 
 
 # ------------------------------------------------------------------ building one rendered variant
-def _qc_lines(rep): return rep
-
 def render_variant(pr, S, spec, workdir, out_mp4, master):
-    """build + render + mix + encode + QC one variant. -> result dict"""
-    from . import qc as QC
+    """build + render + mix + encode one variant. -> result dict"""
     kind = spec["kind"]; root = os.path.join(workdir, spec["id"]); notes = []
     E0 = pr.edit; E0.pop("variants", None)
     if kind == "music":
@@ -581,15 +529,9 @@ def render_variant(pr, S, spec, workdir, out_mp4, master):
                 E["cutaways"] = [{"id": "title_card", "template": tc["template"], "start": 0.0, "end": d, "snap": tc.get("snap", True),
                                   "in": "cut", "out": tc.get("out", S.get("transitions.out", "cut")), "params": tc.get("params") or {}}] + \
                                 [c for c in E["cutaways"] if c["start"] >= d]
-            if kind == "cutdown":
-                sec = float(spec["seconds"]); tol = S.get("delivery.cutdown.tolerance_s", .5)
-                E.setdefault("qc", {}); E["qc"] = dict(E["qc"] or {}, duration=[round(sec * .6, 2), sec + tol])
             _write_variant(vpr, E, edl, words, voice)
         from .render import render
         from .mix import mix
         from .encode import encode
         render(vpr); mix(vpr); encode(vpr, out_mp4)
-    nf, rep = QC.run(vpr, out_mp4, fast=True)
-    stamp = json.load(open(vpr.e("qc.json"), encoding="utf-8"))
-    return {"status": "passed" if nf == 0 else "failed", "file": out_mp4, "qc": stamp, "report": rep, "notes": notes, "project": vpr,
-            "reason": None if nf == 0 else "QC FAIL: " + "; ".join(f"{g['id']} {g['summary']}" for g in stamp["gates"] if g["status"] == "FAIL")}
+    return {"status": "rendered", "file": out_mp4, "notes": notes, "project": vpr}

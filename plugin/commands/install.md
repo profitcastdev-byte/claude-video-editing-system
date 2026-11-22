@@ -11,7 +11,7 @@ Options: `$ARGUMENTS`. `CVES_ROOT` per skill §0; no clone → ask where (sugges
 2. **Stop** before each download / system-wide install (Homebrew, winget, model weights, Resolve, Kdenlive): what, from where, rough size; wait for OK. The user types any password / `sudo`.
 3. Connectors / MCP (Resolve bridge, Kdenlive MCP, ElevenLabs, Magnific, Openverse): `TOOLS-REGISTRY.md`, only those wanted; the user enters API keys.
 4. Installers run `setup/install_skills.py` (plugins superpowers, lemo-opuscar; skills effects, motionmaxxing, three.js, hypit, Remotion; `setup/skills.json`). Report the manual ones (hadi-got-motion: paid per-person licence; real-sfx, real-sound, business-motion-film, earshot: source from the repo maintainer); tell the user to restart Claude Code.
-5. `cves doctor` (or `python setup/doctor.py` in the venv): all OK; fix FAILs per INSTALL.md.
+5. `cves doctor` (or `python setup/doctor.py` in the venv): all OK; fix what it reports per INSTALL.md.
 
 `--check-only`: step 4 only.
 
