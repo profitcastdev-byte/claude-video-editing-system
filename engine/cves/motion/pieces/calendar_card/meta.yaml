@@ -1,0 +1,16 @@
+title: Month calendar (house)
+description: A month grid tilts up out of perspective behind the head, its days cascade in diagonally from oversize, then booked days flip over to the accent face and a tick draws on each.
+kinds: [roto]
+hero: false
+duration: 2.8
+params:
+  eyebrow: {type: str, default: ""}
+  eyebrow_at: {type: time, default: null}
+  fill_at: {type: time, default: null, help: first booked day flips}
+  booked: {type: int, default: 16}
+  stagger: {type: number, default: 0.04}
+  top: {type: number, default: 335, help: card top, canvas px}
+  eyebrow_y: {type: number, default: 300, help: eyebrow baseline, canvas px}
+  seed: {type: int, default: 7}
+preview: {params: {eyebrow: "Every single month", eyebrow_at: 0.5, fill_at: 0.9}}
+cues: [[0.0, swipe, -19]]

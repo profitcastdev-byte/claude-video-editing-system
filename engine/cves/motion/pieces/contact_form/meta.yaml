@@ -1,0 +1,25 @@
+title: Contact form (house)
+description: The logo focus-pulls in, the form card tilts up, each field lights and types itself with a blinking caret, the accent button lands from oversize, a cursor glides in large, parks and presses it, a ripple rings out and the button turns into a drawn tick.
+kinds: [cutaway, end]
+hero: true
+duration: 4.7
+params:
+  logo: {type: path, default: ""}
+  eyebrow: {type: str, default: ""}
+  title: {type: str, default: ""}
+  fields: {type: list, default: [], help: "[{text, at}] (icons: icon_a / icon_b / icon_c)"}
+  icon_a: {type: icon, default: chat}
+  icon_b: {type: icon, default: call}
+  icon_c: {type: icon, default: place}
+  button: {type: str, required: true}
+  button_at: {type: time, default: null}
+  cursor_at: {type: time, default: null}
+  press_at: {type: time, default: null}
+  done: {type: str, default: ""}
+  status: {type: str, default: ""}
+  status_at: {type: time, default: null}
+  sound_at: {type: time, default: null, help: no cues before this time (an end card that continues a cutaway)}
+  y: {type: number, default: 290}
+  seed: {type: int, default: 11}
+preview: {params: {eyebrow: "Click the link below", title: "Contact us", fields: [{icon: chat, text: "Your name", at: 0.4}], button: "Talk to our team", button_at: 1.0, press_at: 2.2, done: "Request sent", status: "We'll contact you in no time", status_at: 1.6}}
+cues: [[0.0, card, -14]]

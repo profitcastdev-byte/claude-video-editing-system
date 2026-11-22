@@ -1,0 +1,14 @@
+title: Report card (house)
+description: A report card tilts up into place, its rows slide in, each bar fills with a glowing head, then a cross stamps down from oversize on each row with a ring flash.
+kinds: [cutaway]
+hero: false
+duration: 2.4
+params:
+  eyebrow: {type: str, default: ""}
+  title: {type: str, default: ""}
+  sub: {type: str, default: ""}
+  icon: {type: icon, default: event}
+  rows: {type: list, required: true, help: "[{text, at, fill 0..1, state_at}]"}
+  y: {type: number, default: 470, help: block top, canvas px}
+preview: {params: {eyebrow: "What most agencies send", title: "Agency report", sub: "This month", rows: [{text: "Leads", at: 0.5, fill: 0.9, state_at: 1.0}, {text: "More leads", at: 0.7, fill: 0.95, state_at: 1.15}]}}
+cues: [[0.0, card, -14]]

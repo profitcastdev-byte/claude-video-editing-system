@@ -1,0 +1,13 @@
+title: Guarantee dial (house)
+description: A ring of day ticks lights clockwise round the head behind a glowing sweep head, the outer ring draws on with it, a pulse rings out when the circle closes and the ticks keep breathing.
+kinds: [roto]
+hero: false
+duration: 2.7
+params:
+  cx: {type: number, default: 540}
+  cy: {type: number, default: 880}
+  r: {type: number, default: 430}
+  ticks: {type: int, default: 30}
+  sweep_s: {type: number, default: 0.9}
+preview: {params: {cx: 540, cy: 880}}
+cues: [[0.0, riser_sweep, -20]]

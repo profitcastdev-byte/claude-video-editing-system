@@ -1,0 +1,44 @@
+<div id="st"></div>
+<style>
+  #st { position: absolute; inset: 0; }
+  svg.dl { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .tk { stroke-linecap: round; }
+  .ring { fill: none; stroke: rgb(var(--accent-rgb) / 0.35); }
+  .pulse { fill: none; stroke: var(--accent); }
+  .head { fill: var(--accent); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let T = [], ring, pulse, head, halo, R, cx, cy, n, sw;
+  C.piece({
+    setup(P, ctx) {
+      const u = ctx.u; cx = P.cx ?? ctx.w / 2; cy = P.cy ?? 880; R = P.r || 430; n = P.ticks || 30; sw = P.sweep_s || 0.9;
+      let inner = `<circle class="ring" cx="${cx}" cy="${cy}" r="${R + 2.4 * u}" stroke-width="${0.3 * u}" pathLength="1" transform="rotate(-90 ${cx} ${cy})"/>`;
+      inner += `<circle class="pulse" cx="${cx}" cy="${cy}" r="${R + 2.4 * u}" stroke-width="${0.45 * u}"/>`;
+      for (let k = 0; k < n; k++) inner += `<line class="tk" stroke-width="${0.85 * u}"/>`;
+      inner += `<circle class="head" r="${3.2 * u}" opacity="0.3" style="filter:blur(${u}px)"/><circle class="head" r="${1.1 * u}"/>`;
+      const sv = C.svg(document.getElementById('st'), inner, `0 0 ${ctx.w} ${ctx.h}`, 'dl');
+      ring = sv.querySelector('.ring'); pulse = sv.querySelector('.pulse'); T = [...sv.querySelectorAll('.tk')]; [halo, head] = sv.querySelectorAll('.head');
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), a = 1 - ex, pin = C.IN(C.prog(t, 0, D(0.25))), sc = 0.94 + 0.06 * pin;
+      const sweep = C.MOVE(C.prog(t, D(0.1), sw)), done = t >= D(0.1) + sw, breathe = done ? 0.85 + 0.15 * Math.sin((t - D(0.1) - sw) * 4) : 1;
+      T.forEach((l, k) => {
+        const f = k / n, ang = -Math.PI / 2 + 2 * Math.PI * f, lit = C.prog(t, D(0.1) + sw * f, D(0.16)), L = (2.2 + 2.6 * C.IN(lit)) * u;
+        const r1 = (R - L) * sc, r2 = R * sc;
+        l.setAttribute('x1', (cx + r1 * Math.cos(ang)).toFixed(1)); l.setAttribute('y1', (cy + r1 * Math.sin(ang)).toFixed(1));
+        l.setAttribute('x2', (cx + r2 * Math.cos(ang)).toFixed(1)); l.setAttribute('y2', (cy + r2 * Math.sin(ang)).toFixed(1));
+        l.style.stroke = lit > 0.5 ? 'var(--accent)' : 'rgb(var(--accent-dark-rgb) / 0.8)';
+        l.style.opacity = ((0.35 + 0.65 * lit) * pin * a * (lit >= 1 ? breathe : 1)).toFixed(3);
+      });
+      C.draw(ring, sweep); ring.style.opacity = (pin * a).toFixed(3);
+      const ha = -Math.PI / 2 + 2 * Math.PI * sweep, hx = cx + R * sc * Math.cos(ha), hy = cy + R * sc * Math.sin(ha);
+      [head, halo].forEach((c) => { c.setAttribute('cx', hx.toFixed(1)); c.setAttribute('cy', hy.toFixed(1)); });
+      const hv = t >= D(0.1) && !done ? a : 0; head.style.opacity = hv; halo.style.opacity = (0.35 * hv).toFixed(3);
+      const pp = C.prog(t, D(0.1) + sw, D(0.6)); pulse.setAttribute('r', (R + 2.4 * u + 9 * u * C.IN(pp)).toFixed(1));
+      pulse.style.opacity = (pp > 0 && pp < 1 ? 0.8 * (1 - pp) * a : 0).toFixed(3);
+    },
+    cues(P) { const sw = P.sweep_s || 0.9; C.cue(D(0.1), 'riser_sweep', -21, { trim: [0, sw] }); C.cue(D(0.1) + sw, 'ring', -18); },
+  });
+})();
+</script>

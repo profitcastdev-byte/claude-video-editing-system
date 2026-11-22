@@ -1,0 +1,27 @@
+title: Hero number (house)
+description: The number crashes in from oversize out of a blur, its digits step per frame on an expo count, it lands with a glow flash, a ring burst and sparks, then holds breathing while its label, unit and pill rise in on their own words.
+kinds: [cutaway, overlay]
+hero: true
+duration: 5.0
+params:
+  value: {type: number, required: true}
+  from: {type: number, default: 0}
+  prefix: {type: str, default: ""}
+  suffix: {type: str, default: ""}
+  decimals: {type: int, default: 0}
+  grouping: {type: str, default: intl}
+  count_at: {type: time, default: null}
+  count_s: {type: number, default: 1.0}
+  label: {type: str, default: ""}
+  label_at: {type: time, default: null}
+  unit: {type: str, default: ""}
+  unit_at: {type: time, default: null}
+  pill: {type: str, default: ""}
+  pill_at: {type: time, default: null}
+  burst: {type: bool, default: true}
+  land_sound: {type: bool, default: true}
+  layout: {type: str, default: center, help: "center (stacked, centred in the safe zone) | top (one line: number + unit, at y)"}
+  y: {type: number, default: 300, help: "layout top: baseline of the line, canvas px"}
+  size: {type: number, default: 26, help: number size in u}
+preview: {params: {value: 5.76, prefix: "₹", suffix: "L", decimals: 2, grouping: none, count_at: 0.2, count_s: 1.4, label: "Revenue", label_at: 2.0, unit: "in patient life cycle value", unit_at: 2.6, pill: "From ₹30,000 in ads", pill_at: 3.2}}
+cues: [[0.0, pop, -22]]

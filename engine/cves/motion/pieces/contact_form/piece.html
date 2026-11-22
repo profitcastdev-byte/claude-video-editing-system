@@ -1,0 +1,93 @@
+<div id="col">
+  <img id="lg" alt=""/>
+  <div class="eyebrow bare" id="eb"></div>
+  <div id="persp"><div class="solid" id="card"><div class="title" id="tt"></div><div id="fs"></div>
+    <div id="btn"><span id="bl"></span><span id="bd"></span><i id="rip"></i></div></div></div>
+  <div id="sl"><i id="dot"></i><span id="stx"></span></div>
+</div>
+<svg class="cursor" id="cur" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 2 L4 19 L8.6 14.8 L11.6 21.4 L14.6 20 L11.7 13.6 L18 13.4 Z"/></svg>
+<style>
+  #col { position: absolute; left: calc(var(--u) * 12); right: calc(var(--u) * 12); display: flex; flex-direction: column; align-items: center; }
+  #lg { height: calc(var(--u) * 7.5); margin-bottom: calc(var(--u) * 3); }
+  #eb { font-size: calc(var(--u) * 2.5); letter-spacing: 0.26em; margin-bottom: calc(var(--u) * 3); color: var(--text); }
+  #persp { width: 100%; perspective: calc(var(--u) * 140); }
+  #card { padding: calc(var(--u) * 3.4); border-radius: calc(var(--u) * 3.4); transform-origin: 50% 100%; }
+  #tt { font-size: calc(var(--u) * 4.4); text-align: center; margin-bottom: calc(var(--u) * 2.8); }
+  .fd { position: relative; display: flex; align-items: center; gap: calc(var(--u) * 2); height: calc(var(--u) * 9); padding: 0 calc(var(--u) * 2.4);
+        margin-bottom: calc(var(--u) * 1.8); border-radius: calc(var(--u) * 1.8); background: rgb(var(--surface-rgb) / 1);
+        border: calc(var(--u) * 0.25) solid rgb(var(--card-border-rgb) / 1); font-size: calc(var(--u) * 3.1); font-weight: 500; }
+  .fd .ic { color: var(--muted); font-size: calc(var(--u) * 3.6); }
+  .fd .focus { position: absolute; inset: -1px; border-radius: inherit; border: calc(var(--u) * 0.3) solid var(--accent); box-shadow: 0 0 calc(var(--u) * 2) rgb(var(--accent-rgb) / 0.3); opacity: 0; }
+  .fd .ph { position: absolute; left: calc(var(--u) * 8.2); color: rgb(var(--muted-rgb) / 0.5); }
+  .car { display: inline-block; width: calc(var(--u) * 0.32); height: 1.1em; margin-left: 2px; vertical-align: -0.15em; background: var(--accent); }
+  #btn { position: relative; margin-top: calc(var(--u) * 2.6); height: calc(var(--u) * 9.4); border-radius: 999px; background: var(--accent); color: var(--card);
+         display: flex; align-items: center; justify-content: center; font-size: calc(var(--u) * 3); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+         box-shadow: 0 0 calc(var(--u) * 4) rgb(var(--accent-rgb) / 0.4); }
+  #bl, #bd { position: absolute; display: flex; align-items: center; gap: calc(var(--u) * 1.4); }
+  #bd svg { width: calc(var(--u) * 4); height: calc(var(--u) * 4); }
+  #rip { position: absolute; inset: 0; border-radius: inherit; border: calc(var(--u) * 0.4) solid var(--accent); }
+  #sl { display: flex; align-items: center; gap: calc(var(--u) * 1.8); margin-top: calc(var(--u) * 3.4); font-size: calc(var(--u) * 3); font-weight: 600; }
+  #dot { width: calc(var(--u) * 1.8); height: calc(var(--u) * 1.8); border-radius: 50%; background: var(--accent); box-shadow: 0 0 calc(var(--u) * 1.6) rgb(var(--accent-rgb) / 0.8); }
+  .cursor { position: absolute; left: 0; top: 0; width: calc(var(--u) * 6.4); height: calc(var(--u) * 6.4); fill: var(--text); stroke: var(--bg); stroke-width: 1.2; stroke-linejoin: round;
+            filter: drop-shadow(0 calc(var(--u) * 0.6) calc(var(--u) * 1) rgb(0 0 0 / 0.5)); transform-origin: 17% 8%; }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let col, lg, eb, W = null, card, F = [], btn, bl, bd, rip, chk, sl, stx, dot, cur, bx, by;
+  C.piece({
+    setup(P, ctx) {
+      const u = ctx.u; col = document.getElementById('col'); col.style.top = (P.y || 290) + 'px';
+      lg = document.getElementById('lg'); if (P.logo) lg.src = P.logo; else lg.remove();
+      eb = document.getElementById('eb'); if (P.eyebrow) W = C.words(eb, C.plain(P.eyebrow)); else eb.remove();
+      card = document.getElementById('card'); const tt = document.getElementById('tt'); tt.textContent = C.plain(P.title || ''); tt.dataset.text = tt.textContent; if (!P.title) tt.remove();
+      const fs = document.getElementById('fs'), rnd = C.rand(P.seed || 11), icons = [P.icon_a, P.icon_b, P.icon_c];
+      (P.fields || []).forEach((f, i) => {
+        const e = C.el('div', 'fd', fs), fo = C.el('i', 'focus', e); const ic = C.icon(e, icons[i] || null); if (!icons[i]) ic.style.visibility = 'hidden';
+        const tx = C.el('span', '', e), car = C.el('i', 'car', e); const s = C.plain(f.text || ''); tx.dataset.text = s;
+        const at = f.at ?? 0.3 + i * 0.35, ts = []; let tc = at; for (const ch of s) { tc += 0.032 + rnd() * 0.045 + (ch === ' ' ? 0.05 : 0); ts.push(tc); }
+        F.push({ e, fo, tx, car, s, at, ts, end: tc });
+      });
+      btn = document.getElementById('btn'); bl = document.getElementById('bl'); bd = document.getElementById('bd'); rip = document.getElementById('rip');
+      bl.textContent = C.plain(P.button || ''); bl.dataset.text = bl.textContent;
+      const dn = C.el('span', '', bd, C.plain(P.done || P.button || '')); dn.dataset.text = dn.textContent; chk = C.svg(bd, C.CHECK).querySelector('path'); bd.insertBefore(bd.lastChild, dn);
+      sl = document.getElementById('sl'); stx = document.getElementById('stx'); dot = document.getElementById('dot');
+      if (P.status) { stx.textContent = C.plain(P.status); stx.dataset.text = stx.textContent; } else sl.style.visibility = 'hidden';
+      cur = document.getElementById('cur'); const r = btn.getBoundingClientRect(); bx = r.left + r.width * 0.66; by = r.top + r.height * 0.55;
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, pc = C.prog(t, 0, D(0.5)), e = C.IN(pc);
+      card.style.transform = `translate3d(0, ${((1 - e) * 12 * u).toFixed(2)}px, 0) rotateX(${(-20 * (1 - e)).toFixed(2)}deg)`; card.style.opacity = Math.min(1, pc * 3).toFixed(3);
+      if (lg.isConnected) { const p = C.prog(t, 0, D(0.5)); C.set(lg, { s: 1.12 - 0.12 * C.IN(p), o: Math.min(1, p * 2.5), blur: (1 - C.IN(p)) * 1.2 * u }); }
+      if (W) W.inners.forEach((wi, i) => C.rise(wi, t, D(0.08) + i * D(0.05), D(0.4), 1.8 * u));
+      F.forEach((f) => {
+        const n = f.ts.filter((x) => x <= t).length; f.tx.textContent = f.s.slice(0, n);
+        const on = t >= f.at && t < f.end + 0.2; f.fo.style.opacity = on ? Math.min(1, (t - f.at) / 0.08).toFixed(3) : '0';
+        f.car.style.opacity = on && Math.floor((t - f.at) * 4) % 2 === 0 ? '1' : '0';
+      });
+      const ba = P.button_at ?? 1.2, pb = C.prog(t, ba, D(0.35)), pr = P.press_at, pressed = pr != null && t >= pr;
+      const sq = pressed ? Math.sin(Math.PI * C.clamp((t - pr) / 0.2)) : 0;
+      C.set(btn, { sx: (1.15 - 0.15 * C.IN(pb)) * (1 + 0.03 * sq), sy: (1.15 - 0.15 * C.IN(pb)) * (1 - 0.08 * sq), o: Math.min(1, pb * 3) });
+      const sw = pressed ? C.prog(t, pr + 0.1, D(0.25)) : 0;
+      C.set(bl, { o: 1 - sw, y: -2 * u * sw }); C.set(bd, { o: sw, y: 2 * u * (1 - sw) }); C.draw(chk, pressed ? C.prog(t, pr + 0.18, D(0.3)) : 0);
+      const prp = pressed ? C.prog(t, pr, D(0.6)) : 0; C.set(rip, { sx: 1 + 0.25 * C.IN(prp), sy: 1 + 0.9 * C.IN(prp), o: prp > 0 && prp < 1 ? 0.9 * (1 - prp) : 0 });
+      const ca = P.cursor_at ?? (pr != null ? pr - 0.85 : null);
+      if (ca == null) cur.style.opacity = '0';
+      else {
+        const p = C.prog(t, ca, D(0.6)), m = C.IN(p), x0 = ctx.w * 0.92, y0 = ctx.h * 0.82, qx = bx + 14 * u, qy = by + 30 * u;
+        const x = (1 - m) * (1 - m) * x0 + 2 * (1 - m) * m * qx + m * m * bx, y = (1 - m) * (1 - m) * y0 + 2 * (1 - m) * m * qy + m * m * by;
+        const press = pressed ? 1 - 0.14 * Math.sin(Math.PI * C.clamp((t - pr) / 0.14)) : 1, out = pressed ? C.prog(t, pr + 0.55, D(0.3)) : 0;
+        cur.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${((2.4 - 1.4 * m) * press).toFixed(4)})`;
+        cur.style.opacity = (Math.min(1, p * 4) * (1 - out)).toFixed(3); cur.style.filter = `drop-shadow(0 ${0.6 * u}px ${u}px rgb(0 0 0 / .5)) blur(${C.mblur((tt) => 600 * C.IN(C.prog(tt, ca, D(0.6))), t).toFixed(2)}px)`;
+      }
+      const sa = P.status_at ?? ba + 0.6; C.rise(sl, t, sa, D(0.4), 2 * u); dot.style.transform = `scale(${(1 + 0.3 * Math.max(0, Math.sin((t - sa) * 5))).toFixed(3)})`;
+    },
+    cues(P) {
+      const q = P.sound_at ?? -1, cue = (t, n, g, k) => { if (t >= q - 1e-3) C.cue(t, n, g, k); };
+      cue(0, 'card', -14); (P.fields || []).forEach((f, i) => cue(f.at ?? 0.3 + i * 0.35, 'keyboard', -22, { trim: [0, 0.45] }));
+      const ba = P.button_at ?? 1.2; cue(ba, 'pop', -16, { pitch: 3 });
+      const pr = P.press_at; if (pr != null) { const ca = P.cursor_at ?? pr - 0.85; cue(ca, 'whoosh_soft', -27); cue(pr, 'button', -14); cue(pr + 0.12, 'ding', -20); }
+      if (P.status) cue(P.status_at ?? ba + 0.6, 'ui_tick', -24);
+    },
+  });
+})();
+</script>
