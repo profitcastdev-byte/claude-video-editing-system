@@ -52,7 +52,7 @@ EDIT = {
     "music": "music",
     "sfx": {"auto": "bool", "extra": [{"t!": "time", "name!": "str", "gain": "number", "pitch": "number", "kw": "dict"}]},
     "transitions": [{"t!": "time", "kind!": "transition"}],
-    "qc": {"topic_keywords": "list", "brand_tail": "list", "duration": "list|null", "skip": "list", "waive": "any"},
+    "qc": {"topic_keywords": "list", "brand_tail": "list", "duration": "list|null", "names": "list", "skip": "list", "waive": "any"},
     "assets": "assets",
     "variants": "any",
     "delivery": "dict",

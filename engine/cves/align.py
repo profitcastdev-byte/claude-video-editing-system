@@ -349,8 +349,8 @@ def clip_spans(edl):
         L = round((s["out"] - s["in"]) * F) / F; a, b = spans.get(s["clip"], (t, t)); spans[s["clip"]] = (min(a, t), t + L); t += L
     return spans
 
-def span_text(wav, t0, t1, lang):
-    """whisper text of wav[t0:t1] (16 kHz mono temp copy). Tests patch this."""
+def span_text(wav, t0, t1, lang, prompt=None):
+    """whisper text of wav[t0:t1] (16 kHz mono temp copy); prompt = a hint of names to spell. Tests patch this."""
     from .qc import audio_gates as AG
     d = tempfile.mkdtemp(prefix="cves_heard_")
     try:
@@ -359,16 +359,19 @@ def span_text(wav, t0, t1, lang):
             import librosa
             y = librosa.resample(y, orig_sr=sr, target_sr=16000); sr = 16000
         p = os.path.join(d, "c.wav"); sf.write(p, y, sr)
-        return AG._whisper(p, lang=lang)
+        return AG._whisper(p, prompt=prompt, lang=lang)
     finally: shutil.rmtree(d, ignore_errors=True)
 
-def clip_recall(pr, lang, pad=.08):
-    """[{clip, score, missing, edge: [first lost, last lost], heard}] per clip of edl.json (score None = no text: skipped)"""
+def clip_recall(pr, lang, pad=.08, names=()):
+    """[{clip, score, missing, edge: [first lost, last lost], heard}] per clip of edl.json (score None = no text: skipped).
+    names: proper nouns whisper can't spell unaided (qc.names); a clip whose text: has one gets it as a whisper hint, the
+    others are heard unaided"""
     edl = pr.json("edl.json"); spans = clip_spans(edl); wav = pr.e("voice_final.wav"); dur = sf.info(wav).duration; out = []
     for c in edl["clips"]:
         if c["id"] not in spans: continue
         if not (c.get("text") or "").strip(): out.append({"clip": c["id"], "score": None, "missing": [], "edge": [False, False], "heard": ""}); continue
-        t0, t1 = spans[c["id"]]; heard = span_text(wav, max(0.0, t0 - pad), min(dur, t1 + pad), lang)
+        hint = ", ".join(n for n in names if set(tokens(n)) <= set(tokens(c["text"]))) or None
+        t0, t1 = spans[c["id"]]; heard = span_text(wav, max(0.0, t0 - pad), min(dur, t1 + pad), lang, prompt=hint)
         sc, miss, edge = recall(c["text"], heard, edges=True)
         out.append({"clip": c["id"], "score": sc, "missing": miss, "edge": list(edge), "heard": " ".join(heard.split()), "span": [round(t0, 2), round(t1, 2)]})
     return out

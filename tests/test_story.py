@@ -127,7 +127,7 @@ def _fake_df(pr, c, audio):
 def _fake_heard(pr):
     """align.span_text stand-in: the true raw words whose middle lands in [t0, t1] of the cut (mapped through edl segments)"""
     W = _raw_words(pr)
-    def heard(wav, t0, t1, lang):
+    def heard(wav, t0, t1, lang, prompt=None):
         edl = pr.json("edl.json"); F = edl["fps"]; t, out = 0.0, []
         for s in edl["segments"]:
             L = round((s["out"] - s["in"]) * F) / F
@@ -185,6 +185,25 @@ def test_story17_skips_clips_without_text(story_cut):
     nf, rep = QC.run_stage(pr, "story")
     line = next(l for l in rep.splitlines() if "STORY-17" in l)
     assert "without text" in line and edl["clips"][1]["id"] in line
+
+def test_story17_names_hint_a_proper_noun_to_its_clips(story_cut, monkeypatch):
+    """whisper mangles a name it doesn't know (a clinic heard as "Mediterranean"): qc.names sends it as a hint, only to the
+    clips whose text: has it, so every other clip is still heard unaided"""
+    pr = story_cut; clips = [c for c in pr.json("edl.json")["clips"] if c.get("text")]
+    name = max((t for t in AL.tokens(clips[0]["text"]) if t.isalpha()), key=len)   # clip 0's longest word plays the name
+    base, sent = _fake_heard(pr), []
+    def heard(wav, t0, t1, lang, prompt=None):
+        sent.append(prompt)
+        hinted = bool(prompt) and name in prompt.lower()
+        return " ".join(w if hinted or AL.tokens(w)[:1] != [name] else "Mediterranean" for w in base(wav, t0, t1, lang).split())
+    monkeypatch.setattr(AL, "span_text", heard)
+    nf, rep = QC.run_stage(project.Project(pr.root), "story")
+    assert next(l for l in rep.splitlines() if "STORY-17" in l).startswith("[FAIL]"), rep
+    E = pr.edit; E.setdefault("qc", {})["names"] = [name.capitalize(), "Profitcast"]; pr.save_edit(E); sent.clear()
+    nf, rep = QC.run_stage(project.Project(pr.root), "story")
+    assert next(l for l in rep.splitlines() if "STORY-17" in l).startswith("[PASS]"), rep
+    n_with = sum(name in AL.tokens(c["text"]) for c in clips)
+    assert sorted(p for p in sent if p) == [name.capitalize()] * n_with and sent.count(None) == len(clips) - n_with
 
 
 # ------------------------------------------------------------------ named story structures

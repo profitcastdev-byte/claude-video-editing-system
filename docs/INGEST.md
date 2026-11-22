@@ -150,6 +150,9 @@ segments) is transcribed separately, never the whole file (whisper skips whole s
 recall of the clip's `text:` words is compared with style `qc.words_recall_min` (0.85), fillers ignored and numbers
 normalised the same way. A clip whose first or last word is not heard fails whatever its recall (`qc.words_edges`):
 that is a clipped take, the failure of the first real job ("We've" heard as "I've", a lost final "refund"). A FAIL lists the missing words per clip; clips without `text:` are skipped and named.
+Whisper cannot spell a proper noun it has never seen (a clinic "Meditarina" heard as "Mediterranean" or "Meditate now"):
+list such names in `qc.names` (`edit.yaml qc:` or the client's style). A clip whose `text:` contains one is transcribed with
+the names as a whisper hint; every other clip is still heard unaided, so the hint cannot hide a clipped take elsewhere.
 
 ## Voice chain
 

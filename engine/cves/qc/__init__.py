@@ -445,7 +445,7 @@ def run_stage(pr, stage):
         from .. import align as AL, ingest as ING_
         thr = float(Q.get("words_recall_min") or S.get("qc.words_recall_min", .85))
         try:
-            rows = AL.clip_recall(pr, ING_.whisper_language(pr, S))
+            rows = AL.clip_recall(pr, ING_.whisper_language(pr, S), names=Q.get("names") or S.get("qc.names") or [])
             got = [r for r in rows if r["score"] is not None]; skip = [r["clip"] for r in rows if r["score"] is None]
             strict = (Q.get("words_edges") if Q.get("words_edges") is not None else S.get("qc.words_edges", True)) is not False
             edge_ = lambda r: strict and any(r.get("edge") or [])          # a lost first / last word = a clipped take

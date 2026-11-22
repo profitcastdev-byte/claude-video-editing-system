@@ -127,6 +127,7 @@ story:                        # the story step: take alignment in `cves select` 
 qc:                           # story-stage thresholds (edit.yaml qc: keys win per video)
   words_recall_min: 0.85      # STORY-17: share of each clip's text: words heard in its span of voice_final.wav
   words_edges: true           # STORY-17 also fails a clip whose first or last text: word is not heard (a clipped take)
+  names: []                   # STORY-17: proper nouns whisper can't spell unaided (a clinic, a client); a hint to the clips whose text: has one
 sound:
   bed_lu: -10                 # music+SFX bed vs voice while speaking
   duck_voice_band_db: -8

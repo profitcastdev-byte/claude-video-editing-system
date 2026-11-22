@@ -438,6 +438,7 @@ story-stage thresholds (an `edit.yaml qc:` key of the same name wins for one vid
 |---|---|---|
 | `qc.words_recall_min` | `0.85` | STORY-17: share of each clip's `text:` words heard in its own span of `voice_final.wav` |
 | `qc.words_edges` | `true` | STORY-17 also fails a clip whose first or last `text:` word is not heard (the signature of a clipped take), whatever its recall |
+| `qc.names` | `[]` | STORY-17: proper nouns whisper can't spell unaided (a client or clinic name). A clip whose `text:` has one is transcribed with the names as a whisper hint; every other clip is heard unaided |
 
 #### `sound`
 
