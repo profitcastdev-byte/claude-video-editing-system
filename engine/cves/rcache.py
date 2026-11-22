@@ -3,8 +3,8 @@
 Every frame of a full render is keyed by a hash of everything that decides its pixels and its element records:
 
   * global: the engine code (every .py of the package, the motion pieces / runtime, the repo's fonts and icons), the merged
-    style minus the sections the renderer never reads (sound, mix, voice, music, delivery, review, treatments, qc, story,
-    autocut, render), the canvas, proxy, rate, timeline length, the end card, the caption config, the roto list (text_behind
+    style minus the sections the renderer never reads (sound, mix, voice, music, delivery, treatments, story, autocut,
+    render, and the sections of removed features older style layers may carry), the canvas, proxy, rate, timeline length, the end card, the caption config, the roto list (text_behind
     harmonises one size across instances), snap / creep / lift, the broll track, the assets registry and a listing
     (path, size, mtime) of Raw/, Assets/, Brand/, Edit/conform/ and the user template / motion folders (~/.cves/templates,
     ~/.cves/motion, $CVES_TEMPLATES, $CVES_MOTION);
@@ -23,8 +23,9 @@ import os, json, math, hashlib, functools
 
 VERSION = 1
 INDEX = "_cache.json"
-# style sections the renderer never reads (audio, delivery, review loop, story step): a change there re-renders nothing
-NON_VISUAL = ("sound", "mix", "voice", "music", "delivery", "review", "treatments", "qc", "story", "autocut", "render", "_evidence")
+# style sections the renderer never reads (audio, delivery, story step; review / qc / creative / retention: removed features
+# older style layers may still carry): a change there re-renders nothing
+NON_VISUAL = ("sound", "mix", "voice", "music", "delivery", "review", "treatments", "qc", "creative", "retention", "story", "autocut", "render", "_evidence")
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 
@@ -35,11 +36,11 @@ def _h(o):
 
 @functools.lru_cache(1)
 def code_hash():
-    """every file of the engine that can change a pixel: the package's .py (QC excluded), motion pieces and runtime, and
+    """every file of the engine that can change a pixel: the package's .py, motion pieces and runtime, and
     a listing of the repo's fonts / icons"""
     h = hashlib.sha256()
     for root, dirs, files in os.walk(HERE):
-        dirs[:] = sorted(d for d in dirs if d not in ("qc", "__pycache__"))
+        dirs[:] = sorted(d for d in dirs if d != "__pycache__")
         for f in sorted(files):
             if f.endswith((".py", ".js", ".css", ".html", ".yaml", ".yml", ".json", ".svg")):
                 p = os.path.join(root, f); h.update(os.path.relpath(p, HERE).replace(os.sep, "/").encode())

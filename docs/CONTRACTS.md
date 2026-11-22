@@ -40,8 +40,7 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 **Not style (engine invariants):**
 - edits snap to segment boundaries;
 - a single lossless source path;
-- face-smoothed punch-ins;
-- the QC gates themselves. Their *thresholds* do come from the style.
+- face-smoothed punch-ins.
 
 ## 2. Timebase and canvas
 
@@ -72,30 +71,26 @@ Every key the engine reads must exist in `default.yaml`, with a neutral value an
 | `selects.yaml` | Claude / human | source clips (`src` per clip for multi-source), in/out, `beat:` tag (from the style's `grammar.structure`), `text:` (the clip's spoken words: take alignment and STORY-17 need it), optional `align: false` |
 | `edl.json` | ingest | fps, fps_rational, size, clips (selects.yaml clips with their aligned in/out and `aligned: {in, out, score, status, hand: [in, out]}`), segments (f0, n, in, out, src); non-aroll spines: `spine`, `duration`, `segments: []` (voiceover: `vo_kept`) |
 | `ingest.json` | ingest | per source: probe (w, h, fps, rotation, hdr, sar), conform applied, plate_scale; top level: canvas, fps_rational, plate_scale (max), language_detected. See [INGEST.md](INGEST.md) |
-| `voice_chain.json` | ingest | `{"steps": [{"name", "generative": bool, "params"}]}` (SND-30 reads it); the last step is `adaptive_gate` with each take's measured floor / speech / threshold / depth |
+| `voice_chain.json` | ingest | `{"steps": [{"name", "generative": bool, "params"}]}`; the last step is `adaptive_gate` with each take's measured floor / speech / threshold / depth |
 | `shot_match.json` | render (Timeline) | per-shot colour match (`grade.shot_match`): `reference`, per-shot skin / wall stats, the measured samples, and per shot `k` (plate frames), `gs` / `gb` (linear subject / wall gains); `_sig` = what it was solved for |
-| `cue_sync.json` | mix (`sound.sync_cues`) | pixel-change onsets measured on the rendered frames near each cue, with the render signature (element log + timeline) they belong to: `cves qc` rebuilds the same synced cue list. Also `tl` (sha256 of `timeline.json`) and `keys` (the frame-cache key of every frame a scan read): after an incremental render only the windows round re-rendered frames are scanned again |
+| `cue_sync.json` | mix (`sound.sync_cues`) | pixel-change onsets measured on the rendered frames near each cue, with the render signature (element log + timeline) they belong to. Also `tl` (sha256 of `timeline.json`) and `keys` (the frame-cache key of every frame a scan read): after an incremental render only the windows round re-rendered frames are scanned again |
 | `words.json` | ingest | `[[t0, t1, word]]` in cut time; language from `edit.yaml project.language` > `captions.language` (`auto` = detect) |
 | `style.yaml` | `cves inspire` | measured style profile + `_evidence` |
 | `inspire/` | `cves inspire` | `REPORT.md` (see / hear / feel per reference + the per-dimension mix), `<ref>-sheet.jpg` contact sheets, `aesthetic-review.md` (Claude fills it), `cache/` (per-reference measurements) |
 | `edit.yaml` | Claude / human | the edit (cutaways, roto, chest, end_card, captions, music, sfx, assets, variants) |
 | `assets.json` | `cves assets` | registry: id → path, kind, source (file/magnific/elevenlabs/stock/url), prompt, licence, sha256 |
-| `stems/guide.wav` | mix | only with `music.slot: platform`: the guide the edit is cut to (reference track or click track), never mixed into the master ([VIRAL.md](VIRAL.md) §4) |
+| `stems/guide.wav` | mix | only with `music.slot: platform`: the guide the edit is cut to (reference track or click track), never mixed into the master ([VIRAL.md](VIRAL.md) §3) |
 | `beats.json` | `cves beats` | music analysis in track seconds: tempo, beats, downbeats, bars, sections, phrases (intro / build / drop / body / break / outro), energy, drop candidates, last sync plan ([MUSIC.md](MUSIC.md), [SOUND.md](SOUND.md)) |
 | `mix.json` | `cves mix` | master gain, cue count, music placement (+ `sections`, `story` alignment), automatic `accents` (placed / skipped + why), `duck` settings, `vmr_guard` (the bed's speech-band trim), `cue_sync` (every cue moved onto its picture event) ([SOUND.md](SOUND.md)) |
 | `timeline.json` | render | resolved timeline (spine, zoom, cutaways incl. `broll` shots, transitions, fps_rational, size, segments with `kind`) |
 | `IMPORT-REPORT.md` | `cves import-edits` | editor changes mapped onto edit.yaml / selects.yaml (backups `*.bak-<time>`), and what could not be mapped. `Export/control/layers.json` (schema in CONTROL-MODE.md §3) is the reference it compares against |
 | `elements.jsonl` | render | one record per drawn element per frame (id, role, bbox, text, t_key, asset, font, size when the template logs it) |
 | `frames/` + `frames/_cache.json` | render | the rendered frames (`NNNNN.png`) and the frame cache index: `{v, log_sha, keys: {frame: key}}`, the input key of every frame whose PNG and element records are current, and the sha256 of the `elements.jsonl` they pair with (`cves.rcache`, ARCHITECTURE §6b). A final render re-renders only frames whose key changed; `--only` renders drop their frames from it |
-| `draft/` | `cves build --draft` | the draft Variant (ARCHITECTURE §6b): a copy of `edit.yaml` (+ `treatment.yaml`), its own `frames/`, `elements.jsonl`, `timeline.json` (`draft: true`, `proxy`), `mix.wav`, `stems/`, `qc.json` (`draft: true`), `QC-REPORT.txt` and `<title>_draft.mp4` (tagged `comment=cves-draft`). Never delivered |
-| `QC-REPORT.txt` / `qc.json` | `cves qc` | gate results; `qc.json` is machine-readable and carries the hash of the file it judged |
-| `journal.jsonl` | `cves` (build, encode, qc, deliver, import-edits, critique, review, treatments make / render / compare / pick) + `cves learn` | append-only events `{t, event, cves, style_hash, ...}` for self-learning ([LEARNING.md](LEARNING.md)); `journal.last_edit.yaml` is the edit.yaml of the last build |
-| `DIRECTION.md` | Claude | creative direction: concept, arc, the one signature moment, motif, what we will not do (knowledge-base/CREATIVE.md) |
+| `draft/` | `cves build --draft` | the draft Variant (ARCHITECTURE §6b): a copy of `edit.yaml` (+ `treatment.yaml`), its own `frames/`, `elements.jsonl`, `timeline.json` (`draft: true`, `proxy`), `mix.wav`, `stems/` and `<title>_draft.mp4` (tagged `comment=cves-draft`) |
+| `journal.jsonl` | `cves` (build, encode, deliver, import-edits, treatments make / render / compare / pick) + `cves learn` | append-only events `{t, event, cves, style_hash, ...}` for self-learning ([LEARNING.md](LEARNING.md)); `journal.last_edit.yaml` is the edit.yaml of the last build |
 | `treatment.yaml` | `cves treatments pick` | the picked treatment (`name`, `label`, `style:` = the treatment style layer, `structure:` hints); the old one is kept as `treatment.yaml.bak-<time>` |
 | `treatments/<name>/` | `cves treatments make` / `render` | one treatment: `edit.yaml` (the adapted plan, `treatment: <name>`), `treatment.yaml`, `plan.json` (changes + metrics: cuts, caption style, transitions, punch-ins), `proxy.mp4`; its own `timeline.json`, `mix.wav`, `stems/`, `exposure.json`, `beats.json`. A `project.Variant` view: plates, mattes, faces, words and voice are read from `Edit/`, never rebuilt |
 | `treatments/compare/` | `cves treatments compare` | `sheet.jpg` (rows = treatments, columns = the same timecodes, labelled), `compare.mp4`, `compare.json` |
-| `critique/` | `cves critique` | `contact_sheet.jpg`, `timeline.png`, `critique.json`, `CRITIQUE.md` (rubric Claude fills) |
-| `review/` | `cves review` | `state.json` (rounds of the current loop, closed loops, capped at style `review.max_rounds`); one never-overwritten `rNNN/` per round: `cuts/cut_NN.jpg`, `index.jpg`, `strips_N.jpg`, `hook.jpg`, `payoff.jpg`, `endcard.jpg`, `ends.jpg`, `cuts.json`, `audio.json`, `findings.json` (`[{id, severity: high\|med\|low, t, kind, message, patch?}]`, `patch = {set: {edit.yaml path: value}, append: {...}, safe}`), `REVIEW.md` (rubric Claude answers), `applied.json`, `signoff.json` ([REVIEW.md](REVIEW.md)) |
 | `logs/cves.log` | the `cves` CLI | the last command's traceback and the third-party stderr noise it hid (objc / OpenCV / numba lines, folded worker tracebacks); the run before is `cves.log.prev`. `-v` prints all of it instead |
 | `plan_notes.json` | the plan review page (Send, `cves review-plan`) | the editor's plan notes: per shot its `edit.yaml` refs, approve / unlock, quick actions, note; overall note, `approve_all`; `applied_at` once applied ([PLAN-REVIEW.md](PLAN-REVIEW.md)) |
 | `plan_notes.pending.md` | `cves plan apply-notes` | the free-text notes and the actions left for Claude, per shot (the only plan-review file Claude reads) |
@@ -127,7 +122,7 @@ Templates are auto-discovered.
 - `cves render --only` / `Timeline.frames_for(spec)` accept cutaway, segment, `roto.N`, `chest.N`, `end_card` ids, `12.5-14.0` (seconds), `300-420` (frames, inclusive) and comma lists.
 - `cues(params, ctx) -> list[(t, sfx_name, gain_db, kw)]`. `sfx_name` is a bank id / file name, or `@category[:intensity]` (resolved from the SFX bank manifest, [SOUND.md](SOUND.md) §4).
 - **Kind.** Set it per module with `KIND = "cutaway"|"roto"|"chest"|"end"|"media"|"overlay"`, or per template with `KINDS = {name: kind}`.
-- **El(im, id, role, text=, t_key=, asset=, font=, size=).** The `id` must be stable across frames; the QC gates track elements by `id`. `size` (optional, type px at a 1080 short side) is logged; GFX-20 compares it when every instance of a class logs it (type a person occludes under-reads its glyph height).
+- **El(im, id, role, text=, t_key=, asset=, font=, size=).** The `id` must be stable across frames; the cue sync tracks elements by `id`. `size` (optional, type px at a 1080 short side) is logged.
 - **Fonts and colours.** Templates read colours and fonts through `gfx` (`G.MINT` is the accent slot, `G.font(...)`). They never use literal hex values.
 - **Timing and cue helpers (gfx).** Use these instead of hand-rolled maths:
   - `G.enter(t, at, dur, G.fps_of(ctx))`: an entry first visible on the frame of `at`;
@@ -145,16 +140,11 @@ Templates are auto-discovered.
 - return a non-zero exit with a one-line, actionable message on user error (`raise SystemExit("...")`); never show a traceback for user error.
 - `cves render` and `cves build` call `schema.require_valid(pr)` first: `schema.validate(pr) -> (errors, warnings)`, each message `yaml.path: problem` (e.g. `cutaways[3].params.price: expected number`).
 
-## 6. QC and delivery
+## 6. Delivery
 
-- `cves qc` writes `Edit/qc.json`: `{video, sha256, size, fail, warn, pass, na, gates: [{id, status, summary}], created, cves_version, fast}` (`qc.write_stamp`).
-  Status `N/A` = the gate cannot apply to this spine (presenter / voice / caption gates; `qc.NA_NO_AROLL`, `NA_NO_VOICE`,
-  `NA_NO_CAPTIONS`); it never blocks delivery.
-- `cves deliver` refuses unless `qc.json` exists, has `fail == 0`, and its `sha256` matches the master being delivered.
-- `cves deliver` refuses a draft render (`deliver.is_draft`: a file inside `Edit/draft/` or tagged `comment=cves-draft` by `encode(..., draft=True)`), even with `--force-unchecked`.
-- `cves deliver` writes a never-overwritten `Export/vNNN/` with `manifest.json` (`qc_verified`, `master_sha256`, files with sha256, variants with status); `--force-unchecked` is recorded as `forced_unchecked` + `WARNING`.
-- Encoder settings come from the style `delivery:` section through `encode.video_args(S)` / `audio_args(S)`; fps and size from `encode.stream_params(pr)`.
-- The plugin hook (`plugin/hooks/qc_guard.py`, PreToolUse) denies copying / moving / uploading out of `Export/` unless the QC stamp (or the `vNNN` manifest) is clean, and denies `--force-unchecked` while QC is not clean. Details: [DELIVERY.md](DELIVERY.md).
+- `cves deliver` delivers the newest `Export/*.mp4` (or `--video`, a `cves build --draft` master included: its captions, cover and size come from the draft Variant).
+- `cves deliver` writes a never-overwritten `Export/vNNN/` with `manifest.json` (`master_sha256`, files with sha256, variants with status).
+- Encoder settings come from the style `delivery:` section through `encode.video_args(S)` / `audio_args(S)`; fps and size from `encode.stream_params(pr)`. Details: [DELIVERY.md](DELIVERY.md).
 
 ## 7. Portability
 

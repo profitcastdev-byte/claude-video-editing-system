@@ -1,5 +1,5 @@
 """The render speed-ups are exact: every fast path gives the same numbers as the code it replaced (docs/ARCHITECTURE.md
-§6b). Bit-identical frames mean the golden frames, the QC gates and the master do not move."""
+§6b). Bit-identical frames mean the golden frames and the master do not move."""
 import os, tempfile
 import numpy as np
 from PIL import Image, ImageDraw

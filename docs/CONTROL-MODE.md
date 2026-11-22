@@ -297,7 +297,6 @@ editor can retype it. To change one:
      changed, re-import the timeline instead.
    - Kdenlive: reload the project. The file path is unchanged, so the new frames are picked up. If the
      length changed, Claude runs `replace_clip` / `trim_clip` with the Kdenlive MCP.
-4. QC gates rerun on export (section 5).
 
 ### 4a. Importing the human's edits (`cves import-edits`)
 
@@ -310,7 +309,7 @@ cves export all                                  # layers + timeline.fcpxml + pr
 cves import-edits --from resolve  ~/Desktop/edited.fcpxml --captions ~/Desktop/edited.srt
 cves import-edits --from kdenlive Export/control/project.kdenlive
 cves import-edits ... --dry-run                  # report only, nothing written
-# then the steps the report lists, e.g. cves select && cves prep (if selects.yaml changed), cves render, cves mix, cves encode, cves qc
+# then the steps the report lists, e.g. cves select && cves prep (if selects.yaml changed), cves render, cves mix, cves encode
 ```
 
 `engine/cves/importer.py` reads the edited timeline directly (FCPXML 1.8–1.11 and Kdenlive MLT XML with
@@ -363,8 +362,7 @@ editor's timeline must stay at the exported rate (the importer refuses otherwise
 3. **Your edits win.** If Claude's plan conflicts with something you changed by hand, Claude keeps your
    change and tells you. Claude never re-imports or regenerates a timeline over your work. A rebuilt timeline is
    always a new timeline version or file.
-4. **Gates rerun on export.** Anything you deliver from the editor goes back through `cves qc` (the
-   QC-GATES in the knowledge base) before delivery. Changes that only exist in the editor are noted in `CONTROL.md`.
+4. **Editor-only changes** are noted in `CONTROL.md`.
 5. **Kdenlive: reload after Claude saves.** Kdenlive does not watch the file. Use File > Revert, or close
    and reopen the project.
 

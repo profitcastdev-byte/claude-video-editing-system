@@ -1,6 +1,6 @@
 """Timing, audio and colour fixes from the first 60 fps client job (CHANGELOG [Unreleased] "AV"): SFX cue sync onto the
-logged picture events (SND-07), caption fragments round cutaways (PLAT-06 / 07), the adaptive voice gate (SND-19), the
-per-shot colour match (COL-06 / 07) and the band-aware vocal-to-music guard (review masking). Synthetic media only."""
+logged picture events, caption fragments round cutaways, the adaptive voice gate, the per-shot colour match and the
+band-aware vocal-to-music guard. Synthetic media only."""
 import os, sys, json, types
 import numpy as np, soundfile as sf, yaml, pytest, cv2
 
@@ -41,7 +41,7 @@ def _tl(d, fps=60.0):
 # ------------------------------------------------------------------ 1. SND-07: cue onsets land on their picture event at 60 fps
 def test_cue_sync_puts_onsets_on_element_entries_at_60fps(tmp_path):
     from cves import sound as SO
-    from cves.qc import extra as X
+    from cves import events as X
     d = _project(tmp_path, elements=[("card.title", 37, 120), ("card.row0", 90, 200)])
     _pop(str(d / "Music" / "sfx" / "tpop.wav"))
     TL = _tl(d); on = SO.onset_offset(str(d / "Music" / "sfx" / "tpop.wav"))
@@ -56,7 +56,7 @@ def test_cue_sync_puts_onsets_on_element_entries_at_60fps(tmp_path):
     assert any(abs(x - 37) < .02 for x in onsets) and any(abs(x - 90) < .02 for x in onsets)
     assert round(170 / 60, 6) in t and round(1.0, 6) in t
     assert len(log) == 2 and all("appears" in r["event"] for r in log)
-    # the SND-07 measure itself: every synced onset within 1 frame of a visual event (here: exactly on it)
+    # every synced onset within 1 frame of a visual event (here: exactly on it)
     cx = X.Ctx(TL.pr, None); evt = np.array([e[0] for e in X.visual_events(cx)])
     for c in out:
         if c[3].get("synced"): assert np.min(np.abs((c[0] + on - evt) * 60)) < .05
@@ -269,7 +269,7 @@ def test_vmr_guard_guarantees_the_vocal_to_music_ratio_while_speaking():
     from scipy.signal import butter, sosfilt
     bright = sosfilt(butter(2, [900, 4500], "band", fs=SR, output="sos"), rng.standard_normal(N)) * .12   # a busy, bright bed
     mus = np.stack([bright, bright], 1).astype(np.float32)
-    S = STY.Style({"review": {"vmr_min_db": 6.0}, "mix": {"vmr_margin_db": 2.0}})
+    S = STY.Style({"mix": {"vmr_min_db": 8.0}})
     def vmr(m):
         pv = SO._band_power(vo, SR, 1000, 4000, .4, .1); pm = SO._band_power(m.sum(1) / np.sqrt(2), SR, 1000, 4000, .4, .1)
         tt = np.arange(len(pv)) * .1; sp = np.array([any(a - .05 <= x <= b + .05 for a, b, _ in words) for x in tt])
@@ -277,7 +277,7 @@ def test_vmr_guard_guarantees_the_vocal_to_music_ratio_while_speaking():
     r0, _, _ = vmr(mus); assert (r0 < 6).mean() > .3                       # masked before
     out, info = SO.vmr_guard(vo, mus, SR, S, words)
     r1, tt, sp = vmr(out)
-    assert (r1 < 6).mean() <= .1, info                                       # under the review's mask_share: no finding
+    assert (r1 < 6).mean() <= .1, info                                       # at most 10 % of speech windows under 6 dB
     assert np.median(r1) >= 8 - .5 and np.median(r1) > np.median(r0) + 5
     # away from speech the bed is untouched
     far = np.ones(N, bool)

@@ -805,7 +805,7 @@ def import_edits(pr, file, src=None, captions=None, dry_run=False):
             shutil.copy2(sel_path, pr.e(f"selects.yaml.bak-{ts}")); _save_yaml(sel_path, SEL); written.append(f"Edit/selects.yaml (backup Edit/selects.yaml.bak-{ts})")
     steps = []
     if changed_sel: steps += ["cves select", "cves prep"]
-    if changed_edit or changed_sel: steps += ["cves plan", "cves render", "cves mix", "cves encode", "cves qc"]
+    if changed_edit or changed_sel: steps += ["cves plan", "cves render", "cves mix", "cves encode"]
     if (changed_edit or changed_sel) and not changed_sel:
         ids = sorted({re.search(r"`([^`]+)`", a).group(1) for a in applied if a.startswith("cutaway `")})
         if ids: steps.append(f"cves control update --only {','.join(ids)},captions   (layers only, if you keep editing in the editor)")

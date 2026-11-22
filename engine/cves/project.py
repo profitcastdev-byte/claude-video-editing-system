@@ -37,7 +37,7 @@ class Variant(Project):
     ingest artefacts (edl.json, plates, mattes, faces, words, voice, beats, motion cache, inspire style) stay shared and are
     never rebuilt. `e()` routes the files in OWN to the variant folder and everything else to the project's Edit/."""
     OWN = {"edit.yaml", "treatment.yaml", "frames", "elements.jsonl", "timeline.json", "exposure.json", "shot_match.json", "cue_sync.json", "mix.wav",
-           "mix_premaster.wav", "mix.json", "stems", "beats.json", "journal.jsonl", "journal.last_edit.yaml", "qc.json", "QC-REPORT.txt"}
+           "mix_premaster.wav", "mix.json", "stems", "beats.json", "journal.jsonl", "journal.last_edit.yaml"}
     def __init__(self, root, work):
         super().__init__(root)
         self.work = os.path.abspath(work)
@@ -61,7 +61,7 @@ def new(client, title, raw=None, root=None):
         pr.save_edit({"project": {"client": client, "title": title,                    # fps/size come from the footage + style
                                   "raw": f"Raw/{os.path.basename(raw)}" if raw else None},
                       "style": {},          # {preset: <name>} or inline keys; `cves inspire` writes Edit/style.yaml
-                      "qc": {"topic_keywords": [], "brand_tail": [], "duration": None}})
+                      "qc": {"topic_keywords": [], "brand_tail": []}})     # words cut-down variants keep first (cves.variants)
     if not os.path.exists(os.path.join(d, "Brand", "claims.md")):
         open(os.path.join(d, "Brand", "claims.md"), "w", encoding="utf-8").write("# Approved claims\nOnly published, verifiable proof goes on screen. List each claim with its source.\n")
     return d

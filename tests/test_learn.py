@@ -1,4 +1,4 @@
-"""WS E: journal -> mining -> human-approved promotion -> learned style layer; taste study; critique pack. Synthetic data only."""
+"""WS E: journal -> mining -> human-approved promotion -> learned style layer; taste study. Synthetic data only."""
 import json, os, subprocess, sys
 import pytest, yaml
 
@@ -11,7 +11,6 @@ CLIENTS = ("Acme Bakery", "Zenith Dental", "Orbit Gym", "Nova Optics")
 def env(tmp_path, monkeypatch):
     root = tmp_path / "projects"; kb = tmp_path / "repo" / "knowledge-base"
     (kb / "taste").mkdir(parents=True); root.mkdir()
-    (tmp_path / "repo" / "LESSONS.md").write_text("# Lessons\n\n| # | Correction | Now enforced by |\n|---|---|---|\n| 1 | a | b |\n", encoding="utf-8")
     monkeypatch.setenv("CVES_CLIENTS", str(root)); monkeypatch.setenv("CVES_TASTE", str(tmp_path / "taste")); monkeypatch.setenv("CVES_KB_DIR", str(kb))
     return {"root": str(root), "kb": str(kb), "tmp": tmp_path}
 
@@ -55,7 +54,7 @@ def test_hooks_journal_and_never_break(env, capsys):
     assert ev[0]["facts"]["captions.size"] == 50 and ev[3]["facts"]["captions.size"] == 60
     # a broken project must not break the command that journals
     E["style"] = {"preset": "no-such-preset"}; pr.save_edit(E)
-    assert learn.on_qc(pr) is None and learn.on_deliver(pr, {"version": "v002"}) is None
+    assert learn.on_deliver(pr, {"version": "v002"}) is None
     os.chmod(pr.e(), 0o500) if os.name != "nt" else None
     try: assert learn.on_build(pr) is None                         # unwritable Edit/: logged, not raised
     finally: os.chmod(pr.e(), 0o700) if os.name != "nt" else None
@@ -121,16 +120,17 @@ def test_share_is_anonymised(env):
     style_c = next(c for c in cands if c["kind"] == "correction" and c["change"]["key"] == "captions.size")
     rule_c = next(c for c in cands if c["type"] == "rule" or c["kind"] == "notes")
     learn.promote(style_c["id"], scope="global", share=True)
-    if rule_c["type"] != "rule":                                   # force a rule-type candidate through the LESSONS path
+    if rule_c["type"] != "rule":                                   # force a rule-type candidate through the shared path
         rule_c = dict(rule_c, type="rule", rule="Check music first: notes keep asking for it. (Acme Bakery said so)", id="Ltest001")
         learn._write_jsonl(os.path.join(env["tmp"], "taste", "candidates.jsonl"), learn.read_candidates() + [rule_c])
     learn.promote(rule_c["id"], scope="goal:viral", share=True)
-    shared = [os.path.join(env["kb"], "TASTE.md"), os.path.join(env["kb"], "taste", "learned.yaml"), os.path.join(env["tmp"], "repo", "LESSONS.md")]
+    shared = [os.path.join(env["kb"], "TASTE.md"), os.path.join(env["kb"], "taste", "learned.yaml")]
     text = "".join(open(p, encoding="utf-8").read() for p in shared)
     for name in CLIENTS + ("Solo Client",):
         assert name.lower() not in text.lower(), name
     assert env["root"] not in text and str(env["tmp"]) not in text and "Video 0" not in text
-    assert style_c["id"] in text and rule_c["id"] in text and "| 2 |" in text
+    assert style_c["id"] in text and rule_c["id"] in text
+    assert not os.path.exists(os.path.join(env["tmp"], "repo", "LESSONS.md"))            # shared rules go to TASTE.md only
     assert yaml.safe_load(open(shared[1], encoding="utf-8"))["scopes"]["global"]["captions"]["size"] == style_c["change"]["value"]
     learn._write_jsonl(os.path.join(env["tmp"], "taste", "candidates.jsonl"),
                        learn.read_candidates() + [dict(style_c, id="Lclient1", scope="client:Solo Client", status="new")])
@@ -175,35 +175,6 @@ def test_study_measures_synthetic_clips(env):
     assert not [f for f in os.listdir(os.path.join(env["tmp"], "taste")) if f.endswith(".mp4")]
     assert any(c["scope"] == "goal:viral" for c in new) and not any(c["scope"] == "goal:ad" for c in new)
     assert any("ad" in l and "< 3" in l for l in out)
-
-
-def test_critique_pack_on_tiny_video(env):
-    pr = _proj(env, "Acme Bakery", "Critique")
-    os.makedirs(pr.p("Export"), exist_ok=True); _clip(pr.p("Export", "Critique.mp4"), size="270x480")
-    from cves.critique import critique
-    r = critique(pr)
-    for k in ("sheet", "timeline", "md"): assert os.path.getsize(r[k]) > 1000, k
-    md = open(r["md"], encoding="utf-8").read()
-    for word in ("Hook strength", "Story clarity", "Pacing", "Visual aesthetics", "Motion craft", "Sound design", "Creativity", "Restraint",
-                 "Platform fit", "Brand fit", "3 changes", "--by claude"):
-        assert word in md, word
-    assert r["facts"]["shots"] >= 3 and learn.read_journal(pr)[-1]["event"] == "critique"
-    assert learn.main(["rate", "master", "7", "--by", "claude", "--scores", "hook=7,story=6", "--project", pr.root]) == 0
-    assert learn.read_journal(pr)[-1]["scores"] == {"hook": 7.0, "story": 6.0}
-
-
-def test_critique_counts_broll_footage_as_shots_not_graphics():
-    from cves import critique as CR
-
-    class _P:
-        edit = {}
-        def json(self, name, default=None):
-            return {"cutaways": [{"id": "b01", "template": "broll_shot", "start": 0.0, "end": 2.0},
-                                 {"id": "b02", "template": "broll_shot", "start": 2.0, "end": 4.0},
-                                 {"id": "c1", "template": "m_kinetic_title", "start": 1.0, "end": 3.0}]} if name == "timeline.json" else default
-    shots, gfx, _ = CR.structure(_P(), 4.0)[:3]
-    assert [g[2] for g in gfx] == ["c1"]                       # only the designed graphic counts toward the restraint budget
-    assert any(abs(s[0] - 2.0) < 1e-6 for s in shots)          # the B-roll cut at 2.0 s is a shot boundary
 
 
 def test_team_layer_shared_folder(env, monkeypatch, tmp_path):

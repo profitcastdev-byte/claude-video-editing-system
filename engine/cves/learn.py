@@ -12,7 +12,7 @@
   cves learn forget ID                                    revert a promotion
   cves learn study FOLDER [--max-s 60]                    measure great videos (notes.txt: file | ad|viral | why)
 
-Automatic events (build, qc, deliver, import-edits) are written by `cves` itself into PROJECT/Edit/journal.jsonl. Journaling
+Automatic events (build, deliver, import-edits) are written by `cves` itself into PROJECT/Edit/journal.jsonl. Journaling
 never breaks a command: every hook catches its own errors. Nothing learned changes the look until a person promotes it."""
 import argparse, copy, datetime, glob, hashlib, json, math, os, re, statistics, sys
 import yaml
@@ -24,7 +24,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 VERSION_RX = re.compile(r"^(v\d{2,}|master)$")
 MIN_N = 3                       # outcome correlations and study patterns need at least this many samples
 MISSING = object()
-SKIP_WALK = {"Raw", "Export", "Assets", "Music", "Inspirations", "Moodboard", "Brand", "frames", "plate", "matte", "stems", "critique", "node_modules"}
+SKIP_WALK = {"Raw", "Export", "Assets", "Music", "Inspirations", "Moodboard", "Brand", "frames", "plate", "matte", "stems", "node_modules"}
 IGNORE_EDIT = ("project.", "qc.", "captions.events", "captions.hide", "captions.fixes", "edl", "assets", "variants", "delivery.cover")
 
 
@@ -197,15 +197,8 @@ def on_build(pr, video=None):
     append(pr, "build", video=os.path.basename(video) if video else None, facts=facts(pr))
 
 @_safe
-def on_qc(pr):
-    st = pr.json("qc.json") or {}
-    g = st.get("gates") or []
-    append(pr, "qc", video=os.path.basename(st.get("video") or "") or None, fail=st.get("fail"), warn=st.get("warn"), passed=st.get("pass"),
-           fails=[x["id"] for x in g if x.get("status") == "FAIL"], warns=[x["id"] for x in g if x.get("status") == "WARN"], fast=st.get("fast"))
-
-@_safe
 def on_deliver(pr, man):
-    append(pr, "deliver", version=man.get("version"), qc_verified=man.get("qc_verified"), forced=bool(man.get("forced_unchecked")),
+    append(pr, "deliver", version=man.get("version"),
            variants=[{"id": v.get("id"), "status": v.get("status")} for v in man.get("variants") or []], facts=facts(pr))
 
 @_safe
@@ -217,20 +210,6 @@ def on_import(pr, E0, rep, dry_run=False):
 def on_treatment_pick(pr, name, **data):
     """`cves treatments pick`: which treatment won, out of which, for which goal / client (mined into treatments.prefer)"""
     append(pr, "treatment-pick", treatment=name, **data)
-
-@_safe
-def on_critique(pr, version, video):
-    append(pr, "critique", version=version, video=os.path.basename(video))
-
-# ---- WS F: review loop (docs/REVIEW.md): each round, the safe patches applied, and Claude's sign-off (what was still wrong)
-@_safe
-def on_review(pr, rec): append(pr, "review", **rec)
-
-@_safe
-def on_review_apply(pr, rec): append(pr, "review-apply", **rec)
-
-@_safe
-def on_review_signoff(pr, rec): append(pr, "review-signoff", **rec)
 
 
 # ======================================================================== mining
@@ -654,11 +633,7 @@ def promote(cid, scope=None, share=False, team=False):
         msgs.append(f"{key} = {val} for {scope} -> {path}")
     else:
         text = c.get("rule") or c["statement"]
-        if share:
-            lp = os.path.join(os.path.dirname(kb_dir()), "LESSONS.md")
-            _lessons_add(lp, cid, _public(c, scope, names), anonymise(text, names), scope, c)
-            rec["path"] = lp; msgs.append(f"rule -> {lp}")
-        else:
+        if not share:
             rp = os.path.join(STY.team_dir(), "rules.md") if team else _tp("rules.md")
             os.makedirs(os.path.dirname(rp), exist_ok=True); new = not os.path.exists(rp)
             with open(rp, "a", encoding="utf-8") as f:
@@ -690,15 +665,6 @@ def _taste_add(p, line):
     s = s.rstrip("\n") + "\n"
     if not s.splitlines()[-1].startswith("- "): s += "\n"
     with open(p, "w", encoding="utf-8") as f: f.write(s + line)
-
-LESSONS_SECTION = "## Learned by `cves learn` (approved patterns)"
-
-def _lessons_add(p, cid, stmt, rule, scope, c):
-    s = open(p, encoding="utf-8").read() if os.path.exists(p) else "# Lessons\n"
-    nums = [int(m) for m in re.findall(r"^\| (\d+) \|", s, re.M)]
-    row = f"| {max(nums, default=0) + 1} | {stmt} (scope {scope}, n={c.get('n')}) [{cid}] | {rule} (learned layer, approved {_today()}) |\n"
-    if LESSONS_SECTION not in s: s = s.rstrip("\n") + f"\n\n{LESSONS_SECTION}\n| # | Pattern | Now enforced by |\n|---|---|---|\n"
-    with open(p, "w", encoding="utf-8") as f: f.write(s.rstrip("\n") + "\n" + row)
 
 def _drop_lines(p, cid):
     if not p or not os.path.exists(p): return
@@ -895,7 +861,7 @@ def main(argv, project=None):
     sp = ap.add_subparsers(dest="sub", required=True)
     n = sp.add_parser("note"); n.add_argument("text"); n.add_argument("--version"); n.add_argument("--by", default="owner")
     r = sp.add_parser("rate"); r.add_argument("version"); r.add_argument("score", type=float); r.add_argument("--why", default=""); r.add_argument("--by", default="owner")
-    r.add_argument("--scores", help="critique rubric scores: hook=7,story=6,... (with --by claude)")
+    r.add_argument("--scores", help="rubric scores: hook=7,story=6,...")
     for k in ("approve", "reject"):
         x = sp.add_parser(k); x.add_argument("target", help="vNNN | master (reject also takes a candidate id)"); x.add_argument("--why", default=""); x.add_argument("--by", default="owner")
     j = sp.add_parser("journal"); j.add_argument("--tail", type=int, default=20)

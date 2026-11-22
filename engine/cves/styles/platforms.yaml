@@ -3,14 +3,14 @@
 #
 # Every box is a FRACTION of the frame [x0, y0, x1, y1] (0 = left / top, 1 = right / bottom), so the same profile works on
 # any canvas size (9:16, 4:5, 1:1, 16:9). Pixels = fraction x the real frame width / height, computed at use time.
-#   safe:            text, captions, logos, prices and CTAs stay inside this box (PLAT-02)
+#   safe:            text, captions, logos, prices and CTAs stay inside this box
 #   caption_bottom:  burned-in captions end above this line (the platform's own description / sound line sits below it)
-#   ui:              the overlays themselves, for the moodboard / review overlay and the QC detail lines
-#   duration:        {ideal: [lo, hi] s (RET-30 WARN outside), max: s (RET-30 FAIL above: the platform cuts or refuses it)}
+#   ui:              the overlays themselves, for the moodboard overlay
+#   duration:        {ideal: [lo, hi] s, max: s (the platform cuts or refuses it above)}
 #   lufs, true_peak: the level the platform normalises to; fills sound.master_lufs / sound.true_peak unless a style layer sets them
 # Sources: Meta Ads Guide (Reels / Stories / Feed safe zones: 14% top, 35% bottom, 6% sides for Reels; 14% top, 20% bottom for
 # Stories), TikTok and YouTube Shorts creator safe-zone templates (right action rail, bottom caption + sound line), YouTube
-# player controls for landscape. Values are the builder's call where a source gives no number (knowledge-base/DECISIONS.md).
+# player controls for landscape. Values are the builder's call where a source gives no number.
 reels:
   label: Instagram / Facebook Reels
   aspect: "9:16"

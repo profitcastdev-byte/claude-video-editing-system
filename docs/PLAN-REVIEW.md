@@ -21,7 +21,7 @@ Design: `docs/superpowers/specs/2026-11-19-edit-plan-review-design.md`. Code: `e
      slot), Remove, Fix caption (word → replacement);
    - a free-text **note**.
 
-   Page level: an overall note, **Send to Claude** (writes `Edit/plan_notes.json`), **Approve all** (approval 2 with the
+   Page level: an overall note, **Send to Claude** (writes `Edit/plan_notes.json`), **Approve all** (the plan approved, with the
    date in `Edit/NOTES.md`, then Send), **Copy notes** (the same JSON as text).
 4. `cves plan apply-notes` applies the quick actions (backup `edit.yaml.bak-<time>`, comments kept when the text patch
    verifies), locks approved shots, and writes `Edit/plan_notes.pending.md`.

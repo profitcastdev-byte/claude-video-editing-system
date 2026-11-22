@@ -123,7 +123,7 @@ cves --project ~/cves-resolve-check select && cves --project ~/cves-resolve-chec
 cves --project ~/cves-resolve-check build
 ```
 
-- [ ] The new master shows c2 0.2 s later, the shorter CTA head, the moved caption and a quieter bed; QC has 0 FAIL.
+- [ ] The new master shows c2 0.2 s later, the shorter CTA head, the moved caption and a quieter bed.
 
 If you have B-roll in a real project, also move and head-trim one B-roll shot on V2 and check `broll[k].start` / `in`.
 

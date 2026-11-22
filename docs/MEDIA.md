@@ -7,7 +7,7 @@ pre-rendered in Remotion, HyperFrames or After Effects. This page covers:
 - the `assets:` block in `edit.yaml` and the provenance registry in `Edit/assets.json`;
 - the `cves assets` command;
 - the six media templates in `engine/cves/templates/media.py`, with an `edit.yaml` example for each;
-- how the engine hooks into render, the mix and QC.
+- how the engine hooks into render and the mix.
 
 Generation itself (Magnific / Freepik, ElevenLabs, stock) is done by Claude through MCP connectors, never by the engine. See
 [plugin/skills/video-editor/connectors.md](../plugin/skills/video-editor/connectors.md) and `/cves:assets`.
@@ -33,7 +33,7 @@ An entry can also carry a `licence`, which `cves assets add` copies into the reg
 
 Templates refer to assets **by id**: `params: {asset: hero_img}`. `Timeline.resolve` resolves ids through
 `assets.resolve(pr, id)`, so `ctx["resolve"]("hero_img")` returns the absolute path. Every template that takes an `asset:` also
-accepts a plain project path, but `cves assets check` and gate AST-01 flag a path that isn't declared.
+accepts a plain project path, but `cves assets check` flags a path that isn't declared.
 
 ### Register them: `cves assets`
 | command | what it does |
@@ -55,7 +55,7 @@ A registry record (`Edit/assets.json` → `assets.<id>`):
 `kind` is one of `image`, `video`, `rgba` (a video, PNG or PNG sequence with alpha), `audio` or `font`. The probe reads stills with PIL and
 video and audio with `ffprobe` (`config.get("ffprobe")`). A phone clip's rotation is applied to `w`/`h`.
 
-**Provenance is mandatory.** `assets.qc_assets(pr, gate)` is gate **AST-01**: it fails on any problem `cves assets check` would print.
+**Provenance.** `cves assets check` lists every asset with no file, no source or licence, no prompt (generated), or a file that changed since it was registered.
 
 ## 2. Media templates
 
@@ -169,7 +169,7 @@ chest:
 Making a test RGBA clip with ffmpeg:
 `ffmpeg -f lavfi -i "color=c=black@0:s=540x960:r=24:d=2,format=rgba,geq=r=255:g=190:b=40:a='255*clip(1.4-hypot(X-(80+T*190),Y-480)/90,0,1)'" -c:v prores_ks -profile:v 4444 -pix_fmt yuva444p10le fx.mov`
 
-## 3. Hooks into render, mix and QC
+## 3. Hooks into render and the mix
 
 **Render.** `render.py` provides these:
 - `ctx["fps"]` and `ctx["S"]` (the style) through `Timeline.ctx()`;
@@ -184,8 +184,3 @@ moodboard frame), pip and split draw a placeholder well and warn once.
 **Mix.** `video_broll`, `screen_rec`, `split` panes and `pip` backgrounds with `audio: true` emit this cue:
 `(at, "asset:<id>", gain, {"asset": id, "trim": (in, in + dur), "speed": s, "reveal": True})`. The mix resolves
 `asset:<id>` through `assets.resolve(TL.pr, id)` instead of the SFX bank. Speed other than 1 is applied with `librosa.effects.time_stretch`.
-
-**QC.**
-- **AST-01** (`assets.qc_assets`): provenance, as described in §1.
-- **MOT-14** (raster scale) reads `El.asset` against the project root. For video assets it should use the registry probe (`assets.record(pr, id)["probe"]`) instead of `PIL.Image.open`.
-- **GFX-23** ("icons only from the Material set") should ignore role `media` and paths under `Assets/`.

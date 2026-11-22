@@ -3,7 +3,7 @@
 
     python tools/make_demo.py OUT_DIR [--fps 30] [--small] [--kind aroll|voiceover|music|broll] [--size WxH] [--craft] [--edit default|legacy]
 
-It writes a complete CVES project in the state ingest leaves it in, so render, mix, QC, deliver and export can run on any
+It writes a complete CVES project in the state ingest leaves it in, so render, mix, deliver and export can run on any
 machine without whisper, RVM or DeepFilterNet (CI uses it; teammates can use it to try the engine).
 
 --kind picks the timeline spine (docs/FORMATS.md); --size the canvas (style canvas.size, written to edit.yaml style:).
@@ -30,8 +30,7 @@ The aroll kind writes:
   Music/demo_bed.wav            a 100 BPM synth bed (kick, chord pad) with a drop, so `cves beats` has something to find
   Edit/edit.yaml                an edit that uses generic templates, captions, a roto moment and an end card
 
-The presenter is drawn, so YuNet will not see a face in the final video. Face-dependent QC gates read faces.json for the
-A-roll; the few that re-detect faces on the delivered file (RET-13, RET-22) are expected to WARN/FAIL on the demo.
+The presenter is drawn, so YuNet will not see a face in the final video; the A-roll reads faces.json.
 """
 import argparse, json, math, os, shutil, subprocess, sys
 import numpy as np

@@ -5,7 +5,7 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 ---
 
 # /cves:treatments: more than one idea
-Arguments: `$ARGUMENTS` (default the whole loop). Step 5b; follow `skills/video-editor/reference/treatments.md` (when to run or skip, choosing 2-3, the one `sheet.jpg` look, `pick`). `docs/TREATMENTS.md`.
+Arguments: `$ARGUMENTS` (default the whole loop). `skills/video-editor/reference/treatments.md`, `docs/TREATMENTS.md`.
 
 Command detail beyond the reference:
 - `make` writes one folder per treatment in `Edit/treatments/<name>/` (`edit.yaml`, `treatment.yaml`, `plan.json`) and prints the changes + a metrics table.
@@ -13,4 +13,4 @@ Command detail beyond the reference:
 - `compare` (`--sequential` to hear each one) → `Edit/treatments/compare/sheet.jpg` + `compare.mp4`.
 - `pick <name>` backs up `Edit/edit.yaml`, sets `Edit/treatment.yaml` as the treatment style layer, journals the choice; then `cves build`.
 
-**Stop:** show the sheet + `compare.mp4`, one line per treatment (label + summary), and wait for the user's choice.
+**Show:** the sheet + `compare.mp4`, one line per treatment (label + summary). `pick` the one the user chooses.

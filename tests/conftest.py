@@ -4,9 +4,9 @@ already built (local runs), or CVES_UPDATE_GOLDEN=1 to rewrite tests/golden/ fro
 Parallel runs (pytest-xdist, `pytest -n auto`): the session builds (the demo, its full render, the spine demos) are made
 ONCE per run for all workers, under a file lock in the run's shared temp folder; a worker that finds a finished build
 reuses it. Builds are read-only to the tests: `demo_rendered` hands each worker its own copy (the tests in a worker write
-qc.json etc. into it, as the single-process session always did).
+into it, as the single-process session always did).
 
-Markers (CONTRIBUTING.md "Tests"): `e2e` = a test that renders, mixes, encodes or QCs a demo (set automatically from the
+Markers (CONTRIBUTING.md "Tests"): `e2e` = a test that renders, mixes or encodes a demo (set automatically from the
 fixtures it uses, or explicitly); CI runs `-m "not e2e"` and `-m e2e` as separate jobs. `-m "not e2e"` is the quick loop."""
 import os, sys, shutil, subprocess, tempfile, pytest
 
@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(ROOT, "engine"))
 # a machine's personal learned taste (~/.cves/taste/learned.yaml) must never change test renders (docs/LEARNING.md)
 os.environ["CVES_TASTE"] = tempfile.mkdtemp(prefix="cves_taste_")
 if os.environ.get("PYTEST_XDIST_WORKER"):     # several xdist workers on one small CI runner (7 GB, 4 cores): each worker's render
-    for k, v in (("CVES_RENDER_WORKERS", "2"), ("CVES_QC_JOBS", "2"), ("CVES_QC_WHISPER_JOBS", "1"), ("CVES_INSPIRE_WORKERS", "1"),   # pool and QC jobs stay small, and the
+    for k, v in (("CVES_RENDER_WORKERS", "2"), ("CVES_INSPIRE_WORKERS", "1"),                                   # pool stays small, and the
                  ("NUMBA_NUM_THREADS", "1"), ("OMP_NUM_THREADS", "1"), ("MKL_NUM_THREADS", "1")):      # math libraries single-threaded: 16 torch
         os.environ.setdefault(k, v)                                                                     # processes + nested thread pools hung CI
 # ... nor may a personal SFX bank (~/.cves/sfx, docs/SOUND.md) change which sounds the mix picks
@@ -25,7 +25,7 @@ E2E_FIXTURES = {"demo_rendered", "spine_demo"}
 
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "e2e: renders / mixes / encodes / QCs a demo project (slow; CI runs it as its own job)")
+    config.addinivalue_line("markers", "e2e: renders / mixes / encodes a demo project (slow; CI runs it as its own job)")
 
 
 def pytest_collection_modifyitems(config, items):

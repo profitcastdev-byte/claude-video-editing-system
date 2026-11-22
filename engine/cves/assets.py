@@ -230,12 +230,6 @@ def problems(pr):
             out.append((aid, f"edit.yaml path {dec[aid]['path']} differs from the registered file {r['path']}"))
     return out
 
-def qc_assets(pr, gate):
-    """QC gate AST-01 (provenance): every asset the edit uses is on disk, unchanged since registration, with source + licence"""
-    p = problems(pr); n = len(set(list(declared(pr)) + [a for a, _ in referenced(pr)]))
-    gate("AST-01", not p, f"{n} asset(s) checked for file, sha256, source and licence", "\n".join(f"{a}: {m}" for a, m in p))
-    return p
-
 def todo(pr):
     """ready-to-run instructions for every declared asset that has no registered file"""
     reg, out = registry(pr), []

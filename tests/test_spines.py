@@ -1,5 +1,5 @@
 """Timeline spines (docs/FORMATS.md): voiceover / music / broll edits and the broll: track, on synthetic media only.
-Music cuts land on the beat grid, the clip's own sound reaches the mix, face-only stages skip (QC N/A, never FAIL),
+Music cuts land on the beat grid, the clip's own sound reaches the mix, face-only stages skip,
 the VO ingest tightens pauses, and the aroll spine takes B-roll from the same track."""
 import os, json, shutil, subprocess, numpy as np, pytest, soundfile as sf
 from conftest import build_spine_copy
@@ -24,9 +24,15 @@ def test_spine_and_broll_validation(spine_demo, tmp_path):
     assert "overlaps broll[0]" in errs and "exactly one of src" in errs and "broll[3].framing" in errs, errs
 
 
+def _gaps(wav, mx=.25):
+    """pauses longer than mx s between speech (10 ms RMS windows within 38 dB of the peak)"""
+    y, sr = sf.read(wav); y = y.mean(1) if y.ndim > 1 else y
+    hop = int(.01 * sr); r = np.array([np.sqrt(np.mean(y[i:i + 2 * hop] ** 2)) for i in range(0, len(y) - 2 * hop, hop)])
+    db = 20 * np.log10(r + 1e-9); idx = np.where(db > max(db.max() - 38, -55))[0]
+    return [(a * .01, (b - a) * .01) for a, b in zip(idx[:-1], idx[1:]) if (b - a) * .01 > mx]
+
 def test_voiceover_ingest_tightens_pauses(tmp_path):
     """a VO with long pauses -> voice_final.wav without gaps > 0.25 s, voice_raw.wav as recorded, edl.json on the voiceover spine"""
-    from cves.qc import audio_gates as AG
     d = tmp_path / "vo"; [os.makedirs(d / x) for x in ("Edit", "Assets", "Raw")]
     sr = 48000; t = np.arange(int(sr * .6)) / sr; word = (np.sin(2 * np.pi * 180 * t) * np.hanning(len(t)) * .5).astype(np.float32)
     gap = np.zeros(int(sr * 1.1), np.float32); y = np.concatenate([gap[:4800], word, gap, word, gap, word, gap[:9600]])
@@ -34,14 +40,14 @@ def test_voiceover_ingest_tightens_pauses(tmp_path):
     pr = project.Project(str(d)); pr.save_edit({"project": {"title": "vo"}, "spine": "voiceover", "voiceover": {"file": "Assets/vo.wav"}})
     info = SP.ingest_voiceover(pr, words=False)
     assert info["pieces"] == 3 and info["tight_s"] < info["vo_s"] - 2.0, info
-    assert not AG.gaps(pr.e("voice_final.wav"))
+    assert not _gaps(pr.e("voice_final.wav"))
     edl = pr.json("edl.json"); assert edl["spine"] == "voiceover" and edl["segments"] == [] and abs(edl["duration"] - sf.info(pr.e("voice_final.wav")).duration) < .01
     assert [s["name"] for s in pr.json("voice_chain.json")["steps"]][:2] == ["extract", "pause_tighten"]
     assert "skipped" in SP.ingest_voiceover(pr, words=False)                 # unchanged inputs: nothing redone
 
 
 def test_music_spine_cuts_land_on_beats(spine_demo, tmp_path):
-    from cves import beats as BT, render, qc
+    from cves import beats as BT, render
     src = spine_demo("music", "480x270"); pr0 = project.Project(src)
     TL = render.Timeline(pr0); P = BT.plan(pr0, TL, need_beats=True); grid = np.array(P["downbeats"])
     starts = [s["start"] for s in pr0.edit["broll"]][1:]
@@ -51,20 +57,17 @@ def test_music_spine_cuts_land_on_beats(spine_demo, tmp_path):
     beats = np.array(P["beats"])
     assert all(np.min(np.abs(beats - x["start"])) <= 1e-3 for x in track[1:]) and all(b["start"] - a["start"] >= 1.0 - 1e-6 for a, b in zip(track, track[1:]))
     pr, v = build_spine_copy(src, str(tmp_path / "mu"))
-    nf, rep = qc.run(pr, v, fast=True); assert nf == 0, rep
-    by = {g["id"]: g["status"] for g in pr.json("qc.json")["gates"]}
-    for gid in ("SND-04", "CUT-02", "PLAT-04", "FRAME-01", "COL-03"): assert by.get(gid) == "N/A", (gid, by.get(gid))
+    assert os.path.getsize(v) > 0 and pr.json("timeline.json")["spine"] == "music"
 
 
 def test_broll_spine_with_native_audio(spine_demo, tmp_path):
-    from cves import qc, mix, render
+    from cves import mix, render
     pr, v = build_spine_copy(spine_demo("broll", "480x270"), str(tmp_path / "br"))
     TL = render.Timeline(pr); cues = mix.all_cues(TL)
     own = [c for c in cues if c[1].startswith("asset:")]
     assert len(own) == 2 and all(c[3].get("trim") for c in own)              # two shots carry their own sound
     sx, _ = sf.read(pr.e("stems", "sfx.wav")); vo, _ = sf.read(pr.e("stems", "voice.wav"))
     assert np.abs(sx).max() > 1e-3 and np.abs(vo).max() == 0                  # clip sound in the mix, no voice
-    nf, rep = qc.run(pr, v, fast=True); assert nf == 0, rep
     segs = pr.json("timeline.json")["segments"]
     assert [s["kind"] for s in segs] == ["broll"] * 5 and sum(s["n"] for s in segs) == pr.json("timeline.json")["a_frames"]
 
@@ -88,7 +91,7 @@ def test_aroll_spine_takes_broll_from_the_track(demo_copy):
 
 def test_voiceover_ingest_is_idempotent(spine_demo, tmp_path):
     """regression: `cves ingest` again on a voiceover project changes nothing (same voice_final, words, edl, timeline),
-    so the broll: track still fits and CUT-01 still compares the voice stem against the recorded VO"""
+    so the broll: track still fits"""
     import hashlib
     from cves import cli, render
     d = str(tmp_path / "vo"); shutil.copytree(spine_demo("voiceover", "480x270"), d); pr = project.Project(d)
@@ -97,8 +100,5 @@ def test_voiceover_ingest_is_idempotent(spine_demo, tmp_path):
     for _ in range(2): cli.main(["--project", d, "ingest"])
     assert {f: sha(f) for f in before} == before
     assert render.Timeline(pr).T_END == T0 and not schema.validate(pr)[0]
-    if shutil.which(C.get("whisper")) or os.path.exists(C.get("whisper")):    # CUT-01 needs whisper (not on CI)
-        from cves.qc import audio_gates as AG
-        r, bad, ok = AG.words(pr.e("voice_final.wav"), pr.e("voice_raw.wav")); assert ok, (r, bad)
     E = pr.edit; E["voiceover"]["tighten"] = False; pr.save_edit(E)            # a changed setting is redone
     assert "skipped" not in SP.ingest_voiceover(pr, words=False)

@@ -7,7 +7,7 @@ Code:
 - `engine/cves/beats.py`: phrases, story moments and alignment (it extends the beat analysis in [MUSIC.md](MUSIC.md));
 - `engine/cves/sound.py`: automatic accents and ducking;
 - `engine/cves/sfx.py`: the bank and `cves sfx`;
-- `engine/cves/qc/sound_gates.py`: SND-32 and SND-33;
+- `engine/cves/events.py`: the picture events the cue sync snaps to;
 - `tools/make_sfx.py`: the house sounds.
 
 Method and cue map: [library/SFX-METHOD.md](../library/SFX-METHOD.md).
@@ -48,7 +48,7 @@ Alignment rules:
 
 ## 2. Automatic risers and impacts (`sound.accents`)
 
-`mix.all_cues` adds accents to the template cues. Because the gates rebuild the cue list the same way, `cves mix` and QC always see the same list.
+`mix.all_cues` adds accents to the template cues.
 
 | accent | where | sound |
 |---|---|---|
@@ -58,10 +58,10 @@ Alignment rules:
 | impact on a reveal | a reveal cue (`reveal: true`) with no low hit of its own | `reveal_impact` (medium) |
 
 Rules:
-- **Restraint.** At most `creative.sound_accents_per_30s` accents (default 3; a video under 30 s still gets the full 3). They are taken in priority order: payoff riser, payoff impact, hook riser, then reveals in time order. The rest are logged as `skipped: restraint budget`.
+- **Order.** They are placed in priority order: payoff riser, payoff impact, hook riser, then reveals in time order.
 - **A riser needs a landing.** Its target must already have a sound on it (within 2 frames), the music drop, or an impact placed with it. A riser that resolves into nothing sounds unfinished, so it is skipped.
 - **Never doubled.** A moment that already has a riser (peak within 0.5 s) or a low hit (lowhit, boom, impact or hit within 2 frames) gets no extra one.
-- **Only on picture.** A target must be within 1 frame of a known picture event: a cut, a cutaway edge, the end card or the punch-in. Otherwise the accent is skipped, so SND-07 holds.
+- **Only on picture.** A target must be within 1 frame of a known picture event: a cut, a cutaway edge, the end card or the punch-in. Otherwise the accent is skipped.
 - **Risers that resolve.** A riser is picked only if its peak is within `riser_tail_max_s` (0.1 s) of its end. It is placed by that peak, so the sound ends on the target. It must also fit the room before its target (`riser_min_s` to `riser_max_s`, starting at least `min_gap_s` after the previous accent).
 - **Logged.** Each accent is an ordinary cue (`kw: accent, target, why`). `Edit/mix.json` `accents` lists every decision, whether placed or skipped, with the reason.
 - **Off switch.** Set `edit.yaml sfx: {auto: false}` or `sound.accents.enabled: false`.
@@ -75,15 +75,15 @@ Rules:
 
 In both modes:
 - **Depth comes from the style.** The voice band dips by `sound.duck_voice_band_db` (−8) × the control, and the lows and highs by `sound.duck_other_db` (−3) × the control.
-- **The bed level is unchanged.** After ducking, the bed is still corrected to `sound.bed_lu` (SND-04), and the master is still set to −14 LUFS / −1 dBTP (SND-01/02).
+- **The bed level is unchanged.** After ducking, the bed is still corrected to `sound.bed_lu`, and the master is still set to −14 LUFS / −1 dBTP.
 
 What changes in envelope mode: the bed comes back between phrases instead of holding the dip, and stays down through the syllables.
 
 **The bed clears every word** (`mix.vmr_guard`, after ducking). Envelope ducking sets its depth from the voice's own level,
-so a quiet word over a bright bar can still sit under the music in 1-4 kHz, where the consonants are (`cves review`'s
-"music masks the voice"). `sound.vmr_guard` measures the voice and the bed exactly as the review does (1-4 kHz,
+so a quiet word over a bright bar can still sit under the music in 1-4 kHz, where the consonants are. `sound.vmr_guard`
+measures the voice and the bed (1-4 kHz,
 `mix.vmr_window_s` 0.4 s Hann windows centred on words from `words.json`, ffmpeg's mono downmix of the bed) and, where the
-ratio is under `review.vmr_min_db` + `mix.vmr_margin_db` (6 + 2 dB), cuts the bed's speech band (800 Hz-5 kHz) by the
+ratio is under `mix.vmr_min_db` (8 dB), cuts the bed's speech band (800 Hz-5 kHz) by the
 shortfall, at most `mix.vmr_max_cut_db` (12 dB), held over the window and smoothed (`mix.vmr_attack_ms` 30 /
 `vmr_release_ms` 250, in place before the word). The bed is then re-levelled to `sound.bed_lu` and checked once more.
 Only that band moves, only while a word needs it. `mix.json vmr_guard` records the target, the share of windows under
@@ -141,41 +141,31 @@ So:
 - for hero moments in a client ad, prefer real CC0 recordings: `cves sfx fetch`, then listen with `earshot describe` / `earshot realness` before using them;
 - `sfx.pick` takes a recording over a synthesized sound at the same intensity (SFX-METHOD rule 3), so the payoff riser is the recorded `riser`. Automatic impacts must be hits (onset to peak within `sound.accents.impact_attack_max_s`, 30 ms); the recorded `boom` is a slow swell, so the payoff hit is the synthesized `impact_hit`; the synthesized sounds fill the roles the recordings don't cover (a soft riser, short resolving risers, soft impacts).
 
-## 5. QC
-
-| gate | what | status |
-|---|---|---|
-| SND-32 | every automatic riser peaks within 1 frame of its target | WARN (new) |
-| SND-33 | the drop section starts within `sound.phrase_tolerance_s` (0.05 s) of the payoff, on a downbeat; loop seams on downbeats. With `music.sync: off` and a hand-set `music.drop_track`, that drop counts when the analysis finds one within a bar (the difference is reported) | WARN (new) |
-
-Automatic risers are judged by SND-32 and SND-07, not by SND-08 (transition whooshes). The reasons are in `knowledge-base/DECISIONS.md` ("Senior sound").
-
-## 6. Cue sync: every sound on its picture event, at any frame rate
+## 5. Cue sync: every sound on its picture event, at any frame rate
 
 A template puts a cue on the frame of its visual event, but the sound file starts there: its onset (10 % of the 10 ms RMS
-peak, the SND-07 measure) comes 17-40 ms later. At 30 fps that is under a frame; at 60 fps it is 1-3 frames, and SND-07
-failed a third of the cues on the first 60 fps job. Some cues also carried offsets tuned at 30 fps (the snap's -0.01 s).
+peak) comes 17-40 ms later. At 30 fps that is under a frame; at 60 fps it is 1-3 frames (a third of the cues were late on
+the first 60 fps job). Some cues also carried offsets tuned at 30 fps (the snap's -0.01 s).
 
 After render the picture events are known, so `mix._finalize` calls `sound.sync_cues` (`sound.cue_sync: true`):
-- the events are `qc.extra.visual_events`, the list SND-07 judges: element entries and logged bbox changes (the element
+- the events are `events.visual_events`: element entries and logged bbox changes (the element
   log), cuts, transitions and the snap; plus pixel-change onsets on graphic frames, measured on the rendered frames;
 - each cue's anchor is its onset (a riser: its peak), measured on the file (`sound.onset_offset` / `mix.peak_offset`);
 - the cue moves so its anchor lands exactly on the nearest event within `sound.cue_sync_max_f` (6) frames of the time the
   template asked for: a logged element or cut first, a pixel onset only without one and only a strong one
   (>= `sound.cue_sync_pixel_min` quarter-res px: weak onsets differ between the rendered frames and the encoded master);
-- peak-placed cues (transition whooshes, automatic risers: SND-08 / SND-32), media audio and cues with `sync: false` keep
+- peak-placed cues (transition whooshes, automatic risers), media audio and cues with `sync: false` keep
   their time; a synced cue is not beat-nudged afterwards. A cue with no event that close keeps its time.
 
-The pixel onsets are cached in `Edit/cue_sync.json` with the render they were measured on (element log + timeline), so
-`cves qc` rebuilds exactly the cue list the mix used. `mix.json cue_sync` lists every move (`from`, `to`, the event, the
+The pixel onsets are cached in `Edit/cue_sync.json` with the render they were measured on (element log + timeline).
+`mix.json cue_sync` lists every move (`from`, `to`, the event, the
 anchor in ms). A template whose sound belongs to a drawn state the element log does not see should make that state its own
 logged part (`data-el` in a motion piece), as `m_list_build` does for its check / cross mark.
 
-## 7. Checking it
+## 6. Checking it
 
 ```
 cves beats --sync drop                 # sections, story alignment, the drop on the payoff
 cves mix && jq '.accents, .duck, .vmr_guard, .cue_sync.moved, .music.story' Edit/mix.json
-cves qc --fast | grep SND-3            # SND-32 / SND-33
 earshot timeline Edit/mix.wav          # listen: the riser resolves on the drop, the bed breathes under the voice
 ```

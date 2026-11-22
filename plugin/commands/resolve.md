@@ -5,7 +5,7 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 ---
 
 # /cves:resolve: control mode in DaVinci Resolve
-Project: `$ARGUMENTS`. `skills/video-editor/reference/modes.md`. Must already pass `cves qc`, else `/cves:render`.
+Project: `$ARGUMENTS`. `skills/video-editor/reference/modes.md`. Needs a render (`/cves:render`).
 
 1. `cves export resolve` → `Export/control/`: `media/aroll/*.mov` (ProRes 422 HQ), `media/cutaways/*.mov`, `media/overlays/*.mov` (ProRes 4444 + alpha), `media/audio/{voice,music,sfx}.wav`, `captions.srt`, `timeline.otio`, `timeline.fcpxml`, `CONTROL.md` (ARCHITECTURE §7).
 2. Bridge: Resolve open (Free works), **Workspace > Scripts > CursorBridge** running (`hiteshK03/davinci-resolve-mcp`; `TOOLS-REGISTRY.md` / `INSTALL.md`). No Resolve MCP tools → tell the user how to start it; step 4 only.
@@ -16,6 +16,6 @@ Project: `$ARGUMENTS`. `skills/video-editor/reference/modes.md`. Must already pa
 
 **Show:** each track's content, what's hand-editable, what needs a re-render (`CONTROL.md`), bridge status.
 
-**Their edits back:** they File > Export > Timeline > FCPXML (+ Subtitle > SRT); `cves import-edits --from resolve <file> --captions <edited.srt>` (`--dry-run` if unsure). Walk `Edit/IMPORT-REPORT.md` with them: applied to `edit.yaml` / `selects.yaml` (backups kept), **Not mapped** (effects, new media, transitions, titles: editor-only), next commands (`cves select && cves prep` if the cut changed, then `cves render`, `cves mix`, `cves encode`, `cves qc`). FCPXML export is untested live; check the report the first time (docs/CONTROL-MODE.md §4a).
+**Their edits back:** they File > Export > Timeline > FCPXML (+ Subtitle > SRT); `cves import-edits --from resolve <file> --captions <edited.srt>` (`--dry-run` if unsure). Walk `Edit/IMPORT-REPORT.md` with them: applied to `edit.yaml` / `selects.yaml` (backups kept), **Not mapped** (effects, new media, transitions, titles: editor-only), next commands (`cves select && cves prep` if the cut changed, then `cves render`, `cves mix`, `cves encode`). FCPXML export is untested live; check the report the first time (docs/CONTROL-MODE.md §4a).
 
-**Stop:** the user edits by hand; `/cves:qc` their export (same final-file gates) before delivery.
+The user edits by hand from here.

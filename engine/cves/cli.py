@@ -8,27 +8,21 @@
   cves validate                                         check edit.yaml / selects.yaml / style keys (render and build run it first)
   cves assets add|list|check|todo ...                   images, B-roll, overlays, generated media -> Assets/ + provenance (docs/MEDIA.md)
   cves plan                                             first run: write a skeleton edit.yaml; then validate it (`cves templates NAME` prints its params)
-  cves moodboard                                        true-replica keyframes -> Moodboard/ (user approves)
+  cves moodboard                                        true-replica keyframes -> Moodboard/ + EDIT-PLAN.html
   cves render [--only c3,12.5-14.0,300-420] [--mode final|aroll|overlay]  frames + Edit/elements.jsonl
   cves control update [PROJECT] --only c3               control mode: re-render just those layers + refresh layers.json
   cves import-edits [PROJECT] [--from resolve|kdenlive|fcpxml|otio] FILE   editor changes -> edit.yaml + IMPORT-REPORT.md
   cves beats [--sync drop|cuts|full] [--apply]          music beats / downbeats / drops -> Edit/beats.json + beat-sync report
   cves mix                                              voice + music + SFX -> Edit/mix.wav + stems
   cves encode                                           single final encode -> Export/<title>.mp4
-  cves qc [--fast|--draft] [--video X]                  all measurable gates -> Edit/QC-REPORT.txt (exit 1 on FAIL); --draft: cheap gates, never deliverable
-  cves qc --stage story|plan                            early gates: after `cves select` (pauses, stutters, sign-off) / after planning
-  cves build [--draft] [--no-cache]                     render (incremental) + mix + encode + qc (short summary; -v for the full report);
-                                                        --draft: half size, fast, not deliverable
-  cves status [--json]                                  where this project is: stage, last QC, open FAILs, next command
+  cves build [--draft] [--no-cache]                     render (incremental) + mix + encode; --draft: half size, fast encode
+  cves status [--json]                                  where this project is: stage reached, next command
   cves templates [NAME] [--kinds] [--json] [-v]         templates by kind; NAME: one template's doc + params
-  cves deliver [--variants 4:5,1:1,cut15] [--only master] [--force-unchecked]   QC-stamped Export/vNNN/ (docs/DELIVERY.md)
+  cves deliver [--variants 4:5,1:1,cut15] [--only master] [--video X]   Export/vNNN/: master, captions, cover, variants (docs/DELIVERY.md)
   cves export resolve [--push] | kdenlive | all          control mode: layered media + layers.json + Resolve / Kdenlive project
-  cves music search|download|generate|credit ...        Openverse (licence-checked, credits logged) + ElevenLabs/Magnific hand-off
+  cves music search|download|generate|credit ...        Openverse (licence recorded in CREDITS.md) + ElevenLabs/Magnific hand-off
   cves doctor                                           check tools, models, GPU backend, fonts
   cves learn note|rate|approve|reject|results|mine|list|show|promote|forget|study ...   self-learning (docs/LEARNING.md)
-  cves critique [vNNN|master]                           review pack: contact sheet + energy timeline + CRITIQUE.md rubric
-  cves review build [vNNN|master] | apply [--only F01,F03] | signoff --verdict ship|revise --notes "..." | show
-                                                        render review loop: cut strips, hook, payoff, end card, audio -> findings + REVIEW.md (docs/REVIEW.md)
 
   cves treatments list|make|render|compare|pick ...      creative treatments as fast proxies, compared, one picked (docs/TREATMENTS.md)
 
@@ -109,11 +103,10 @@ def _main(argv, verbose=False):
     ie.add_argument("paths", nargs="+", metavar="[PROJECT] FILE"); ie.add_argument("--from", dest="src", choices=["resolve", "kdenlive", "fcpxml", "otio"])
     ie.add_argument("--captions", help="edited subtitles (.srt / .ass) when FILE has none"); ie.add_argument("--dry-run", action="store_true")
     sp.add_parser("mix"); e = sp.add_parser("encode"); e.add_argument("--out")
-    q = sp.add_parser("qc", parents=[_v]); q.add_argument("--json", action="store_true", help="counts + every gate (details for FAIL / WARN) as JSON"); q.add_argument("--fast", action="store_true"); q.add_argument("--draft", action="store_true", help="cheap gates only, for iteration: never a delivery stamp (docs/QC.md)"); q.add_argument("--video"); q.add_argument("--stage", choices=["story", "plan"], help="early gates before rendering")
-    b = sp.add_parser("build", parents=[_v]); b.add_argument("--draft", action="store_true", help="half size, fast encode, fast QC into Edit/draft/ (never deliverable)")
+    b = sp.add_parser("build", parents=[_v]); b.add_argument("--draft", action="store_true", help="half size, fast encode into Edit/draft/")
     b.add_argument("--no-cache", action="store_true", help="re-render every frame (ignore the incremental frame cache)")
-    stt = sp.add_parser("status", parents=[_v], help="[PROJECT]: stage reached, last QC counts, open FAILs, the next command"); stt.add_argument("dir", nargs="?"); stt.add_argument("--json", action="store_true")
-    dv = sp.add_parser("deliver"); dv.add_argument("--variants", help="comma list: ids from edit.yaml variants:, 4:5 / 1:1 / 16:9, cut15, or reframes|hooks|cutdowns|music|end_cards|all"); dv.add_argument("--only", choices=["master"]); dv.add_argument("--force-unchecked", action="store_true"); dv.add_argument("--video"); dv.add_argument("--keep-temp", action="store_true")
+    stt = sp.add_parser("status", parents=[_v], help="[PROJECT]: stage reached, the next command"); stt.add_argument("dir", nargs="?"); stt.add_argument("--json", action="store_true")
+    dv = sp.add_parser("deliver"); dv.add_argument("--variants", help="comma list: ids from edit.yaml variants:, 4:5 / 1:1 / 16:9, cut15, or reframes|hooks|cutdowns|music|end_cards|all"); dv.add_argument("--only", choices=["master"]); dv.add_argument("--video"); dv.add_argument("--keep-temp", action="store_true")
     x = sp.add_parser("export", help="resolve|kdenlive|all|selftest [--push] [--no-build] (see docs/CONTROL-MODE.md)"); x.add_argument("target", choices=["resolve", "kdenlive", "all", "selftest"]); x.add_argument("rest", nargs=argparse.REMAINDER)
     m = sp.add_parser("music", help="search | download | generate | credit (see `cves music -h`)", add_help=False); m.add_argument("rest", nargs=argparse.REMAINDER)
     bt = sp.add_parser("beats", help="music tempo / beats / downbeats / drops -> Edit/beats.json; beat sync report (docs/MUSIC.md)")
@@ -133,16 +126,9 @@ def _main(argv, verbose=False):
     mo = sp.add_parser("motion", help="list | preview <piece> (HTML motion pieces, docs/MOTION.md)", add_help=False); mo.add_argument("rest", nargs=argparse.REMAINDER)
     # ---- end motion layer
     asx = sp.add_parser("assets", help="add | list | check | todo | resolve (media assets + provenance, docs/MEDIA.md)", add_help=False); asx.add_argument("rest", nargs=argparse.REMAINDER)
-    # ---- WS E: self-learning + senior-editor review (docs/LEARNING.md) ----
+    # ---- WS E: self-learning (docs/LEARNING.md) ----
     lrn = sp.add_parser("learn", help="note | rate | approve | reject | results | journal | mine | list | show | promote | forget | study (docs/LEARNING.md)", add_help=False); lrn.add_argument("rest", nargs=argparse.REMAINDER)
-    crq = sp.add_parser("critique", help="[vNNN|master]: contact sheet + energy timeline + CRITIQUE.md rubric -> Edit/critique/"); crq.add_argument("which", nargs="?", default="master")
     # ---- end WS E ----
-    # ---- WS F: review loop (docs/REVIEW.md) ----
-    rv = sp.add_parser("review", parents=[_v], help="build [vNNN|master] | apply | signoff --verdict ship|revise --notes ... | show (render review pack + findings)")
-    rv.add_argument("action", choices=["build", "apply", "signoff", "show"]); rv.add_argument("which", nargs="?", default=None, help="build: vNNN or master (default)")
-    rv.add_argument("--only", help="apply: comma list of finding ids (default: every safe patch)"); rv.add_argument("--dry-run", action="store_true")
-    rv.add_argument("--verdict", choices=["ship", "revise"]); rv.add_argument("--notes", default=""); rv.add_argument("--json", action="store_true")
-    # ---- end WS F ----
     # ---- formats + spines (WS C, docs/FORMATS.md) ----
     ac = sp.add_parser("autocut", help="[PROJECT]: propose a broll: track whose cuts land on the music grid (Edit/beats.json)")
     ac.add_argument("dir", nargs="?"); ac.add_argument("--every", choices=["beats", "downbeats", "bars"], help="grid (default: style autocut.every)")
@@ -220,47 +206,6 @@ def _main(argv, verbose=False):
         from .importer import import_edits; from . import learn
         E0 = pr.edit; rep = import_edits(pr, a.paths[-1], a.src, captions=a.captions, dry_run=a.dry_run); print(rep["summary"])
         learn.on_import(pr, E0, rep, a.dry_run); return     # WS E: journal what the human changed
-    if a.cmd == "critique":    # WS E: senior-editor review pack
-        from .critique import critique; r = critique(pr, a.which)
-        print(f"review pack -> {r['dir']}\n  {r['sheet']}\n  {r['timeline']}\n  {r['md']}  (fill the rubric; log it with `cves learn rate ... --by claude`)")
-        for n, u, b, s in r["budget"]:
-            if s == "OVER": print(f"  restraint budget OVER: {n} {u} > {b}")
-        return
-    # ---- WS F: review loop (docs/REVIEW.md) ----
-    if a.cmd == "review":
-        from . import review as RV
-        if a.action == "build":
-            r = RV.build(pr, a.which); c = r["counts"]
-            if a.json:
-                print(json.dumps({k: r[k] for k in ("dir", "md", "round", "max_rounds", "cap_reached", "counts", "qc_fail", "findings")}
-                                 | {"look": r.get("look", [])}, indent=1, ensure_ascii=False)); return
-            print(f"review round {r['round']}/{r['max_rounds']} -> {r['dir']}\n  {c['high']} high, {c['med']} med, {c['low']} low; QC FAIL {r['qc_fail']}")
-            qcg = [] if a.verbose else [x for x in r["findings"] if RV._qc_only(x)]
-            for x in r["findings"]:
-                if x["severity"] == "low" or x in qcg: continue
-                print(f"  {x['id']} {x['severity']:4s} {'' if x['t'] is None else '%.2fs' % x['t']:>7s} {x['kind']:18s} {x['message'][:140]}")
-            for sev, lab in (("high", "QC FAIL"), ("low", "QC WARN")):
-                g_ = sorted(x["gate"] for x in qcg if (x["severity"] == "high") == (sev == "high"))
-                if g_: print(f"  {lab}: {', '.join(g_)} (as in the QC summary; detail in QC-REPORT.txt)")
-            look = r.get("look") or []
-            print(f"  read {r['md']}, then look at {len(look)} image(s): {', '.join(os.path.relpath(p, r['dir']) for p in look) or 'index.jpg'}")
-            if r["cap_reached"]: print(f"  ROUND CAP REACHED ({r['round']}/{r['max_rounds']}): last round of this loop; sign off with `cves review signoff --verdict ship|revise --notes ...`")
-            ready = c["high"] == 0 and r["qc_fail"] == 0
-            print("  ready to show the owner" if ready else "  NOT ready: fix (`cves review apply` for safe patches), re-render, `cves review build` again")
-        elif a.action == "apply":
-            r = RV.apply(pr, a.only, a.dry_run)
-            for x in r["applied"]: print(f"  {'would apply' if a.dry_run else 'applied'} {x['id']} {x['kind']}: " + "; ".join(f"{c['path']} {c['old']} -> {c['new']}" for c in x["changes"]))
-            if r["skipped_unsafe_or_failed"]: print(f"  not applied (unsafe: fix by hand, or failed): {', '.join(r['skipped_unsafe_or_failed'])}")
-            if not r["applied"]: print("  no safe patch to apply")
-            elif not a.dry_run: print(f"  edit.yaml: {r['how']}; backup {r['backup']}\n  next: `cves build`, `cves critique`, `cves review build`")
-        elif a.action == "signoff":
-            if not a.verdict: raise SystemExit("cves review signoff needs --verdict ship|revise and --notes \"...\"")
-            r = RV.signoff(pr, a.verdict, a.notes)
-            print(f"signed off round {r['round']} (loop {r['loop']}): {r['verdict']}; {len(r['open'])} open high/med finding(s) recorded in the journal")
-            for w in r["warnings"]: print("  WARNING:", w)
-        else: print(RV.show(pr, a.json))
-        return
-    # ---- end WS F ----
     if a.cmd == "validate":
         from . import schema; e_, w_ = schema.validate(pr)
         print(json.dumps({"errors": e_, "warnings": w_}, indent=1) if a.json else schema.report(e_, w_)); sys.exit(1 if e_ else 0)
@@ -335,7 +280,6 @@ def _main(argv, verbose=False):
             for c in E.get(k, []):
                 for sid in ([c["segment"]] if isinstance(c["segment"], str) else c["segment"]):
                     if sid not in segs: errs.append(f"{k}: segment {sid} not in edl.json")
-        if len(E.get("roto", [])) > 4: errs.append(f"{len(E['roto'])} roto moments (house max 4, GFX-25)")
         print("\n".join(errs) or "edit.yaml OK"); sys.exit(1 if errs else 0)
     elif a.cmd == "moodboard":
         from .moodboard import moodboard; s, k = moodboard(pr); print(f"edit plan: {s} shots, {k} keyframes -> {pr.p('Moodboard', 'EDIT-PLAN.html')}")
@@ -347,29 +291,18 @@ def _main(argv, verbose=False):
         from .mix import mix; print(f"mix {mix(pr):.2f} s -> {pr.e('mix.wav')}")
     elif a.cmd == "encode":
         from .encode import encode; from . import learn; v = encode(pr, a.out); print(v); learn.on_build(pr, v)
-    elif a.cmd == "qc":
-        from . import qc
-        if a.stage in ("story", "plan"):
-            if a.stage == "plan": from . import schema; schema.require_valid(pr)    # the same validation `cves build` runs: a plan that passes here builds
-            nf, rep = qc.run_stage(pr, a.stage); _print_qc(a, rep, None, title=f"QC ({a.stage} stage)"); sys.exit(1 if nf else 0)
-        v = a.video or _latest_export(pr)
-        if a.draft: nf, rep = qc.run(pr, v, tier="draft"); _print_qc(a, rep, pr.e("QC-DRAFT.txt"), title="QC DRAFT (not deliverable)", video=v); sys.exit(1 if nf else 0)     # no learning from a draft
-        nf, rep = qc.run(pr, v, fast=a.fast); _print_qc(a, rep, pr.e("QC-REPORT.txt"), video=v)
-        from . import learn; learn.on_qc(pr); sys.exit(1 if nf else 0)
     elif a.cmd == "deliver":
         from .deliver import deliver
-        d, m = deliver(pr, a.variants, a.only, a.force_unchecked, a.video, a.keep_temp)
+        d, m = deliver(pr, a.variants, a.only, a.video, a.keep_temp)
         for v in m["variants"]: print(f"  {v['status']:9s} {v['id']:10s} {v.get('file') or v.get('reason', '')[:160]}")
-        print(("UNCHECKED (forced) " if m.get("forced_unchecked") else "") + f"delivered {m['version']} -> {d}")
+        print(f"delivered {m['version']} -> {d}")
         from . import learn; learn.on_deliver(pr, m)
     elif a.cmd == "build":
         from .build import build
-        v, nf, rep, T = build(pr, draft=a.draft, cache=False if a.no_cache else None)
-        print(("draft (not deliverable): " if a.draft else "master: ") + str(v) + "  (" + ", ".join(f"{k} {t:.0f}s" for k, t in T.items()) + ")")
-        _print_qc(a, rep, pr.e("draft", "QC-DRAFT.txt") if a.draft else pr.e("QC-REPORT.txt"), title="QC DRAFT (not deliverable)" if a.draft else None, video=v)
+        v, T = build(pr, draft=a.draft, cache=False if a.no_cache else None)
+        print(("draft: " if a.draft else "master: ") + str(v) + "  (" + ", ".join(f"{k} {t:.0f}s" for k, t in T.items()) + ")")
         if not a.draft:
-            from . import learn; learn.on_build(pr, v); learn.on_qc(pr)
-        sys.exit(1 if nf else 0)
+            from . import learn; learn.on_build(pr, v)
     elif a.cmd == "export":     # control mode: layered media + layers.json, then the Resolve / Kdenlive project
         if a.target != "selftest" and "--no-build" not in a.rest:
             from .layered import build; print("layers ->", build(pr))
@@ -377,17 +310,6 @@ def _main(argv, verbose=False):
         rest = [r for r in a.rest if r != "--no-build"]
         if not any(not r.startswith("-") for r in rest): rest = [pr.p("Export", "control")] + rest   # the project's, not the cwd's
         sys.exit(xmain([a.target] + rest))
-
-def _print_qc(a, rep, path, title=None, video=None):
-    """full report with -v; --json: machine-readable; else the short summary (counts, FAILs, WARN one-liners, the path)"""
-    if getattr(a, "json", False): print(json.dumps(OUT.qc_json(rep, path, video), indent=1, ensure_ascii=False))
-    elif a.verbose: print(rep)
-    else: print(OUT.qc_summary(rep, path, title=title))
-
-def _latest_export(pr):
-    vids = sorted([os.path.join(pr.p("Export"), f) for f in os.listdir(pr.p("Export")) if f.endswith(".mp4")], key=os.path.getmtime)
-    if not vids: raise SystemExit("no Export/*.mp4: run `cves encode` or pass --video")
-    return vids[-1]
 
 if __name__ == "__main__":
     main()

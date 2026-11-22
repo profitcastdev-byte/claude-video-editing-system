@@ -11,8 +11,7 @@ analyse(r, hear) -> dict:
                  the gaps between them (median, max) = the pattern-interrupt rhythm
   loop           seam score: the last frame vs the first, measured like a cut, against the reference's normal frame step
   energy_arc     per second: visual change (mean frame difference) + mix level, each over its mean; arc_shape()
-  duration       container duration (not capped by --max-s)
-Thresholds: knowledge-base/DECISIONS.md "Inspire v2"."""
+  duration       container duration (not capped by --max-s)"""
 import numpy as np, cv2
 
 BEAT_TOL_F = 2              # cut-on-beat tolerance, frames

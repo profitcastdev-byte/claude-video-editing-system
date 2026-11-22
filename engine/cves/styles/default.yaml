@@ -15,7 +15,7 @@ platform:
   safe_zone: [65, 269, 1015, 1248]   # x0 y0 x1 y1 kept free of platform UI on a 9:16 canvas, in 1080x1920 px (Meta Reels norm; scaled to other 9:16 sizes); null to disable
   margin: 60                  # px kept free at every edge (scaled by min(w, h) / 1080)
   duration: [15, 90]          # seconds the brief allows
-  target: null                # reels | tiktok | shorts | youtube | meta_feed | meta_stories (styles/platforms.yaml): UI safe zone as frame fractions, duration band (RET-30), loudness; null = platform.safe_zone above
+  target: null                # reels | tiktok | shorts | youtube | meta_feed | meta_stories (styles/platforms.yaml): UI safe zone as frame fractions, duration band, loudness; null = platform.safe_zone above
 stage: {background: "#0B0B0D", glow_bottom: "#2A2A33", dot_grid: "#8A8A99", dots: true, glow: true}
 colors: {accent: "#4C8DFF", accent_dark: "#2A5BB8", text: "#FFFFFF", card: "#16161B", card_border: "#34343F", icon_well: "#24243A", gold: "#D6B26C",
          star: "#FFC446", negative: "#E5484D"}   # rating stars; negative marks (comparison crosses). muted / surface / line are derived unless set
@@ -37,7 +37,7 @@ grade:
   shoulder_gain: 1.0          # output scale after the shoulder (keeps white below clip when shoulder > 0)
   black_lift: [0.0, 0.0, 0.0]
   exposure_match: true        # per-shot skin balance across cuts (only used when shot_match is off: the colour match includes exposure)
-  shot_match: true            # per-shot colour match to a reference shot, in linear light, before the look (COL-06/07; engine/cves/shotmatch.py)
+  shot_match: true            # per-shot colour match to a reference shot, in linear light, before the look (engine/cves/shotmatch.py)
   shot_match_reference: hook  # hook (the first A-roll shot on screen) | median (the visible shot nearest the median: least correction) | a segment id
   shot_match_strength: 1.0    # 0..1: blend of the correction toward identity
   shot_match_drift: 0.5       # 0..1: how much of the light drift inside a shot is followed (1 = every sample onto the shot median)
@@ -76,11 +76,11 @@ captions:
   pad_x: 85                   # side padding inside platform.safe_zone (line wrap width = safe width - 2 * pad_x)
   pad_bottom: 20              # gap kept above the safe zone bottom
   chin_gap: 70                # preferred gap under the chin (position chin)
-  chin_min_gap: 72            # never closer to the (smoothed) chin: raw face boxes reach ~15 px lower and FRAME-01 pads 5 % of face width
+  chin_min_gap: 72            # never closer to the (smoothed) chin: raw face boxes reach ~15 px lower
   lower_third_y: 0.68         # position lower_third: top as a fraction of the canvas height
   line_height: 1.32
   lead_s: 0.03                # a word shows this long before its spoken start
-  min_on_s: 0.83              # no caption fragment shorter than this round a cutaway / snap / hide window: merged, held or skipped (PLAT-06/07); 0 = off
+  min_on_s: 0.83              # no caption fragment shorter than this round a cutaway / snap / hide window: merged, held or skipped; 0 = off
   reveal_s: 0.0               # word_reveal fade-in per word (0 = crisp)
   pop_s: 0.16                 # pop / bounce / one_word entry duration per word
   karaoke_dim: 0.55           # unspoken words in karaoke, as a fraction of the text colour
@@ -105,15 +105,12 @@ framing:
   zoom_levels: [1.0, 1.18, 1.38]
   min_step: 1.15              # every direct A-roll cut changes scale by at least this (hides jump cuts)
   creep: 0.0                  # slow push per shot
-  extreme_max: 1                # extreme punch-ins (>= 1.4x) allowed per video
   lift: false
-grammar:                      # pacing rules the QC gates enforce; null = not enforced for this client
+grammar:                      # pacing of the references (`cves inspire` measures these); descriptive, nothing enforces them
   cutaway_share: null         # e.g. [0.40, 0.55]
   max_cutaway_s: 8
   max_shot_s: 4
-  roto_max: 4
   face_on_first_frame: false
-  topic_by_s: 2.0
   structure: problem          # problem (H P A PR O C) | offer (H M PR R C) | story (H S T PR C) | custom (= grammar.beats); cves.structure
   beats: null                 # explicit beat order; overrides the structure's (e.g. [H, M, PR, R, C]); null = from grammar.structure
 story:                        # the story step: take alignment in `cves select` (cves.align, docs/INGEST.md)
@@ -124,10 +121,6 @@ story:                        # the story step: take alignment in `cves select` 
   align_pad_s: [0.04, 0.08]   # pad before the first word / after the last word, kept inside the pause
   align_search_s: 0.5         # how far an edge looks for a pause beyond the word estimate, s
   align_quiet_db: 12          # a pause is quieter than the window's noise floor (p10) + this, dB
-qc:                           # story-stage thresholds (edit.yaml qc: keys win per video)
-  words_recall_min: 0.85      # STORY-17: share of each clip's text: words heard in its span of voice_final.wav
-  words_edges: true           # STORY-17 also fails a clip whose first or last text: word is not heard (a clipped take)
-  names: []                   # STORY-17: proper nouns whisper can't spell unaided (a clinic, a client); a hint to the clips whose text: has one
 sound:
   bed_lu: -10                 # music+SFX bed vs voice while speaking
   duck_voice_band_db: -8
@@ -136,14 +129,13 @@ sound:
   sfx_offset_db: -3           # non-reveal cues sit this far back
   master_lufs: -14
   true_peak: -1.0
-  transition_sfx: {whip: whoosh, glitch: swipe, cut: null, fade: null, whip_pan: whoosh, zoom_through: whoosh, mask_wipe: swipe, glitch_lite: null, luma_fade: null, light_leak: null, dip: null}   # sound per transition kind (null = none); a whoosh is placed by its peak on the cut (SND-08)
-  repeat_pitch_st: 1          # SND-09: an identical back-to-back cue is pitched +/- this many semitones (alternating, deterministic)
+  transition_sfx: {whip: whoosh, glitch: swipe, cut: null, fade: null, whip_pan: whoosh, zoom_through: whoosh, mask_wipe: swipe, glitch_lite: null, luma_fade: null, light_leak: null, dip: null}   # sound per transition kind (null = none); a whoosh is placed by its peak on the cut
+  repeat_pitch_st: 1          # an identical back-to-back cue is pitched +/- this many semitones (alternating, deterministic)
   repeat_gain_db: 1.5         # ... and its gain moved by -/+ this much
-  phrase_tolerance_s: 0.05    # SND-33: the drop section must start this close to the payoff (cut s)
-  cue_sync: true              # after render: every cue's onset (a riser: its peak) lands exactly on its logged picture event (SND-07, any fps)
+  cue_sync: true              # after render: every cue's onset (a riser: its peak) lands exactly on its logged picture event (any fps)
   cue_sync_max_f: 6           # ... the event must be within this many frames of the time the template asked for
   cue_sync_pixel_min: 40      # a pixel-change onset (no logged element near) counts only when this many quarter-res px start changing
-  accents:                    # automatic risers / impacts on the story moments (docs/SOUND.md); budget: creative.sound_accents_per_30s
+  accents:                    # automatic risers / impacts on the story moments (docs/SOUND.md)
     enabled: true             # false (or edit.yaml sfx.auto: false) = no automatic accents
     reveals: true             # also an impact on reveal cues that carry no low hit of their own
     riser_gain_db: -14        # riser level (non-reveal: sound.sfx_offset_db applies on top)
@@ -164,16 +156,15 @@ mix:                          # how the music sits under the voice (docs/SOUND.m
   duck_release_ms: auto       # envelope: how fast it comes back; auto = 1.25 x the measured syllable period, within duck_release_range_ms
   duck_release_range_ms: [250, 400]   # clamp for the auto release
   duck_range_db: 30           # envelope: voice this far under its loud level does not duck; full depth from 6 dB under it
-  vmr_guard: true             # after ducking: trim the bed's speech band wherever a word would not clear it (review masking check)
+  vmr_guard: true             # after ducking: trim the bed's speech band wherever a word would not clear it
   vmr_band_hz: [1000, 4000]   # the band the vocal-to-music ratio is measured and trimmed in
-  vmr_min_db: null            # guaranteed vocal-to-music ratio while speaking; null = review.vmr_min_db + vmr_margin_db
-  vmr_margin_db: 2.0          # headroom over the review's limit
+  vmr_min_db: 8.0             # guaranteed vocal-to-music ratio while speaking, dB
   vmr_max_cut_db: 12.0        # deepest band trim
-  vmr_window_s: 0.4           # measurement window (the review's)
+  vmr_window_s: 0.4           # measurement window
   vmr_attack_ms: 30           # trim smoothing: in place before the word ...
   vmr_release_ms: 250         # ... and back after it
 voice:                        # the voice chain after DeepFilterNet (docs/INGEST.md "Voice chain")
-  gate:                       # adaptive downward expander, measured per take (engine/cves/voicegate.py; SND-19)
+  gate:                       # adaptive downward expander, measured per take (engine/cves/voicegate.py)
     enabled: true
     floor_pct: 10             # room tone between words = this percentile of the take's 10 ms voice-band envelope
     speech_pct: 90            # speech level = this percentile
@@ -181,7 +172,7 @@ voice:                        # the voice chain after DeepFilterNet (docs/INGEST
     open_min_db: 6.0          # ... at least this far over the floor
     open_max_db: 14.0         # ... at most this far
     ratio: 6.0                # expander ratio under the threshold (a word tail fades faster, never switches off)
-    floor_target_db: -72.0    # the depth takes the room to this level (SND-19: p5 <= -60 dBFS)
+    floor_target_db: -72.0    # the depth takes the room to this level
     range_min_db: 10.0        # depth limits
     range_max_db: 40.0
     min_snr_db: 12.0          # a take whose speech is closer than this to its room gets only range_min_db
@@ -203,10 +194,10 @@ music:                        # beat sync + music fit (docs/MUSIC.md); edit.yaml
   loop_min_bars: 4            # a loop jumps back at least this many bars
   end_min_tail_s: 0.5         # the last downbeat leaves at least this much tail before the video ends
   end_tail_bars: 1            # the tail fades over this many bars after the last downbeat
-  gfx_lead_s: 0.25            # GFX-01: a beat move never shows a graphic more than this before its word
+  gfx_lead_s: 0.25            # a beat move never shows a graphic more than this before its word
   min_aroll_s: 0.5            # a moved cutaway edge never leaves an A-roll piece shorter than this
   sfx_snap: [whoosh, hit, boom, riser]   # full mode: cues whose name contains one of these are nudged to the beat
-  sfx_snap_max_f: 1           # full mode: max nudge in frames (SND-07 keeps every SFX within 1 frame of its picture event)
+  sfx_snap_max_f: 1           # full mode: max nudge in frames
   phrase_align: true          # drop / cuts / full: prefer the drop whose build starts on the story turn (sections: intro / build / drop / body / break / outro)
   phrase_min_bars: 2          # a music section is at least this many bars
   build_min_rise_db: 2.0      # a build rises at least this much into its drop
@@ -216,11 +207,10 @@ music:                        # beat sync + music fit (docs/MUSIC.md); edit.yaml
   turn_beats: null            # story beats of the turn (the build should start here); null = from grammar.structure (problem [P, A], offer [M], story [T]); none tagged: the end of the hook
   hook_cut: 0                 # cut s of the hook when > 0 (else from hook_beats)
   turn_cut: 0                 # cut s of the turn when > 0 (else from turn_beats)
-rhythm:                       # how the edit moves. `cves inspire` measures these from the references (Edit/inspire/REPORT.md); RET-26/27/32 check them
-  interrupt_max_s: 4.0        # longest gap between pattern interrupts (cut, zoom step, graphic in, motion element), s (RET-26)
-  interrupt_min_s: 0.3        # interrupts closer than this, sustained for retention.soup_window_s, read as effect soup (RET-27)
+rhythm:                       # how the edit moves. `cves inspire` measures these from the references (Edit/inspire/REPORT.md)
+  interrupt_max_s: 4.0        # longest gap between pattern interrupts (cut, zoom step, graphic in, motion element), s
   interrupt_median_s: null    # typical gap between pattern interrupts, s (plan-time target; null = none)
-  cut_on_beat: false          # cuts should land on the beat: true, or the share measured by inspire (0..1; >= 0.6 counts as on-beat, RET-32). false/null = no target
+  cut_on_beat: false          # cuts should land on the beat: true, or the share measured by inspire (0..1). false/null = no target
   cuts_per_s: null            # target mean cut rate (cuts per second)
   cut_curve: null             # how the cut rate moves over the video: rising (builds up) | flat | wave | peak_end | falling
   tempo_bpm: null             # music tempo the references use; pick or generate music near it
@@ -230,24 +220,12 @@ rhythm:                       # how the edit moves. `cves inspire` measures thes
   dropouts_per_30s: null      # deliberate music drop-outs / silences per 30 s
   music_energy: null          # music level over the video: rising | flat | wave | peak_end | falling
 structure:                    # the shape of the piece (docs/VIRAL.md; `cves inspire` FEEL measures it)
-  hook_change_s: 1.5          # first visual change (pattern interrupt) by this time, s (RET-24); preset viral: 1.0
+  hook_change_s: 1.5          # first visual change (pattern interrupt) by this time, s; preset viral: 1.0
   first_cut_s: null           # first cut by this time, s (plan-time target)
   first_text_s: null          # first on-screen text by this time, s (plan-time target)
-  loop: false                 # the end flows back into the start for a seamless replay (RET-28 checks the seam)
-  payoff_window: 0.2          # the payoff (a visual or audio peak) lands in this last fraction of the runtime (RET-29, goal viral)
+  loop: false                 # the end flows back into the start for a seamless replay
   energy_arc: null            # picture + sound energy over the video: rising | peak_end | wave | flat | falling
   duration_s: null            # typical reference duration, s (the brief's platform.duration still rules)
-retention:                    # retention-gate measurement settings (RET-24..RET-32, knowledge-base/QC-GATES.md)
-  hook_subject_s: 1.0         # goal viral: on-screen text or a strong subject (face / high-contrast centre) by this time (RET-25)
-  soup_window_s: 1.5          # RET-27: a run of interrupt gaps under rhythm.interrupt_min_s longer than this is effect soup
-  merge_s: 0.05               # events this close count as one interrupt (one graphic entering with its parts)
-  scene_diff: 12.0            # mean abs luma step (0-255, on a 96 px wide decode) that counts as a picture change in the master
-  loop_seam_s: 0.3            # RET-28: span compared at each end of the video
-  loop_min_similarity: 0.6    # RET-28: correlation of the last span vs the first span (0..1) a seamless loop reaches
-  payoff_rise_db: 3.0         # RET-29: an audio peak this much above the body median counts as a payoff
-  dead_air_s: 0.6             # RET-31: longest stretch with no speech, music or SFX (FAIL for goal viral, WARN for ads)
-  dead_air_db: -45            # RET-31: a 50 ms window of the master quieter than this (dBFS) is silent
-  guide_on_beat_min: 0.6      # RET-32: share of cuts within music.snap_tolerance_s of a beat (music guide / slot: platform)
 motion:
   entry_s: 0.28                # graphic entry duration, s (PIL templates)
   overshoot: 1.6               # back-ease overshoot of entries (motion pieces scale it by energy)
@@ -266,12 +244,11 @@ motion:
   glass_alpha: 0.72            # opacity of the card colour under "glass" surfaces
   safe: null                   # [x0, y0, x1, y1] canvas fractions pieces stay inside; null = platform.safe_zone when its aspect matches the canvas
   safe_fallback: [0.06, 0.07, 0.94, 0.93]   # safe fractions when platform.safe_zone does not fit the canvas aspect
-  hero_min_gap_s: 8.0          # render warns when two hero pieces start closer than this (restraint: one hero moment per ~8-10 s)
 delivery:                     # `cves encode` / `cves deliver` (docs/DELIVERY.md). Encoder settings for every delivered file
-  video: {codec: libx264, crf: 16, preset: slow, profile: high, pix_fmt: yuv420p, tune: null, x264_params: null}   # no tune=film (DEL-05)
+  video: {codec: libx264, crf: 16, preset: slow, profile: high, pix_fmt: yuv420p, tune: null, x264_params: null}
   audio: {codec: aac, sample_rate: 48000, bitrate: 256k}
-  faststart: true             # moov atom before mdat (DEL-03)
-  color: bt709                # matrix conversion AND stream tags (COL-01)
+  faststart: true             # moov atom before mdat
+  color: bt709                # matrix conversion AND stream tags
   cover:                      # thumbnail: best face + sharpness frame in the first window_s (edit.yaml delivery.cover_t overrides)
     window_s: 3.0
     quality: 92               # JPEG quality
@@ -329,11 +306,11 @@ ingest:                       # how any footage is conformed to the master canva
   whisper:
     chunk_over_s: 600         # audio longer than this is transcribed in chunks split on silences
     chunk_s: 300              # longest chunk, seconds
-legibility:                   # text over video (captions, chest, roto): WCAG targets and the auto bed (GFX-15)
+legibility:                   # text over video (captions, chest, roto): WCAG targets and the auto bed
   min_contrast: 4.5           # small text
   large_contrast: 3.0         # text >= large_px
   large_px: 48
-  video_bg: "#B4B4B4"         # assumed background behind text on video; darker beds read as a second "ink" class in GFX-15
+  video_bg: "#B4B4B4"         # assumed background behind text on video; darker beds read as a second "ink" class
   video_bg_broll: "#C8C8C8"   # the same over B-roll / footage with no presenter (brighter, more varied than a presenter's wall)
   measure: true               # captions also size their bed for the brightest part of the real frame behind them (a window-lit cheek)
   plate_max: 0.85             # strongest bed opacity
@@ -341,46 +318,11 @@ legibility:                   # text over video (captions, chest, roto): WCAG ta
   wordmark_bed: 0.72          # darkness of the soft bed behind a chest wordmark
   margin: 1.15                # aim this much above the target (anti-aliasing, the grade and entry fades eat into it)
 type:
-  sep_gap_em: 0.32            # drawn spacing either side of a separator (" · ", " | "): never repeated spaces (GFX-17)
+  sep_gap_em: 0.32            # drawn spacing either side of a separator (" · ", " | "): never repeated spaces
 locale:
   grouping: intl              # number grouping in stat / counter / chart: intl (1,234,567) | indian (12,34,567) | none
   thousands: ","
   decimal: "."
-creative:                     # restraint budget (knowledge-base/CREATIVE.md); `cves critique` reports usage against it (advisory, not a QC gate)
-  signature_per_30s: 1        # signature moments (the one extreme punch-in, a hero motion piece, a hard music hit) per 30 s of runtime
-  transition_kinds_max: 2     # distinct transition kinds in one video (cut not counted)
-  motion_pieces_per_30s: 6    # animated graphics (cutaways, roto, chest, motion pieces, end card) per 30 s of runtime
-  accent_colors_max: 1        # accent colours beyond the text colour and the stage (colour discipline)
-  sound_accents_per_30s: 3    # automatic risers + impacts (sound.accents) per 30 s of runtime (a shorter video still gets one 30 s allowance)
-  craft_per_30s: 4            # craft moves (speed ramps, camera moves, match cuts, text behind) per 30 s; render warns, critique reports
-review:                       # `cves review` (docs/REVIEW.md): the render review pack, machine findings and the review loop
-  max_rounds: 3               # review rounds per loop; at the cap Claude must sign off (ship | revise) and record what is still wrong
-  cut_offsets: [-2, -1, 0, 1, 2]   # frames shown around every cut in cuts/cut_NN.jpg (0 = first frame of the incoming shot)
-  hook_s: 3.0                 # length of the hook strip (hook.jpg), s; also the hook section of the loudness report
-  hook_fps: 10                # frames per second sampled into the hook strip
-  payoff_frames: 6            # frames sampled across the payoff window (structure.payoff_window) before the end card
-  look_unflagged: 3           # unflagged cuts spot-checked per round: their strips join the flagged ones in strips_N.jpg
-  look_px: 1560               # tallest strips_N.jpg sheet (px): about one image read; strips stack until the next would pass it
-  black_luma: 18              # a frame within 2 of a cut darker than this (mean luma 0-255) between brighter shots is a black flash
-  flash_delta: 60             # a frame within 2 of a cut this much brighter (mean luma) than both shots is a white flash
-  glitch_ratio: 0.35          # one-frame glitch: frame -1 vs +1 differ by less than this share of the steps into and out of the frame
-  freeze_ratio: 0.15          # a frame step at a cut below this share of the local motion is a duplicate frame (freeze)
-  freeze_motion: 1.0          # local mean abs frame step (0-255) below which a shot counts as static (no freeze check)
-  luma_jump: 45               # mean-luma step (0-255) across a hard cut that reads as a flash; a transition covers it
-  caption_near_f: 2           # a caption that changes 1..this many frames from a cut (not on it) is flagged
-  min_shot_f: 3               # a shot shorter than this many frames reads as a glitch, not a cut
-  click_ratio: 4.0            # audio: sharpest sample step within a frame of a cut vs the p99.5 around it that counts as a pop
-  click_floor_db: -45         # ... unless the audio there peaks below this (dBFS)
-  vmr_min_db: 6.0             # vocal-to-music ratio (1-4 kHz speech band, 400 ms windows over speech) under which music masks the voice
-  mask_share: 0.1             # share of speech windows under vmr_min_db that makes a finding
-  bed_step_max_db: 6.0        # largest music.bed_lu cut one safe patch makes
-  silence_db: -50             # master 50 ms windows quieter than this (dBFS) count as silence
-  silence_s: 0.6              # a silent gap inside the body longer than this is reported, s
-  section_jump_lu: 6.0        # hook / body / payoff loudness differing by more than this (LU) is flagged
-  end_card_min_s: 1.0         # an end card shorter than this cannot be read, s (safe patch: lengthen it)
-  end_tail_db: -30            # master level in its last 50 ms above this (dBFS) = audio cut off, not faded or ended on a hit
-  earshot: auto               # auto (run `earshot measure` on the master when installed) | off
-  earshot_timeout_s: 180      # give up on earshot after this long (the pack is written without it), s
 render:                       # how frames are rendered (docs/ARCHITECTURE.md §6b); never changes a pixel of the final build
   cache: true                 # incremental render: re-render only frames whose inputs changed (cves.rcache); false = every frame, every time
   chunk_min: 24               # frames per worker job at least (segments are split into chunks so the pool stays busy)
@@ -395,13 +337,11 @@ treatments:                   # `cves treatments` (docs/TREATMENTS.md): creative
   compare_thumb: 360          # sheet thumbnail height (portrait) or width (landscape), px
   compare_max_s: 12           # length of each treatment in the comparison MP4, s
   compare_layout: stacked     # stacked (side by side / one above the other, audio of the first) | sequential (one after another, own sound)
-roto:                         # cards behind the presenter (map_card, listing_card, top3_card) and their QC (GFX-27)
+roto:                         # cards behind the presenter (map_card, listing_card, top3_card)
   place: auto                 # auto (the free space beside / above the head, from the subject matte) | fixed (the designed position)
   max_cover: 0.2              # auto: most of a card the subject may cover (it tucks behind the head a little)
   min_scale: 0.25             # auto: smallest card scale; no fit at this scale keeps the designed position
-  occlusion_warn: 0.40        # GFX-27: share of a card behind the subject over its hold that WARNs
-  occlusion_fail: 0.65        # GFX-27: ... that FAILs (the card reads as a dark rectangle)
-craft:                        # motion craft (docs/MOTION.md "Craft"); every move counts against creative.* (restraint)
+craft:                        # motion craft (docs/MOTION.md "Craft")
   behind:                     # text_behind (roto): type between the plate and the subject matte, placed from the face track
     size: 300                 # px at a 1080 short side (shrinks to fit craft.behind.max_width)
     weight: xb                # font weight slot: m | sb | b | xb
@@ -417,7 +357,7 @@ craft:                        # motion craft (docs/MOTION.md "Craft"); every mov
     color: auto               # auto (the light or dark token, whichever reads on the wall behind the type) | palette slot | hex
     light: text               # color: auto's light text token
     dark: card                # color: auto's dark text token
-    auto_bed: true            # color: auto adds a soft legibility bed when neither token reaches the GFX-15 contrast
+    auto_bed: true            # color: auto adds a soft legibility bed when neither token reaches the legibility contrast
     accent: accent            # colour of *starred* words
     entry: rise               # rise (the letters rise out from behind the head) | slam (whole on its first frame, oversized, settling)
     entry_s: 0.5              # entry length
@@ -452,8 +392,6 @@ craft:                        # motion craft (docs/MOTION.md "Craft"); every mov
     scale_range: [1.0, 1.6]   # scale applied to the incoming shot (>= 1: a fill crop never shows an edge)
     settle_s: 0.0             # 0 = hold the alignment; > 0 = ease back to the shot's own framing over this long
   transitions:                # the craft transition kinds (durations: transitions.<kind>_s)
-    min_gap_s: 1.5            # a non-cut transition this close to the previous one becomes a cut (rate limit)
-    enforce: true             # apply the rate limit and creative.transition_kinds_max at render (false: report only in critique)
     whip_dir: left            # whip_pan direction: left | right | up | down
     wipe_shape: bar           # mask_wipe: bar (diagonal) | circle | matte (on A-roll: background first, the subject last)
     wipe_color: accent        # mask_wipe fill: palette slot, stage, black, white or hex

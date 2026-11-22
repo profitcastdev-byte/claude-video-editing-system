@@ -67,18 +67,6 @@ def test_transitions_are_deterministic(kind):
         G.set_canvas(*G.canvas_of(S))
 
 
-def test_transitions_rate_limit():
-    class TL: pass
-    tl = TL(); tl.S = STY.Style({**S, "craft": {**S["craft"], "transitions": {**S["craft"]["transitions"], "min_gap_s": 1.5}},
-                                    "creative": {**S["creative"], "transition_kinds_max": 2}})
-    tl.trans = [(1.0, "whip_pan"), (1.6, "light_leak"), (4.0, "glitch_lite"), (6.0, "dip"), (9.0, "whip_pan")]
-    tl.cuts = [{"start": 1.6, "end": 3.0, "in": "light_leak", "out": "cut"}]
-    notes = CR.limit_transitions(tl)
-    kinds = [k for _, k in tl.trans]
-    assert kinds == ["whip_pan", "cut", "glitch_lite", "cut", "whip_pan"], kinds
-    assert tl.cuts[0]["in"] == "cut" and len(notes) == 2                     # mix gives the downgraded one no whoosh
-
-
 # ------------------------------------------------------------------ camera moves
 def test_camera_moves_are_eased_and_seeded():
     push = [CR.camera(f, {"move": "push", "amount": .1}, S)["z"] for f in np.linspace(0, 1, 11)]
@@ -117,17 +105,6 @@ def test_match_cut_aligns_the_salient_shape():
     assert abs(land[0] - 240) < 1e-6 and abs(land[1] - 135) < 1e-6
     best = CR.find_in(a, lambda t: frame(150 + 60 * t, 170 - 25 * t, 25 + 5 * t), 0, 3, 1.0, "centroid")
     assert best[0][1] == 3.0                                                     # the in-point whose shape lines up best
-
-
-# ------------------------------------------------------------------ restraint
-def test_craft_moves_count_against_the_budget():
-    E = {"broll": [{"src": "a", "start": 0, "end": 1, "ramp": "slam"}, {"src": "b", "start": 1, "end": 2, "camera": {"move": "push"}, "match": True},
-                   {"src": "c", "start": 2, "end": 3, "camera": "none"}],
-         "roto": [{"segment": "s1", "template": "text_behind", "params": {"text": "HI"}}]}
-    kinds = sorted(k for k, _ in CR.usage(E))
-    assert kinds == ["camera", "match", "ramp", "text_behind"]
-    used, allowed = CR.budget(E, S, 20.0)
-    assert used == 4 and allowed == S.get("creative.craft_per_30s")
 
 
 def test_schema_knows_the_craft_fields(demo_copy):

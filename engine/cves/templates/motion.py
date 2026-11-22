@@ -64,7 +64,7 @@ def _make(name, piece):
         ev = man.get("events") or {}; role = _slot(name, ctx); out = []
         texts = {p[0]: (p[1] if p[6] >= .95 else None) for p in (man.get("parts") or [[]] * job.n)[k]}
         # one element per part (text block / marked element), the rest of the frame as <name>: disjoint alpha, so the
-        # composite is the frame exactly, and QC sees each block with its own bbox, text and entry frame
+        # composite is the frame exactly, and the log has each block with its own bbox, text and entry frame
         parts = (man.get("parts") or [[]] * job.n)[k]
         if a.shape[1] == G.W and a.shape[0] == G.H and a.ndim == 3:     # each part as a crop placed on a clear canvas:
             split = ((pid, crop, xy) for pid, crop, xy in MO.split_boxes(a, parts, MO.part_pad(job.size)))   # same pixels, per-box work

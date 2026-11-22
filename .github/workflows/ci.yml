@@ -9,7 +9,7 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-24.04]
         # the suite split by marker (tests/conftest.py): unit = everything that does not render a demo; e2e = render /
-        # mix / encode / QC of the demo projects. Both run in parallel on pytest-xdist (-n auto, demo builds shared)
+        # mix / encode of the demo projects. Both run in parallel on pytest-xdist (-n auto, demo builds shared)
         suite: [unit, e2e]
     name: ${{ matrix.os }} / ${{ matrix.suite }}
     runs-on: ${{ matrix.os }}
@@ -53,7 +53,7 @@ jobs:
           PY
       - name: Lint (portability + no hard-coded style)
         if: matrix.suite == 'unit'
-        run: python tools/lint.py && python tools/gate_status.py --check
+        run: python tools/lint.py
       - name: Warm the numba cache (one process)
         # librosa's numba kernels are cached on disk on first use. Two pytest workers compiling and writing that cache
         # at the same time segfaulted a worker in beat tracking, and xdist then hung until the job timeout.

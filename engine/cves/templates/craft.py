@@ -6,8 +6,7 @@
                 subject matte it degrades gracefully: the type lifts clear above the head (or sits in front with a
                 legibility bed, `craft.behind.no_matte: front`), so it never prints across the face.
 
-Everything comes from the style (`craft.behind.*`, colours, fonts) and the template counts against the restraint budget
-(`creative.craft_per_30s`, `cves critique`)."""
+Everything comes from the style (`craft.behind.*`, colours, fonts)."""
 import re
 from .. import gfx as G
 from .. import craft as CR

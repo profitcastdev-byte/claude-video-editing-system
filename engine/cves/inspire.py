@@ -76,7 +76,7 @@ def _faces(det, rgb):
 
 # ======================================================================== per-frame measurements
 def cheeks(rgb, f):
-    """per-cheek median RGB (0..1), averaged (QC COL-06 measures skin the same way)"""
+    """per-cheek median RGB (0..1), averaged"""
     lm = np.array(f[4:14], float).reshape(5, 2); k = max(3, int(f[2] * .05)); out = []
     for eye, mouth in ((lm[0], lm[3]), (lm[1], lm[4])):
         cx, cy = eye * .55 + mouth * .45; x0, y0 = int(cx) - k, int(cy) - k

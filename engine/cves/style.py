@@ -106,7 +106,7 @@ NOT_PRESETS = {"default", "platforms"}     # files in styles/ that are not prese
 GOALS = ("ad", "viral")
 
 def goal(pr):
-    """edit.yaml `goal:` (ad | viral; default ad). Switches the goal layer, the QC profile and the music-slot rules."""
+    """edit.yaml `goal:` (ad | viral; default ad). Switches the goal style layer (styles/viral.yaml)."""
     g = (pr.edit.get("goal") if pr is not None else None) or "ad"
     return str(g).strip().lower()
 

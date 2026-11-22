@@ -6,7 +6,7 @@ then does it become part of the style (a learned layer) or a rule. Every promoti
 
 ```
 journal (per project)  ->  cves learn mine  ->  candidates  ->  promote (a person)  ->  learned.yaml / rules
-   build qc deliver          corrections         list / show      personal (local)        merged into the
+   build deliver             corrections         list / show      personal (local)        merged into the
    import-edits revisions    correlations        reject --why     or --share (repo,        style profile
    notes ratings results     note clusters                         anonymised)             (docs/STYLE.md)
 ```
@@ -17,8 +17,6 @@ journal (per project)  ->  cves learn mine  ->  candidates  ->  promote (a perso
 |---|---|---|---|
 | `PROJECT/Edit/journal.jsonl` | client project | **no** (client folder) | append-only events: time, cves version, style hash + the event |
 | `PROJECT/Edit/journal.last_edit.yaml` | client project | no | edit.yaml as of the last build (for revision diffs) |
-| `PROJECT/Edit/critique/` | client project | no | contact sheet, energy timeline, `critique.json`, `CRITIQUE.md` |
-| `PROJECT/Edit/review/` | client project | no | review packs per round, `findings.json`, `REVIEW.md`, sign-offs ([REVIEW.md](REVIEW.md)) |
 | `~/.cves/taste/candidates.jsonl` | your machine | **no** | proposed patterns with evidence (project / version refs, quoted notes) |
 | `~/.cves/taste/learned.yaml` | your machine | no | your personal learned layer; may hold `client:<name>` sections |
 | `~/.cves/taste/rules.md` | your machine | no | personal learned rules |
@@ -26,7 +24,6 @@ journal (per project)  ->  cves learn mine  ->  candidates  ->  promote (a perso
 | `~/.cves/taste/study.json` | your machine | no | measurements of studied videos (no media, file names only) |
 | `knowledge-base/taste/learned.yaml` | the repo | **yes** (git) | the team's learned layer: global / goal / platform sections only |
 | `knowledge-base/TASTE.md` | the repo | yes | one anonymised line per shared pattern: pattern, scope, n, effect, date |
-| `LESSONS.md` (section "Learned by `cves learn`") | the repo | yes | shared rule-type patterns, anonymised |
 
 **Privacy rules.** The repo is public. Shared entries carry no client names, no project names, no file paths and no
 quoted notes: only the pattern, its scope, the sample size and the effect. `client:` scopes can never be shared
@@ -41,17 +38,12 @@ journals under the projects root) and anything path-like, and refuses to write i
 |---|---|---|
 | `revision` | `cves build` / `cves encode` | edit.yaml diff since the previous build (`changes: [{path, old, new}]`), `after_notes` = a note came in between |
 | `build` | `cves build` / `cves encode` | the decisions: goal, platform, spine (when present), caption style / size / position, transition kinds, bed level, pacing, templates and motion pieces used, style sources |
-| `qc` | `cves qc` / `cves build` | fail / warn counts and the gate ids |
-| `deliver` | `cves deliver` | version, variants and their status, forced or not, the decisions (as `build`) |
+| `deliver` | `cves deliver` | version, variants and their status, the decisions (as `build`) |
 | `import-edits` | `cves import-edits` | what the human changed in Resolve / Kdenlive, as an edit.yaml diff + the importer's applied list |
-| `critique` | `cves critique` | which version was reviewed |
-| `review` | `cves review build` | round, loop, pack folder, finding counts, QC FAIL count, the kinds of the high findings |
-| `review-apply` | `cves review apply` | the safe patches applied (`[{id, kind, changes: [{path, old, new}]}]`) |
-| `review-signoff` | `cves review signoff` | verdict (`ship` / `revise`), Claude's notes, the high / med findings still open, rounds used, cap reached ([REVIEW.md](REVIEW.md)) |
 | `treatments-make` / `-render` / `-compare` | `cves treatments` | the treatments built, rendered or compared, with their plan metrics ([TREATMENTS.md](TREATMENTS.md)) |
 | `treatment-pick` | `cves treatments pick` | the treatment chosen, the ones offered, goal / client / platform, its metrics and the edit.yaml diff it brought |
 
-And these by hand (Claude runs them during the workflow, `plugin/skills/video-editor/SKILL.md`):
+And these by hand (when the user asks):
 
 ```
 cves learn note "the user's words, verbatim" [--version v002]
@@ -89,7 +81,7 @@ version refs: local only), n, effect and a confidence. The report also compares 
 cves learn list [--all]                       candidates (new; --all includes promoted)
 cves learn show L1a2b3c4                      full candidate with its evidence
 cves learn promote L1a2b3c4 [--scope goal:viral]           -> ~/.cves/taste/learned.yaml (or rules.md)
-cves learn promote L1a2b3c4 --scope global --share         -> knowledge-base/taste/learned.yaml + TASTE.md (+ LESSONS.md for rules)
+cves learn promote L1a2b3c4 --scope global --share         -> knowledge-base/taste/learned.yaml + TASTE.md
 cves learn reject L1a2b3c4 --why "only for that one client"   never proposed again
 cves learn forget L1a2b3c4                    revert a promotion (restores the previous value, removes the shared lines)
 ```
@@ -111,16 +103,6 @@ them, one line per video: `file.mp4 | ad|viral | why it's great` (without it, su
 Each video goes through `cves inspire`'s analysis (pacing, shot lengths, first cut, face share, loudness; a plain
 frame-difference pass if that is unavailable). Per kind it writes medians to `~/.cves/taste/study.json` and proposes
 `goal:ad` / `goal:viral` candidates when n ≥ 3. Media is never copied; only measurements and file names are stored.
-
-## 7. The senior-editor loop
-1. Creative direction before the plan (`Edit/DIRECTION.md`, knowledge-base/CREATIVE.md §1).
-2. After QC passes: `cves critique`, fill `CRITIQUE.md`, fix anything below 7 that is fixable, log the scores with
-   `cves learn rate ... --by claude`.
-2b. Then the review loop ([REVIEW.md](REVIEW.md)): `cves review build`, look at the pack, fix, re-render, until 0 FAIL and no high
-   findings (max 3 rounds), and `cves review signoff` records the verdict and what was still wrong.
-3. After every user note: `cves learn note "<their words>"`. After delivery: ask for a 1–10 rating and log it; log
-   platform results when the user has them.
-4. Every few deliveries: `cves learn mine`, show the user the new candidates, and promote only what they approve.
 
 ## Team taste (shared between editors' computers)
 Personal taste (`~/.cves/taste/`) stays on one computer. For a team, point every editor's machine at one shared folder

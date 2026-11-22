@@ -1,8 +1,8 @@
 {
   "name": "cves",
   "displayName": "CVES Video Editor",
-  "version": "0.5.1",
-  "description": "Claude Video Editing System: a Claude-driven, style-profile-driven editor for 9:16 talking-head ads. Runs story, plan, moodboard, render, QC and Resolve/Kdenlive export through the local cves engine, with two user approvals and QC gates before anything is shown.",
+  "version": "0.6.0",
+  "description": "Claude Video Editing System: a tool for talking-head videos, ads and reels. Runs transcription, story, plan, moodboard, render, mix, delivery and Resolve/Kdenlive export through the local cves engine, doing exactly what the user asks; the look comes from each client's style profile.",
   "author": {
     "name": "CVES"
   },
@@ -13,7 +13,6 @@
     "reels",
     "talking-head",
     "davinci-resolve",
-    "kdenlive",
-    "qc"
+    "kdenlive"
   ]
 }

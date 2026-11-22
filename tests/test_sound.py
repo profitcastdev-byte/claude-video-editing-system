@@ -179,7 +179,7 @@ def test_envelope_ducking_breathes_between_phrases():
 
 
 # ------------------------------------------------------------------ automatic accents
-def test_riser_resolves_on_the_target_and_budget_limits_accents(built_song, tmp_path):
+def test_riser_resolves_on_the_target(built_song, tmp_path):
     from cves import sound as SO, mix as MX, sfx as SFX
     segs, clips = _story_segs()
     pr = _project(str(tmp_path), built_song, {"sync": "drop"}, clips)
@@ -199,11 +199,10 @@ def test_riser_resolves_on_the_target_and_budget_limits_accents(built_song, tmp_
         pk = t + MX.peak_offset(TL, name, kw)
         assert abs(pk - kw["target"]) <= 1 / 48000 + 1e-6                     # the peak IS the target
         assert abs(t + float(E[name]["duration_s"]) - kw["target"]) <= 1 / TL.FPS   # and the riser ends on it (within a frame)
-    # the restraint budget: 1 accent per 30 s -> only the payoff riser
+    # no budget: an old style's creative.sound_accents_per_30s is ignored
     pr2 = _project(str(tmp_path / "b"), built_song, {"sync": "drop"}, clips, style={"creative": {"sound_accents_per_30s": 1}})
     log2 = []; acc2 = SO.accents(_tl(pr2, segs, 14.0), [], log2)
-    assert [kw["accent"] for _, _, _, kw in acc2] == ["riser"]
-    assert sum(1 for r in log2 if "budget" in r.get("status", "")) == 2
+    assert len(acc2) == len(SO.accents(TL, [], [])) and not any("budget" in r.get("status", "") for r in log2)
     # a moment that already has a low hit gets no impact; a target off every picture event gets nothing
     acc3 = SO.accents(TL, [(7.0, "lowhit", -10, {"reveal": True})], [])
     assert not any(kw["accent"] == "impact" and abs(kw["target"] - 7) < .01 for _, _, _, kw in acc3)

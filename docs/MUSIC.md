@@ -33,7 +33,7 @@ Set the mode in the style (`music.sync`, default `"off"`) or per video in `edit.
 | `off` | Legacy placement: the manual `music.drop_track` (track s) lines up with `music.drop_cut` (cut s). |
 | `drop` | The drop is chosen automatically. `music.drop_pick: auto` takes the strongest candidate that needs no silent lead-in; with `music.phrase_align: true` (the default) it prefers, among those, the drop whose build starts on the story turn ([SOUND.md](SOUND.md) §1). An integer picks that index from `beats.json drops`. It is aligned to the story moment (the payoff): `music.drop_cut` if it is above 0, else the start of the first clip in `edl.json` whose `beat:` tag is in `music.drop_beats` (default from `grammar.structure`: `[PR, O]` for problem, the first proof or offer; `[PR]` for offer and story), else the reveal (the `aroll.snap` punch-in). |
 | `cuts` | `drop`, plus a report that moves **cutaway in/out points** and **graphic entry times** onto the nearest beat within `music.snap_tolerance_s` (default 0.12 s). The rules are listed below the table. `--apply` writes the moves. |
-| `full` | `cuts`, plus at mix time every transition-type cue (name contains one of `music.sfx_snap`: whoosh, hit, boom, riser) is nudged so its **peak** lands on the beat. The nudge is at most `music.sfx_snap_max_f` frames (default 1), which keeps every SFX within 1 frame of its picture event (SND-07). |
+| `full` | `cuts`, plus at mix time every transition-type cue (name contains one of `music.sfx_snap`: whoosh, hit, boom, riser) is nudged so its **peak** lands on the beat. The nudge is at most `music.sfx_snap_max_f` frames (default 1), which keeps every SFX within 1 frame of its picture event. |
 
 Rules for the `cuts` moves:
 - A-roll cuts are never moved. The engine invariant is that edits snap to segment boundaries.
@@ -60,22 +60,22 @@ The file is patched as text, so comments are kept. The patch is verified by re-p
 
 `music.fit: none` keeps the legacy behaviour: a plain offset, zero padding and a 0.9 s fade.
 
-## 4. SFX placement in the mix (`mix.all_cues`, used by `cves mix` and by QC)
+## 4. SFX placement in the mix (`mix.all_cues`, used by `cves mix`)
 
-- **SND-08, peak on the cut.** Transition whooshes (style `sound.transition_sfx`: whip → whoosh, glitch → swipe, cut / fade → none) carry `peak_at: <cut>`. Each SFX file's peak offset is measured with the same 10 ms RMS envelope the gate uses, and cached in memory and in `Edit/sfx_peaks.json` (keyed by file, mtime and trim). The cue is then placed so the peak, not the start, is on the cut. Before this fix the whoosh started 0.30 s early and peaked 5.5 frames before the cut.
-- **SND-09, no identical repeats.** A cue identical to the one before it (same file, trim and pitch) gets `±sound.repeat_pitch_st` semitones, alternating, and `∓sound.repeat_gain_db`. This is deterministic, so a re-mix sounds the same.
+- **Peak on the cut.** Transition whooshes (style `sound.transition_sfx`: whip → whoosh, glitch → swipe, cut / fade → none) carry `peak_at: <cut>`. Each SFX file's peak offset is measured with the same 10 ms RMS envelope the gate uses, and cached in memory and in `Edit/sfx_peaks.json` (keyed by file, mtime and trim). The cue is then placed so the peak, not the start, is on the cut. Before this fix the whoosh started 0.30 s early and peaked 5.5 frames before the cut.
+- **No identical repeats.** A cue identical to the one before it (same file, trim and pitch) gets `±sound.repeat_pitch_st` semitones, alternating, and `∓sound.repeat_gain_db`. This is deterministic, so a re-mix sounds the same.
 - **Beat nudge** (`full` only; see section 2). Per cue, `beat_snap: false` opts out. The run is listed in `mix.json beat_nudged`.
 - **Media audio.** Cues named `asset:<id>` (a `video_broll` with `audio: true`) resolve through `cves.assets.resolve`. `speed` time-stretches them and `raw: true` keeps their own level (no peak-normalise). They are never beat-nudged or varied.
 
 `mix.json` records the music placement (`sync`, `fit`, `offset_s`, `drop`, `loops`, `end`, `sections`, `story`), the cue count, `peak_placed`, `beat_nudged`, the automatic `accents` and the `duck` settings.
 
-- **Automatic accents** ([SOUND.md](SOUND.md) §2): a riser whose peak lands on the payoff and one into the hook, plus a downbeat hit on the payoff, within the `creative.sound_accents_per_30s` budget. They carry `beat_snap: false`: their target is already the picture event and, with phrase alignment, the drop.
+- **Automatic accents** ([SOUND.md](SOUND.md) §2): a riser whose peak lands on the payoff and one into the hook, plus a downbeat hit on the payoff. They carry `beat_snap: false`: their target is already the picture event and, with phrase alignment, the drop.
 - **Ducking** follows the voice envelope by default (`mix.duck_mode: envelope`; `gate` = the fixed dips described in SFX-METHOD.md); see [SOUND.md](SOUND.md) §3.
 
 ## 4b. Platform sound slot (`music.slot: platform`, organic posts)
 
 For a post that will use a trending sound added in the app, `edit.yaml music:` takes `slot: platform` and a `guide`
-instead of a `file` (full description in [VIRAL.md](VIRAL.md) §4):
+instead of a `file` (full description in [VIRAL.md](VIRAL.md) §3):
 
 | key | value |
 |---|---|
@@ -87,7 +87,6 @@ instead of a `file` (full description in [VIRAL.md](VIRAL.md) §4):
 - `cves beats` treats a reference-track guide like music: `--sync cuts --apply` moves cut points onto its beat.
 - `cves mix` mixes **no music** and writes `Edit/stems/guide.wav` (the track laid by `beats.plan`, or a click track on the
   tempo grid, accented on downbeats) next to the other stems. `mix.json` records it under `guide`.
-- QC: SND-04 checks the music stem is silent; RET-32 measures the share of cuts within `music.snap_tolerance_s` of a guide beat.
 - `cves deliver` ships the guide stem and POSTING.md ([DELIVERY.md](DELIVERY.md) §3).
 - `cves validate` refuses the slot for ads (`goal: ad`, the default), a slot without a guide, and a slot with `music.file`.
 

@@ -1,4 +1,4 @@
-"""Take alignment (`cves select`) and the "every chosen word is heard" check (STORY-17, `cves qc --stage story`).
+"""Take alignment (`cves select`).
 
 Why: long-form whisper word times drift by 1-3 s around retakes and long pauses (a pause gets absorbed into a word),
 so in/out points read off `raw_words.json` clip words. Re-transcribing a short window around each clip is much closer,
@@ -12,14 +12,10 @@ but still noisy at the window edges, so alignment:
   4. snaps each edge to the nearest pause in the speech energy (never inside speech), with the pads in
      story.align_pad_s ([in, out]).
 A low score keeps the hand times (and warns). Opt out per clip (`align: false`) or for the style (`story.align: false`).
-Every clip's result is recorded in edl.json clips[].aligned = {in, out, score, status, hand: [in, out]}.
-
-STORY-17 transcribes each clip's own span of voice_final.wav (never the whole file: whisper skips sentences on long
-files) and scores the recall of the clip's `text:` words (fillers ignored, the same normalisation)."""
+Every clip's result is recorded in edl.json clips[].aligned = {in, out, score, status, hand: [in, out]}."""
 import os, re, json, hashlib, difflib, tempfile, shutil, unicodedata
 import numpy as np, soundfile as sf
 
-FILLERS = {"um", "umm", "uh", "uhm", "uhh", "erm", "er", "ah", "ahh", "hmm", "mm", "mhm", "huh"}
 SMALL = {w: i for i, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
                                     "fifteen sixteen seventeen eighteen nineteen".split())}
 TENS = {w: 10 * (i + 2) for i, w in enumerate("twenty thirty forty fifty sixty seventy eighty ninety".split())}
@@ -109,17 +105,6 @@ def best_run(ref, hyp, hint=None):
     head = ref.index(h[i]) if h[i] in ref else 0                                     # reference words missing before the run
     tail = ref[::-1].index(h[j - 1]) if h[j - 1] in ref else 0      # ... and after it
     return i, j, difflib.SequenceMatcher(None, ref, h[i:j], autojunk=False).ratio(), head, tail
-
-def recall(ref_text, heard_text, edges=False):
-    """(share of the reference's words heard, [missing words in order]); fillers ignored, numbers normalised.
-    edges=True adds a third value: (first word missing, last word missing), the signature of a clipped take"""
-    ref = [t for t in tokens(ref_text) if t not in FILLERS]
-    hyp = [t for t in _canon(ref, tokens(heard_text)) if t not in FILLERS]
-    if not ref: return (1.0, [], (False, False)) if edges else (1.0, [])
-    sm = difflib.SequenceMatcher(None, ref, hyp, autojunk=False); got = set()
-    for a, _, size in sm.get_matching_blocks(): got.update(range(a, a + size))
-    out = (len(got) / len(ref), [ref[i] for i in range(len(ref)) if i not in got])
-    return out + ((0 not in got, len(ref) - 1 not in got),) if edges else out
 
 
 # ------------------------------------------------------------------ audio
@@ -339,39 +324,3 @@ def align_clips(pr, clips, srcs, S, lang=None, out=print):
         c["in"], c["out"] = rec["in"], rec["out"]; c["aligned"] = rec; recs.append(rec)
         if out: out(report_line(c["id"], rec))
     return recs
-
-
-# ------------------------------------------------------------------ STORY-17: every chosen word is heard
-def clip_spans(edl):
-    """{clip id: (t0, t1)} cut-time span of each clip's segments (frame-rounded like the story gates)"""
-    F = edl["fps"]; t = 0.0; spans = {}
-    for s in edl["segments"]:
-        L = round((s["out"] - s["in"]) * F) / F; a, b = spans.get(s["clip"], (t, t)); spans[s["clip"]] = (min(a, t), t + L); t += L
-    return spans
-
-def span_text(wav, t0, t1, lang, prompt=None):
-    """whisper text of wav[t0:t1] (16 kHz mono temp copy); prompt = a hint of names to spell. Tests patch this."""
-    from .qc import audio_gates as AG
-    d = tempfile.mkdtemp(prefix="cves_heard_")
-    try:
-        y, sr = _read(wav, t0, t1)
-        if sr != 16000:
-            import librosa
-            y = librosa.resample(y, orig_sr=sr, target_sr=16000); sr = 16000
-        p = os.path.join(d, "c.wav"); sf.write(p, y, sr)
-        return AG._whisper(p, prompt=prompt, lang=lang)
-    finally: shutil.rmtree(d, ignore_errors=True)
-
-def clip_recall(pr, lang, pad=.08, names=()):
-    """[{clip, score, missing, edge: [first lost, last lost], heard}] per clip of edl.json (score None = no text: skipped).
-    names: proper nouns whisper can't spell unaided (qc.names); a clip whose text: has one gets it as a whisper hint, the
-    others are heard unaided"""
-    edl = pr.json("edl.json"); spans = clip_spans(edl); wav = pr.e("voice_final.wav"); dur = sf.info(wav).duration; out = []
-    for c in edl["clips"]:
-        if c["id"] not in spans: continue
-        if not (c.get("text") or "").strip(): out.append({"clip": c["id"], "score": None, "missing": [], "edge": [False, False], "heard": ""}); continue
-        hint = ", ".join(n for n in names if set(tokens(n)) <= set(tokens(c["text"]))) or None
-        t0, t1 = spans[c["id"]]; heard = span_text(wav, max(0.0, t0 - pad), min(dur, t1 + pad), lang, prompt=hint)
-        sc, miss, edge = recall(c["text"], heard, edges=True)
-        out.append({"clip": c["id"], "score": sc, "missing": miss, "edge": list(edge), "heard": " ".join(heard.split()), "span": [round(t0, 2), round(t1, 2)]})
-    return out

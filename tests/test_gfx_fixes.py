@@ -207,34 +207,6 @@ def test_card_keeps_its_designed_place_when_nothing_fits_or_when_fixed():
     assert _alpha_bbox(TPL.get("map_card")[0](12.0, {"at": 10.0, "place": "fixed"}, _card_ctx(_person()))[0].im) == designed
 
 
-def _cx_with_card(bbox, n=60):
-    from cves.qc import extra as X
-    recs = [{"f": 600 + j, "id": "roto.map", "role": "roto", "bbox": list(bbox), "alpha": 1.0, "text": "map"} for j in range(n)]
-    pins = [{"f": 600 + j, "id": "roto.map.pin0", "role": "roto", "bbox": [bbox[0] + 20, bbox[1] + 20, bbox[0] + 60, bbox[1] + 70], "alpha": 1.0} for j in range(n)]
-    I = X.Inst("roto.map", recs); P = X.Inst("roto.map.pin0", pins)
-    M = np.float32([[1, 0, 0], [0, 1, 0]])
-    return types.SimpleNamespace(inst=[I, P], S=S, FPS=60.0, aroll_M=lambda f: (M, None)), X
-
-
-@pytest.mark.parametrize("bbox,status", [((170, 170, 910, 1080), "FAIL"), ((560, 300, 1010, 900), "WARN"), ((860, 290, 1075, 1100), "PASS")])
-def test_gfx27_flags_a_card_behind_the_head(bbox, status):
-    cx, X = _cx_with_card(bbox); X.W, X.H = 1080, 1920
-    matte = (_body(230, 850, 280) * 255).astype(np.uint8)
-    fr = {i.key: X.hold_frames(i) for i in X.roto_cards(cx)}
-    assert list(fr) == ["roto.map"]                                   # the pin is a child of its card, not judged
-    got = []
-    X.gate_roto_cover(cx, lambda gid, ok, summ, det="", status=None: got.append((gid, status, summ, det)), fr, {f: matte for f in range(600, 660)})
-    assert got[0][0] == "GFX-27" and got[0][1] == status, got
-
-
-def test_review_turns_gfx27_into_a_roto_finding():
-    from cves import review as RV
-    st = {"sha256": "x", "gates": [{"id": "GFX-27", "status": "FAIL", "summary": "1 roto card(s); worst 71% of a card behind the subject (roto.map at 13.60 s); warn > 40%, fail > 65%"}]}
-    pr = types.SimpleNamespace(json=lambda name, d=None: st if name == "qc.json" else d)
-    F, _ = RV.qc_findings(pr, "x")
-    assert F[0]["kind"] == "roto_hidden" and F[0]["severity"] == "high" and F[0]["t"] == 13.6 and "roto.place" in F[0]["message"]
-
-
 # ------------------------------------------------------------------ GFX-08 / layout: the end card
 P_END = {"headline": "More patients. Reported in rupees.", "button": "TAP THE LINK BELOW", "handle": "Profitcast", "icon": "link"}
 

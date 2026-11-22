@@ -3,6 +3,34 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [0.6.0] - 2026-11-22
+
+CVES is a tool: it does what the user asks, nothing more.
+
+### Removed
+- **QC**: every gate, measurement and report. `cves qc` (incl. `--stage story|plan`), `engine/cves/qc/`, `Edit/QC-REPORT.txt`,
+  `Edit/qc.json` and the QC stamps are gone; `cves build` is render + mix + encode, the moodboard has no pre-render gates.
+- **The render review loop and the critique**: `cves review`, `cves critique` (`engine/cves/review.py`, `critique.py`).
+- **Rules, limits and budgets**: the `creative:` restraint budgets (sound accents, craft moves, transition kinds), the
+  transition rate limit at render (`craft.transitions.min_gap_s` / `enforce`), hero-piece gap warnings
+  (`motion.hero_min_gap_s`), the roto count limit in `cves plan`, the "ads can't use `music.slot: platform`" error, the music
+  licence refusal (`cves music` downloads any licence the user asks for and still records it in `Music/CREDITS.md`).
+- **Delivery checks**: `cves deliver` delivers whatever master exists (a `--draft` one included, at its own size); the stamp
+  check, `--force-unchecked`, the warning banner and per-variant QC are gone. A variant is delivered when it renders.
+- **Rule documents**: `knowledge-base/` RULEBOOK, RULEBOOK-CORE, EDIT-STANDARD, QC-GATES, CHECKLISTS, DECISIONS, CREATIVE,
+  QA-REVIEW, CURRICULUM, modules/, tools/, manifest.json, resolved.json; root `LESSONS.md`; `docs/QC.md`, `docs/REVIEW.md`;
+  `tools/gate_status.py`, `tools/qc_parity.py`. The learned taste layer (`knowledge-base/TASTE.md`, `taste/`) stays.
+- **Plugin 0.6.0**: the QC guard hook (`plugin/hooks/`), `/cves:qc`, `/cves:review`, `/cves:critique`; the skill and the
+  commands now run the `cves` commands as asked, with no rulebook, approval stops, QC or restraint. The skill finds the
+  system by `engine/cves/__init__.py`.
+
+### Changed
+- The SFX cue sync's picture events and BS.1770 loudness moved to `engine/cves/events.py`.
+- `mix.vmr_min_db` defaults to 8.0 dB (was `review.vmr_min_db` 6 + `mix.vmr_margin_db` 2: the same target).
+- `cves learn promote --share` writes shared rule-type patterns to `knowledge-base/TASTE.md` only (no LESSONS.md).
+- Older style layers and `edit.yaml qc:` blocks still load: keys of removed features are accepted and ignored
+  (`schema.REMOVED_STYLE`); `qc.topic_keywords` / `qc.brand_tail` still steer cut-down variants.
+
 ## [0.5.1] - 2026-11-21
 
 ### Fixed

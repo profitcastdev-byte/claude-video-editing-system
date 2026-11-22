@@ -30,6 +30,11 @@ MEDIA_EXT = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".tif", ".tiff", 
 OPEN_STYLE = {"colors", "font_files", "font_files.script_fallback", "captions.per_style", "sound.transition_sfx", "media.device_box", "canvas.safe_zones",
               "_evidence", "_inspire"}
 STYLE_META = {"name", "preset", "_evidence", "_inspire", "_sources", "description", "extends"}
+# style keys of removed features (QC, the review loop, restraint budgets, rule limits): older style layers still carry
+# them; accepted and ignored without a warning
+REMOVED_STYLE = {"qc", "retention", "creative", "review", "grammar.roto_max", "grammar.topic_by_s", "framing.extreme_max",
+                 "sound.phrase_tolerance_s", "rhythm.interrupt_min_s", "structure.payoff_window", "motion.hero_min_gap_s",
+                 "roto.occlusion_warn", "roto.occlusion_fail", "craft.transitions.min_gap_s", "craft.transitions.enforce", "mix.vmr_margin_db"}
 
 # ------------------------------------------------------------------ edit.yaml spec
 # type strings: number int str bool list dict time path color asset any; "a|b" = either; "?" = optional (default), "!" = required
@@ -38,7 +43,7 @@ CUT = {"id!": "str|int", "template!": "str", "start!": "time", "end!": "time", "
 SEGREF = {"segment!": "segref", "template!": "str", "params": "dict", "note": "str"}
 EDIT = {
     "treatment": "str",       # the creative treatment this plan was made from (`cves treatments`, docs/TREATMENTS.md)
-    "goal": "str",            # ad (default) | viral: the goal layer, QC profile and music-slot rules (docs/VIRAL.md)
+    "goal": "str",            # ad (default) | viral: the goal style layer (docs/VIRAL.md)
     "project": {"client": "str", "title": "str", "fps": "number|list|str", "size": "list", "raw": "path|null", "sources": "list", "language": "str"},
     "style": "style",
     "edl": "str",
@@ -52,7 +57,7 @@ EDIT = {
     "music": "music",
     "sfx": {"auto": "bool", "extra": [{"t!": "time", "name!": "str", "gain": "number", "pitch": "number", "kw": "dict"}]},
     "transitions": [{"t!": "time", "kind!": "transition"}],
-    "qc": {"topic_keywords": "list", "brand_tail": "list", "duration": "list|null", "names": "list", "skip": "list", "waive": "any"},
+    "qc": "any",              # legacy block: accepted; cut-down variants read qc.topic_keywords / qc.brand_tail
     "assets": "assets",
     "variants": "any",
     "delivery": "dict",
@@ -252,7 +257,7 @@ def _assets(v, path, val):
 
 
 def _goal_and_slot(v, E):
-    """edit.yaml goal (ad | viral) and music.slot (file | platform): an ad never uses the platform slot (RULEBOOK §0.12)"""
+    """edit.yaml goal (ad | viral) and music.slot (file | platform)"""
     from . import style as STY, guide as GD
     g = E.get("goal")
     if g is not None and (not isinstance(g, str) or g.strip().lower() not in STY.GOALS):
@@ -264,8 +269,6 @@ def _goal_and_slot(v, E):
     if not isinstance(slot, str) or slot.strip().lower() not in ("file", "platform"):
         v.err("music.slot", f"expected file or platform, got {_show(slot)}"); return
     if slot.strip().lower() != "platform": return
-    if str(g or "ad").strip().lower() != "viral":
-        v.err("music.slot", "platform is for organic posts (goal: viral) only: an ad must carry licensed music in the file (RULEBOOK §0.12)")
     if M.get("file"): v.err("music.file", "music.slot: platform delivers no music: remove music.file (put the reference track in music.guide)")
     for m in GD.problems(_EditView(v.pr, E)): v.err("music.guide", m.split(": ", 1)[-1] if m.startswith("music.guide") else m)
 
@@ -388,7 +391,7 @@ def check_style(v, d, path, base=None, dotted=""):
     for k, x in (d or {}).items():
         p = f"{path}.{k}" if path else str(k); dk = f"{dotted}.{k}" if dotted else str(k)
         if not dotted and k in STYLE_META: continue
-        if dotted in OPEN_STYLE: continue
+        if dotted in OPEN_STYLE or dk in REMOVED_STYLE: continue
         if k not in base:
             v.warn(p, f"unknown style key{_did_you_mean(k, base)} (known keys: styles/default.yaml, docs/STYLE.md)"); continue
         if isinstance(base[k], dict) and isinstance(x, dict) and dk not in OPEN_STYLE: check_style(v, x, p, base[k], dk)
@@ -666,7 +669,7 @@ def _selects(v):
             if not os.path.exists(q): v.err(f"{path}.src", f"source not found: {c['src']} (relative to the project folder, e.g. Raw/<file>)")
     if no_text:
         v.warn("selects.yaml", f"{len(no_text)} clip(s) without text: ({', '.join(no_text[:8])}{' ...' if len(no_text) > 8 else ''}): "
-                               "take alignment (cves select) and STORY-17 need each clip's spoken words")
+                               "take alignment (cves select) needs each clip's spoken words")
 
 
 def _yerr(e):

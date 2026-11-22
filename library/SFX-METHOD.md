@@ -1,7 +1,7 @@
 # Sound effects and music: the method
 
 Where this comes from: Nick Saraev's reel on fixing AI-picked sound ([De4XVvXPTWY](https://www.instagram.com/reel/De4XVvXPTWY/)), the sound module of the
-knowledge base (`knowledge-base/modules/5 Sound Design & Audio Mixing.md`) and the user's own corrections on the first ad (`LESSONS.md`).
+sound-design curriculum the system was first trained on, and the user's own corrections on the first ad.
 The engine implements all of it in `engine/cves/mix.py`. Every template emits its own cues, so sound is never an afterthought.
 
 ## The core idea (Nick Saraev)
@@ -20,23 +20,23 @@ AI-built motion graphics look good, but the sounds an AI picks sound cheap. The 
 
 ## Rules for every edit
 1. **One sound per visual event.** Never a bed of random whooshes. Never the same file back to back (cut variants, or pitch-shift each repeat).
-2. **On the frame.** The sound starts on the frame where the motion *starts* (for a whoosh, the mixer measures each file's peak offset and places it so the PEAK lands on the cut; SND-08). Gate SND-07 checks ±1 frame.
+2. **On the frame.** The sound starts on the frame where the motion *starts* (for a whoosh, the mixer measures each file's peak offset and places it so the PEAK lands on the cut).
 3. **Real over synthetic.** Foley, UI clicks, paper, glass. No beeps from code unless earshot rates them as real.
 4. **Reveals hit full; everything else sits 3 dB back.** Reveals are the big words, the extreme punch-in, the number landing and TOP 3 (`reveal: true` in a cue).
 5. **Silence is a sound.** A short dip before the payoff makes it land. This is an A/B option; it isn't on by default.
 6. **Style fit.** Keep one sound family per video. Gritty bass hits don't belong in a corporate piece, and glassy dings don't belong in a streetwear promo.
 
 ## Music
-- **The bed sits about −7 LU under the voice while he speaks.** The user rejected −23, −14 and −10 LU as too quiet. Gate SND-04 measures the real music+SFX bed against the voice, and `mix.py` corrects to the target instead of guessing.
+- **The bed sits about −7 LU under the voice while he speaks.** The user rejected −23, −14 and −10 LU as too quiet. `mix.py` measures the real music+SFX bed against the voice and corrects to the target instead of guessing.
 - **Ducking is frequency-split.** The voice band (250 Hz–5 kHz) dips 8 dB while he speaks; lows and highs dip only 3 dB. The bed stays big without masking consonants.
 - **Ducking follows the voice envelope** (v0.4, `mix.duck_mode: envelope`). The dip tracks the syllables: a 40 ms attack, and a release of about 1.25 syllable periods (250–400 ms). The bed comes back between phrases instead of holding a fixed dip. `gate` keeps the old fixed dips.
-- **The music's sections follow the story** (v0.4). The drop lands on the payoff, and its build starts on the turn when a drop allows it. A riser resolves on the payoff, with a downbeat hit, within the restraint budget (docs/SOUND.md).
+- **The music's sections follow the story** (v0.4). The drop lands on the payoff, and its build starts on the turn when a drop allows it. A riser resolves on the payoff, with a downbeat hit (docs/SOUND.md).
 - **The duck looks ahead 120 ms,** so the music is already down when a soft word starts.
 - **Sync the drop to the biggest visual beat.** In the example, the drums land on the extreme punch-in at "your turn" (`music.drop_track` / `drop_cut` in edit.yaml).
 - **Licensing:** paid ads need licensed music. Use Openverse (CC0 / CC BY with credit), or generate with ElevenLabs or Magnific. Never ship a commercial track you don't hold rights to.
 
 ## Master
-- −14 LUFS integrated (gate window −14.5 to −13.5), true peak ≤ −1 dBTP, no clipped samples, AAC 256 kb/s at 48 kHz.
+- −14 LUFS integrated (−14.5 to −13.5), true peak ≤ −1 dBTP, no clipped samples, AAC 256 kb/s at 48 kHz.
 - Stems are written to `Edit/stems/`, scaled to match the premaster, so faders in Resolve or Kdenlive behave as rendered.
 
 ## Cue map (effect → sound)

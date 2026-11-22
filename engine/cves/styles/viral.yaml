@@ -1,11 +1,11 @@
 # Preset "viral": retention-first defaults for organic posts (Reels, TikTok, Shorts). Layered automatically right after
 # default.yaml when edit.yaml says `goal: viral`, so a named preset, `cves inspire` (Edit/style.yaml), the brand and
-# edit.yaml still win. Holds only keys that exist in default.yaml. Rationale: knowledge-base/modules/viral-playbook.md.
+# edit.yaml still win. Holds only keys that exist in default.yaml.
 name: viral
-platform: {duration: [7, 60]}            # organic short-form; the platform band (platform.target) is checked by RET-30
-grammar: {max_shot_s: 2.5, topic_by_s: 1.0, max_cutaway_s: 6}   # faster pacing bands than an ad
-rhythm: {interrupt_max_s: 2.5, interrupt_min_s: 0.25, cut_on_beat: true}
-structure: {hook_change_s: 1.0, loop: false, payoff_window: 0.2}  # loop is a per-video structure choice (edit.yaml style:)
+platform: {duration: [7, 60]}            # organic short-form
+grammar: {max_shot_s: 2.5, max_cutaway_s: 6}   # faster pacing than an ad
+rhythm: {interrupt_max_s: 2.5, cut_on_beat: true}
+structure: {hook_change_s: 1.0, loop: false}  # loop is a per-video structure choice (edit.yaml style:)
 framing: {creep: 0.02}                   # every shot keeps moving
 transitions: {whip_s: 0.12, glitch_s: 0.08}
 captions:                                # punchier: bigger, shorter lines, popped words, keywords and numbers emphasised

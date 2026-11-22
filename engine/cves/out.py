@@ -7,8 +7,6 @@ CVES_VERBOSE=1) restores the full text. Nothing here changes what a command writ
   StderrFilter         fd-level stderr filter for the CLI process tree: drops the known third-party noise (the duplicate
                        libavdevice objc class lines, OpenCV `[ WARN:` lines, numba warnings) and folds worker tracebacks
                        into their last line; everything dropped is appended to a log file
-  parse_report(text)   QC-REPORT text -> header lines + [(id, status, summary, [details])]
-  qc_summary(...)      the short QC summary: counts, one line per FAIL, WARNs as `id: reason` one-liners, the report path
   error_line(...)      one actionable line for an exception + where the traceback was logged"""
 import os, re, sys, threading, traceback, warnings
 
@@ -121,49 +119,8 @@ class StderrFilter:
         self.warned = False
         self._keep(line)
 
-# ---- QC reports
-_GATE = re.compile(r"^\[(FAIL|WARN|PASS|N/A ?)\]\s+(\S+)\s+(.*)$")
-
-def parse_report(text):
-    """(header lines, [(id, status, summary, [detail lines])]) from a QC-REPORT text (cves.qc.run / run_stage)"""
-    head, gates = [], []
-    for l in (text or "").splitlines():
-        m = _GATE.match(l)
-        if m: gates.append((m.group(2), m.group(1).strip(), m.group(3).strip(), [])); continue
-        if gates and l.startswith(" ") and l.strip(): gates[-1][3].append(l.strip()); continue
-        if not gates and l.strip(): head.append(l.strip())
-    return head, gates
-
 def _cut(s, n):
     s = " ".join(str(s).split()); return s if len(s) <= n else s[:n - 1].rstrip() + "…"
-
-def counts(gates):
-    c = {k: 0 for k in ("FAIL", "WARN", "PASS", "N/A")}
-    for _, st, _, _ in gates: c[st] = c.get(st, 0) + 1
-    return c
-
-def qc_summary(text, report_path=None, title=None, details=2, warn_w=96, fail_w=170):
-    """the short form of a QC report. Keeps the `N FAIL` wording the plugin hook reads."""
-    head, gates = parse_report(text); c = counts(gates)
-    first = head[0] if head else "QC"
-    if title is None:
-        m = re.match(r"QC REPORT\s+(.*)$", first); title = f"QC {m.group(1)}" if m else re.sub(r"\s+\d+ FAIL.*$", "", first)
-    L = [f"{title}: {c['FAIL']} FAIL  {c['WARN']} WARN  {c['PASS']} PASS  {c['N/A']} N/A  of {len(gates)} gates"]
-    fails = [g for g in gates if g[1] == "FAIL"]; warns = [g for g in gates if g[1] == "WARN"]
-    for gid, _, summ, det in fails:
-        L.append(f"FAIL {gid}: {_cut(summ, fail_w)}")
-        for d in det[:details]: L.append(f"     {_cut(d, fail_w)}")
-        if len(det) > details: L.append(f"     (+{len(det) - details} more lines in the report)")
-    if warns:
-        L.append(f"WARN ({len(warns)}):")
-        for gid, _, summ, det in warns: L.append(f"  {gid}: {_cut(summ, warn_w)}")
-    if report_path: L.append(f"full report: {report_path}  (-v prints it; --json for machine-readable)")
-    return "\n".join(L)
-
-def qc_json(text, report_path=None, video=None):
-    head, gates = parse_report(text)
-    return {"video": video, "report": report_path, "counts": counts(gates), "header": head,
-            "gates": [dict({"id": g, "status": s, "summary": m}, **({"details": d} if d and s in ("FAIL", "WARN") else {})) for g, s, m, d in gates]}
 
 # ---- errors
 def error_line(cmd, exc, log):

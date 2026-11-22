@@ -1,4 +1,4 @@
-# CVES main venv (Python 3.12): matting, render, mix, QC, export.
+# CVES main venv (Python 3.12): matting, render, mix, export.
 # Pins are taken from the working Mac toolchain (~/apps/matting/.venv, 2026-11-17) where the package was
 # installed there; the rest (librosa, opentimelineio + adapters, opencv-python instead of -headless) are the
 # versions uv resolved against those pins on 2026-11-18 for macOS 14 arm64 AND Windows x64 (both resolve).
