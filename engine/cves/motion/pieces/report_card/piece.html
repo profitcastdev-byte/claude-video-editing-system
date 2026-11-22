@@ -1,0 +1,83 @@
+<div id="blk"><div class="eyebrow bare" id="eb"></div>
+  <div id="persp"><div class="solid" id="card">
+    <div class="hd"><div class="well" id="well"></div><div><div class="title" id="tt"></div><div class="body" id="sb"></div></div></div>
+    <div class="div"></div><div id="rows"></div></div></div>
+  <i class="br a"></i><i class="br b"></i><i class="br c"></i><i class="br d"></i></div>
+<style>
+  #blk { position: absolute; left: calc(var(--u) * 10); right: calc(var(--u) * 10); }
+  #eb { display: flex; justify-content: center; margin-bottom: calc(var(--u) * 4); font-size: calc(var(--u) * 2.5); letter-spacing: 0.26em; }
+  #persp { perspective: calc(var(--u) * 140); }
+  #card { transform-origin: 50% 100%; padding: calc(var(--u) * 3.2); border-radius: calc(var(--u) * 3.2); }
+  .hd { display: flex; align-items: center; gap: calc(var(--u) * 2.6); }
+  .well { width: calc(var(--u) * 9.4); height: calc(var(--u) * 9.4); border-radius: calc(var(--u) * 2); background: var(--icon-well);
+          display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: calc(var(--u) * 4.8); }
+  #tt { font-size: calc(var(--u) * 4.2); text-transform: uppercase; letter-spacing: 0.02em; }
+  #sb { font-size: calc(var(--u) * 2.7); margin-top: calc(var(--u) * 0.6); }
+  .div { height: calc(var(--u) * 0.3); background: rgb(var(--card-border-rgb) / 1); margin: calc(var(--u) * 3) 0; transform-origin: left; }
+  .rr { position: relative; display: flex; align-items: center; height: calc(var(--u) * 10.4); padding: 0 calc(var(--u) * 2.6);
+        margin-bottom: calc(var(--u) * 1.9); border-radius: calc(var(--u) * 2); background: rgb(var(--surface-rgb) / 1);
+        border: calc(var(--u) * 0.25) solid rgb(var(--card-border-rgb) / 1); }
+  .rl { flex: 1; font-size: calc(var(--u) * 2.9); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+  .trk { position: relative; width: calc(var(--u) * 20); height: calc(var(--u) * 2.2); border-radius: 99px; background: rgb(0 0 0 / 0.35); margin-right: calc(var(--u) * 3); }
+  .fil { position: absolute; inset: 0; border-radius: 99px; transform-origin: left; background: linear-gradient(90deg, rgb(var(--negative-rgb) / 0.55), var(--negative)); }
+  .head { position: absolute; top: 50%; width: calc(var(--u) * 3.2); height: calc(var(--u) * 3.2); margin: calc(var(--u) * -1.6) 0 0 calc(var(--u) * -1.6);
+          border-radius: 50%; background: radial-gradient(circle, rgb(255 255 255 / 0.95), rgb(var(--negative-rgb) / 0.6) 45%, transparent 70%); }
+  .x { position: relative; width: calc(var(--u) * 5.4); height: calc(var(--u) * 5.4); border-radius: 50%; background: var(--negative); color: var(--text);
+       display: flex; align-items: center; justify-content: center; flex: none; }
+  .x svg { width: 64%; height: 64%; }
+  .flash { position: absolute; inset: 0; border-radius: 50%; border: calc(var(--u) * 0.4) solid var(--negative); }
+  .rr .lit { position: absolute; inset: -1px; border-radius: inherit; border: calc(var(--u) * 0.3) solid rgb(var(--negative-rgb) / 0.8); opacity: 0; }
+  .br { position: absolute; width: calc(var(--u) * 6); height: calc(var(--u) * 6); border: 0 solid var(--line); }
+  .br.a { left: calc(var(--u) * -4); top: calc(var(--u) * -4); border-left-width: calc(var(--u) * .35); border-top-width: calc(var(--u) * .35); }
+  .br.b { right: calc(var(--u) * -4); top: calc(var(--u) * -4); border-right-width: calc(var(--u) * .35); border-top-width: calc(var(--u) * .35); }
+  .br.c { left: calc(var(--u) * -4); bottom: calc(var(--u) * -4); border-left-width: calc(var(--u) * .35); border-bottom-width: calc(var(--u) * .35); }
+  .br.d { right: calc(var(--u) * -4); bottom: calc(var(--u) * -4); border-right-width: calc(var(--u) * .35); border-bottom-width: calc(var(--u) * .35); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let blk, card, eb, W = null, R = [], brs, dv, hd;
+  C.piece({
+    setup(P, ctx) {
+      blk = document.getElementById('blk'); card = document.getElementById('card'); eb = document.getElementById('eb');
+      blk.style.top = (P.y || 470) + 'px'; dv = document.querySelector('.div'); hd = document.querySelector('.hd');
+      if (P.eyebrow) W = C.words(eb, C.plain(P.eyebrow)); else eb.style.visibility = 'hidden';
+      C.icon(document.getElementById('well'), P.icon || null);
+      const tt = document.getElementById('tt'), sb = document.getElementById('sb');
+      tt.textContent = C.plain(P.title || ''); tt.dataset.text = tt.textContent; sb.textContent = C.plain(P.sub || ''); sb.dataset.text = sb.textContent;
+      const rows = document.getElementById('rows');
+      (P.rows || []).forEach((r, i) => {
+        const e = C.el('div', 'rr', rows); const lit = C.el('i', 'lit', e); const l = C.el('div', 'rl', e, C.plain(r.text || '')); l.dataset.text = l.textContent;
+        const trk = C.el('div', 'trk', e), fil = C.el('div', 'fil', trk), head = C.el('i', 'head', trk);
+        const x = C.el('div', 'x', e); const fl = C.el('i', 'flash', x); const path = C.svg(x, C.CROSS).querySelectorAll('path');
+        R.push({ e, lit, l, fil, head, x, fl, path, at: r.at ?? 0.4 + i * 0.25, fill: r.fill ?? 1, st: r.state_at ?? (r.at ?? 0.4 + i * 0.25) + 0.55 });
+      });
+      brs = [...document.querySelectorAll('.br')];
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, pc = C.prog(t, 0, D(0.5)), e = C.IN(pc);
+      card.style.transform = `translate3d(0, ${((1 - e) * 12 * u).toFixed(2)}px, 0) rotateX(${(-22 * (1 - e)).toFixed(2)}deg) scale(${(1.06 - 0.06 * e + 0.02 * C.prog(t, D(0.5), ctx.dur)).toFixed(4)})`;
+      card.style.opacity = Math.min(1, pc * 3).toFixed(3);
+      C.rise(hd, t, D(0.12), D(0.4), 2 * u);
+      dv.style.transform = `scaleX(${C.IN(C.prog(t, D(0.2), D(0.5))).toFixed(4)})`;
+      if (W) W.inners.forEach((wi, i) => C.rise(wi, t, i * D(0.05), D(0.4), 1.8 * u));
+      const pb = C.IN(C.prog(t, 0, D(0.45)));
+      brs.forEach((b, i) => C.set(b, { x: (i % 2 ? 1 : -1) * 3 * u * (1 - pb), y: (i < 2 ? -1 : 1) * 3 * u * (1 - pb), o: pb }));
+      R.forEach((o) => {
+        C.rise(o.e, t, o.at, D(0.36), -8 * u, { axis: 'x' });
+        const pf = C.IN(C.prog(t, o.at + D(0.08), D(0.55))) * o.fill;
+        o.fil.style.transform = `scaleX(${pf.toFixed(4)})`; o.head.style.left = (pf * 100).toFixed(2) + '%';
+        o.head.style.opacity = (pf > 0.02 && t < o.st + D(0.2) ? 1 : 0).toString();
+        const ps = C.prog(t, o.st, D(0.2));
+        C.set(o.x, { s: ps <= 0 ? 0.001 : 2.4 - 1.4 * C.easings.outQuint(ps), o: Math.min(1, ps * 4) });
+        o.path.forEach((p) => C.draw(p, ps));
+        const pfl = C.prog(t, o.st + D(0.05), D(0.45)); C.set(o.fl, { s: 1 + 1.4 * C.IN(pfl), o: pfl > 0 && pfl < 1 ? 0.9 * (1 - pfl) : 0 });
+        o.lit.style.opacity = (C.prog(t, o.st, D(0.1)) * (1 - 0.5 * C.prog(t, o.st + D(0.1), D(0.4)))).toFixed(3);
+      });
+    },
+    cues(P) {
+      C.cue(0, 'card', -14);
+      (P.rows || []).forEach((r, i) => { const at = r.at ?? 0.4 + i * 0.25; C.cue(at, 'ui_tick', -21, { pitch: i }); C.cue(r.state_at ?? at + 0.55, 'pop', -17, { pitch: -2 - i * 0.5 }); });
+    },
+  });
+})();
+</script>

@@ -187,6 +187,7 @@ def _main(argv, verbose=False):
     if a.cmd in ("validate", "inspire", "autocut", "status") and a.dir: a.project = a.dir
     if a.cmd == "import-edits" and len(a.paths) > 1: a.project = a.paths[0]
     pr = _project(a)
+    from . import templates as _T; _T.load_dir(pr.p("Brand", "templates"), "project")   # + Brand/motion, for every command below
     if a.cmd == "status":
         from . import status as STT; st_ = STT.collect(pr)
         print(json.dumps(st_, indent=1, ensure_ascii=False) if a.json else STT.report(st_)); return

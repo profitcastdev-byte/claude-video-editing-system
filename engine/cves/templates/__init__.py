@@ -50,7 +50,10 @@ def load_dir(d, origin=None):
     for f in sorted(os.listdir(d)):
         if f.endswith(".py") and not f.startswith("_"):
             spec = importlib.util.spec_from_file_location(f"cves_user_templates.{f[:-3]}", os.path.join(d, f))
-            mod = importlib.util.module_from_spec(spec); sys.modules[spec.name] = mod; spec.loader.exec_module(mod)
+            mod = importlib.util.module_from_spec(spec); sys.modules[spec.name] = mod
+            try: spec.loader.exec_module(mod)
+            except Exception as e:                       # one broken file must not stop every command: skip it, say so
+                sys.modules.pop(spec.name, None); print(f"cves: skipped {os.path.join(d, f)}: {type(e).__name__}: {e}", file=sys.stderr); continue
             before = set(REGISTRY); _register(mod, origin or d); got += sorted(set(REGISTRY) - before) or list(getattr(mod, "T", {}))
     return got
 

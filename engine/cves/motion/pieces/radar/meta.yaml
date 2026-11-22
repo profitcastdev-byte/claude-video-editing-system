@@ -1,0 +1,15 @@
+title: Radar round the head (house)
+description: Three rings open out round the head on a stagger, a lit sweep turns, and each blip pings with a ripple the moment the sweep passes it.
+kinds: [roto]
+hero: false
+duration: 1.5
+params:
+  cx: {type: number, default: 540}
+  cy: {type: number, default: 820}
+  radii: {type: list, default: [300, 440, 580]}
+  speed: {type: number, default: 150, help: sweep degrees per second}
+  blips: {type: list, default: [[300, 2], [335, 1], [20, 2], [65, 0], [110, 1], [230, 2], [260, 1]], help: "[[angle from top, ring index]]"}
+  label: {type: str, default: ""}
+  label_at: {type: time, default: null}
+preview: {params: {cx: 540, cy: 820}}
+cues: [[0.0, swipe, -20]]

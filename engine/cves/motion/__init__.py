@@ -15,7 +15,7 @@ demand (atomic directory rename: a race only wastes time, never corrupts).
 
 Pieces are discovered in `engine/cves/motion/pieces/`, then `~/.cves/motion/`, then `PROJECT/Brand/motion/` (later
 folders override earlier ones). Templates `m_<piece>` are registered by `cves.templates.motion`."""
-import os, json, hashlib, shutil, tempfile, pathlib, atexit, copy
+import os, sys, json, hashlib, shutil, tempfile, pathlib, atexit, copy
 from functools import lru_cache
 import yaml
 from .. import gfx as G
@@ -85,7 +85,10 @@ def scan(folder, origin):
     if not folder.is_dir(): return found
     for d in sorted(folder.iterdir()):
         if d.is_dir() and (d / "piece.html").exists() and not d.name.startswith((".", "_")):
-            p = Piece(d, origin); found[p.name] = p
+            try: p = Piece(d, origin)
+            except Exception as e:                       # a bad meta.yaml skips that piece, not the folder
+                print(f"cves: skipped motion piece {d}: {type(e).__name__}: {e}", file=sys.stderr); continue
+            found[p.name] = p
     return found
 
 

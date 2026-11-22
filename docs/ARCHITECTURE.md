@@ -119,6 +119,7 @@ Every time is cut time in seconds; the engine snaps edits to frame/segment bound
 - roto (behind the head): `card_behind` (map), `big_words`, `listing_card`, `top3_card`
 - chest (replace captions): `wordmark`, `price_card`, `logo_lockup`
 - end: `logo_end`
+- house (`templates/house.py` + the same moves as `m_*` pieces): one ad look across roto, cutaway, chest and end (`docs/TEMPLATES.md` "House templates")
 - motion (`m_*`, `templates/motion.py`): HTML/CSS pieces from `engine/cves/motion/pieces/`, `~/.cves/motion/` and `PROJECT/Brand/motion/`, rendered once by headless Chromium (`cves.motion`, pre-rendered by `render.render()` before the worker pool) and read back as cached RGBA frames; cutaway, overlay (chest), `_roto` and `_end` uses. See `docs/MOTION.md`.
 
 New template = new file + registry entry + a moodboard sample in `docs/TEMPLATES.md`. Templates lay out relative to the canvas

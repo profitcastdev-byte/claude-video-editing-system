@@ -1,0 +1,15 @@
+title: Bars behind the head (house)
+description: Faint grid lines draw across, bars grow up from the baseline on a stagger with the last one lit and glowing, then a trend line draws over their tops with a glowing head.
+kinds: [roto]
+hero: false
+duration: 1.9
+params:
+  eyebrow: {type: str, default: ""}
+  eyebrow_at: {type: time, default: null}
+  eyebrow_y: {type: number, default: 305}
+  values: {type: list, default: [0.22, 0.3, 0.42, 0.55, 0.74, 1.0]}
+  y: {type: number, default: 1010, help: baseline, canvas px}
+  height: {type: number, default: 560}
+  stagger: {type: number, default: 0.07}
+preview: {params: {eyebrow: "What matters most"}}
+cues: [[0.0, riser_air, -20]]

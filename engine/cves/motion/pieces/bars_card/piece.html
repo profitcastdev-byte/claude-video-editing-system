@@ -1,0 +1,50 @@
+<div class="eyebrow bare" id="eb"></div><div id="st"></div>
+<style>
+  #eb { position: absolute; left: 0; right: 0; justify-content: center; color: var(--text); font-size: calc(var(--u) * 2.8); letter-spacing: 0.32em; }
+  #st { position: absolute; inset: 0; }
+  .gl { position: absolute; height: calc(var(--u) * 0.2); background: rgb(var(--accent-rgb) / 0.22); transform-origin: left; }
+  .bar { position: absolute; border-radius: calc(var(--u) * 1.2) calc(var(--u) * 1.2) calc(var(--u) * 0.4) calc(var(--u) * 0.4); transform-origin: 50% 100%;
+         background: linear-gradient(180deg, rgb(var(--accent-dark-rgb) / 0.95), rgb(var(--accent-dark-rgb) / 0.55)); }
+  .bar.hi { background: linear-gradient(180deg, var(--accent), rgb(var(--accent-dark-rgb) / 0.9)); box-shadow: 0 0 calc(var(--u) * 4) rgb(var(--accent-rgb) / 0.55); }
+  svg.tr { position: absolute; inset: 0; width: 100%; height: 100%; }
+  svg.tr path { stroke: var(--text); }
+  svg.tr circle { fill: var(--text); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let eb, W = null, bars = [], gls = [], path, dot, halo, pts = [], seg = [];
+  C.piece({
+    setup(P, ctx) {
+      const u = ctx.u, st = document.getElementById('st'); eb = document.getElementById('eb');
+      if (P.eyebrow) { W = C.words(eb, C.plain(P.eyebrow)); eb.style.top = ((P.eyebrow_y || 305) - eb.offsetHeight * 0.8) + 'px'; } else eb.remove();
+      const v = P.values || [0.22, 0.3, 0.42, 0.55, 0.74, 1], n = v.length, x0 = 7 * u, x1 = ctx.w - 7 * u, pit = (x1 - x0) / n, bw = pit * 0.62;
+      const base = P.y || 1010, H = P.height || 560;
+      [0.33, 0.66, 1].forEach((f) => { const g = C.el('i', 'gl', st); g.style.left = x0 + 'px'; g.style.width = (x1 - x0) + 'px'; g.style.top = (base - H * f) + 'px'; gls.push(g); });
+      v.forEach((h, i) => { const b = C.el('i', 'bar' + (i === n - 1 ? ' hi' : ''), st); const bx = x0 + i * pit + (pit - bw) / 2;
+        Object.assign(b.style, { left: bx + 'px', width: bw + 'px', top: (base - H * h) + 'px', height: (H * h) + 'px' }); bars.push(b);
+        pts.push([bx + bw / 2, base - H * h - 5.5 * u]); });
+      const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+      const sv = C.svg(st, `<path d="${d}" pathLength="1" fill="none" stroke-width="${(0.55 * u).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/><circle r="${(2.6 * u).toFixed(1)}" opacity="0.25"/><circle r="${(1.2 * u).toFixed(1)}"/>`, `0 0 ${ctx.w} ${ctx.h}`, 'tr');
+      path = sv.querySelector('path'); [halo, dot] = sv.querySelectorAll('circle');
+      let L = 0; seg = pts.slice(1).map((p, i) => { const l = Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]); L += l; return l; }); seg.L = L;
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), n = bars.length, stg = P.stagger || 0.07, a = 1 - ex;
+      gls.forEach((g, i) => { g.style.transform = `scaleX(${C.IN(C.prog(t, i * D(0.05), D(0.5))).toFixed(4)})`; g.style.opacity = a.toFixed(3); });
+      bars.forEach((b, i) => { const p = C.prog(t, D(0.05) + i * stg, D(0.5)); b.style.transform = `scaleY(${Math.max(0.001, C.IN(p)).toFixed(4)})`;
+        b.style.opacity = (Math.min(1, p * 4) * a).toFixed(3); });
+      const t0 = D(0.05) + n * stg + D(0.12), p = C.MOVE(C.prog(t, t0, D(0.55)));
+      C.draw(path, p); path.style.opacity = a;
+      let want = p * seg.L, i = 0; while (i < seg.length - 1 && want > seg[i]) { want -= seg[i]; i++; }
+      const f = seg[i] ? Math.min(1, want / seg[i]) : 1, x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f, y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f;
+      [dot, halo].forEach((c) => { c.setAttribute('cx', x.toFixed(1)); c.setAttribute('cy', y.toFixed(1)); });
+      const vis = t >= t0 ? a : 0; dot.style.opacity = vis; halo.style.opacity = (vis * (0.18 + 0.12 * Math.sin(t * 7))).toFixed(3);
+      if (W) { W.inners.forEach((wi, k) => C.rise(wi, t, (P.eyebrow_at ?? 0) + k * D(0.06), D(0.4), 1.8 * u)); eb.style.opacity = a.toFixed(3); }
+    },
+    cues(P) {
+      const n = (P.values || [0, 0, 0, 0, 0, 0]).length, stg = P.stagger || 0.07;
+      C.cue(0, 'riser_air', -20, { trim: [0, 0.5] }); C.cue(D(0.05) + (n - 1) * stg, 'pop', -18, { pitch: 3 }); C.cue(D(0.05) + n * stg + D(0.12), 'scribble', -24);
+    },
+  });
+})();
+</script>

@@ -1,0 +1,64 @@
+<div id="root"><div class="eyebrow bare" id="lb"></div>
+  <div id="row"><div id="burst"></div><span class="num" id="num"><span class="pre" id="pre"></span><span id="val"></span><span class="sfx" id="sfx"></span></span><span id="un"></span></div>
+  <div class="chip" id="pl"></div></div>
+<style>
+  #root { position: absolute; left: var(--safe-l); right: var(--safe-r); display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 3); }
+  #root.center { top: var(--safe-t); bottom: var(--safe-b); justify-content: center; }
+  #lb { font-size: calc(var(--u) * 2.8); letter-spacing: 0.3em; color: var(--text); }
+  #row { position: relative; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 1.6); }
+  .top #row { flex-direction: row; align-items: baseline; gap: calc(var(--u) * 3); }
+  #num { position: relative; color: var(--accent); white-space: nowrap; }
+  .pre { font-size: 0.72em; margin-right: 0.02em; } .sfx { font-size: 0.72em; margin-left: 0.02em; }
+  #un { font-size: calc(var(--u) * 3.3); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text); text-align: center; }
+  .top #un { font-size: calc(var(--u) * 6); letter-spacing: 0.2em; font-weight: 800; }
+  #burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+  .rb { position: absolute; border-radius: 50%; border: calc(var(--u) * 0.45) solid var(--accent); }
+  .sp { position: absolute; width: calc(var(--u) * 1.1); height: calc(var(--u) * 1.1); margin: calc(var(--u) * -0.55); border-radius: 50%; background: var(--accent); box-shadow: 0 0 calc(var(--u)) rgb(var(--accent-rgb) / 0.9); }
+  #pl { font-size: calc(var(--u) * 2.4); }
+  .ov #num, .ov #un { text-shadow: 0 calc(var(--u) * 0.3) calc(var(--u) * 1.8) rgb(0 0 0 / 0.55); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let root, lb, row, num, val, un, pl, rb, S = [], land, LW = null;
+  C.piece({
+    setup(P, ctx) {
+      const u = ctx.u; root = document.getElementById('root'); root.classList.add(P.layout === 'top' ? 'top' : 'center'); if (ctx.kind !== 'cutaway') root.classList.add('ov');
+      lb = document.getElementById('lb'); row = document.getElementById('row'); num = document.getElementById('num'); val = document.getElementById('val');
+      un = document.getElementById('un'); pl = document.getElementById('pl');
+      num.style.fontSize = ((P.size || 26) * u) + 'px';
+      document.getElementById('pre').textContent = P.prefix || ''; document.getElementById('sfx').textContent = P.suffix || '';
+      val.textContent = C.fmt(+P.value, P.decimals || 0, P.grouping); num.dataset.text = `${P.prefix || ''}${val.textContent}${P.suffix || ''}`;
+      num.style.minWidth = num.getBoundingClientRect().width + 'px'; num.style.textAlign = 'center';
+      if (P.label) LW = C.words(lb, C.plain(P.label)); else lb.style.visibility = 'hidden';
+      if (P.unit) { un.textContent = C.plain(P.unit); un.dataset.text = un.textContent; } else un.remove();
+      if (P.pill) { pl.textContent = C.plain(P.pill); pl.dataset.text = pl.textContent; } else pl.style.visibility = 'hidden';
+      if (P.layout === 'top') root.style.top = ((P.y || 300) - num.getBoundingClientRect().height * 0.85) + 'px';
+      const bz = document.getElementById('burst'); rb = C.el('i', 'rb', bz); const rnd = C.rand(5);
+      if (P.burst !== false) for (let k = 0; k < 14; k++) S.push({ e: C.el('i', 'sp', bz), a: (k / 14) * 6.283 + rnd() * 0.3, d: (16 + rnd() * 12) * u });
+      land = (P.count_at ?? 0) + D(P.count_s || 1.0);
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), a = 1 - ex, ca = P.count_at ?? 0, pi = C.prog(t, ca, D(0.35)), e = C.IN(pi);
+      const pc = C.prog(t, ca, D(P.count_s || 1.0)), v = (+P.from || 0) + ((+P.value) - (+P.from || 0)) * C.easings.outExpo(pc);
+      val.textContent = C.fmt(pc >= 1 ? +P.value : v, P.decimals || 0, P.grouping);
+      const fl = t >= land ? Math.exp(-(t - land) / 0.28) : 0, br = 1 + 0.012 * Math.sin(Math.max(0, t - land) * 2.4);
+      C.set(num, { s: (1.55 - 0.55 * e) * (1 + 0.06 * fl) * br, o: Math.min(1, pi * 3) * a, blur: (1 - e) * 1.6 * u });
+      num.style.textShadow = `0 0 ${((5 + 9 * fl) * u).toFixed(1)}px rgb(var(--accent-rgb) / ${(0.32 + 0.45 * fl).toFixed(3)})`;
+      const pr = C.prog(t, land, D(0.6)), R = num.getBoundingClientRect().height * 0.5;
+      Object.assign(rb.style, { width: 2 * R + 'px', height: 2 * R + 'px', left: -R + 'px', top: -R + 'px' });
+      C.set(rb, { s: 0.6 + 1.6 * C.IN(pr), o: P.burst !== false && pr > 0 && pr < 1 ? 0.8 * (1 - pr) * a : 0 });
+      S.forEach((s) => { const p = C.prog(t, land, D(0.7)), d = s.d * C.IN(p) + R * 0.6; C.set(s.e, { x: Math.cos(s.a) * d * 1.6, y: Math.sin(s.a) * d, s: 1 - 0.6 * p, o: p > 0 && p < 1 ? (1 - p) * a : 0 }); });
+      if (LW) LW.inners.forEach((wi, i) => C.rise(wi, t, (P.label_at ?? 0) + i * D(0.05), D(0.4), 1.8 * u));
+      lb.style.opacity = a.toFixed(3);
+      if (un.isConnected) { if (P.layout === 'top') { const p = C.prog(t, P.unit_at ?? land, D(0.45)); un.style.letterSpacing = (0.2 + 0.4 * (1 - C.IN(p))).toFixed(3) + 'em'; C.set(un, { o: Math.min(1, p * 2.5) * a }); }
+                            else { C.rise(un, t, P.unit_at ?? land, D(0.42), 2.2 * u); if (ex) C.set(un, { o: a }); } }
+      if (P.pill) { const p = C.prog(t, P.pill_at ?? land + 0.5, D(0.3)); C.set(pl, { s: 1.3 - 0.3 * C.IN(p), o: Math.min(1, p * 3) * a }); }
+    },
+    cues(P) {
+      const ca = P.count_at ?? 0, ld = ca + D(P.count_s || 1.0);
+      C.cue(ca, 'pop', -22, { pitch: 4 }); if (P.land_sound !== false) C.cue(ld, 'lowhit', -12, { reveal: true });
+      if (P.label) C.cue(P.label_at ?? 0, 'swipe', -25, { trim: [0, 0.25] }); if (P.pill) C.cue(P.pill_at ?? ld + 0.5, 'pop', -20, { pitch: 3 });
+    },
+  });
+})();
+</script>

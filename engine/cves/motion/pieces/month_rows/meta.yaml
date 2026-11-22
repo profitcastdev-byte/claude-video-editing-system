@@ -1,0 +1,13 @@
+title: Month rows (house)
+description: Rows slide in from the left with velocity blur, each range rolls up out of a mask, the tick lands from oversize with a ring pulse, the row edge lights in the accent and a sheen sweeps across it.
+kinds: [cutaway]
+hero: false
+duration: 5.6
+params:
+  eyebrow: {type: str, default: ""}
+  eyebrow_at: {type: time, default: null}
+  items: {type: list, required: true, help: "[{num, text, at, mark_at, icon}]"}
+  icon: {type: icon, default: event}
+  y: {type: number, default: 600, help: block top, canvas px}
+preview: {params: {eyebrow: "Every month, your clinic gets", items: [{num: "5–8", text: "PRP & GFC packages", at: 0.2, mark_at: 0.9}, {num: "4–6", text: "Acne scar treatments", at: 1.2, mark_at: 1.9}]}}
+cues: [[0.0, swipe, -22]]

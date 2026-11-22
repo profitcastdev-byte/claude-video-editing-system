@@ -1,0 +1,14 @@
+title: Currency drift (house)
+description: A heavy marquee band eases into a scroll behind the head with an outlined echo running the other way, while currency glyphs spin like coins and drift up in three depth layers.
+kinds: [roto]
+hero: false
+duration: 1.4
+params:
+  text: {type: str, default: ""}
+  glyph: {type: str, default: "₹"}
+  count: {type: int, default: 12}
+  y: {type: number, default: 440, help: band baseline, canvas px}
+  size: {type: number, default: 13, help: band type size in u}
+  seed: {type: int, default: 3}
+preview: {params: {text: "₹30,000 AD SPEND"}}
+cues: [[0.0, whoosh_soft, -18]]

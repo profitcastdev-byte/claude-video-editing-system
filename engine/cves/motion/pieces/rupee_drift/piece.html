@@ -1,0 +1,42 @@
+<div id="b1" class="band"></div><div id="b2" class="band ghost"></div><div id="gl"></div>
+<style>
+  .band { position: absolute; left: 0; white-space: nowrap; font-weight: 800; letter-spacing: -0.02em; line-height: 1; color: rgb(var(--accent-dark-rgb) / 0.95); }
+  .ghost { color: transparent; -webkit-text-stroke: calc(var(--u) * 0.22) rgb(var(--accent-rgb) / 0.45); }
+  #gl { position: absolute; inset: 0; }
+  .g { position: absolute; font-weight: 800; color: var(--accent); line-height: 1; text-shadow: 0 0 calc(var(--u) * 2.4) rgb(var(--accent-rgb) / 0.55); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let b1, b2, uw = 1, G = [];
+  C.piece({
+    setup(P, ctx) {
+      const u = ctx.u, sz = (P.size || 13) * u; b1 = document.getElementById('b1'); b2 = document.getElementById('b2');
+      const unit = C.plain(P.text || '') + '  ·  ';
+      [b1, b2].forEach((b) => { b.style.fontSize = sz + 'px'; b.textContent = unit.repeat(6); });
+      b1.dataset.text = C.plain(P.text || ''); b1.style.top = ((P.y || 440) - sz * 0.8) + 'px'; b2.style.top = ((P.y || 440) + sz * 0.25) + 'px';
+      const probe = C.el('span', 'band', document.body, unit); probe.style.fontSize = sz + 'px'; uw = probe.getBoundingClientRect().width; probe.remove();
+      const rnd = C.rand(P.seed || 3), gl = document.getElementById('gl'), n = P.count || 12;
+      for (let k = 0; k < n; k++) {
+        const z = k % 3, left = k % 2 === 0, e = C.el('span', 'g', gl, P.glyph || '₹');
+        const x = left ? 4 * u + rnd() * 24 * u : ctx.w - 28 * u + rnd() * 24 * u, y = 32 * u + rnd() * 62 * u;
+        e.style.fontSize = ([5.5, 8, 11.5][z] * u) + 'px'; e.style.left = x + 'px'; e.style.top = y + 'px';
+        G.push({ e, z, ph: rnd() * 6.28, at: k * 0.045 });
+      }
+    },
+    seek(t, P, ctx) {
+      const u = ctx.u, ex = C.exitP(t), a = 1 - ex, tau = 0.35, s = t - tau * (1 - Math.exp(-t / tau));   // eased start, then constant speed
+      const pi = C.prog(t, 0, D(0.3));
+      C.set(b1, { x: -((s * 16 * u) % uw), y: (1 - C.IN(pi)) * 3 * u, o: Math.min(1, pi * 3) * a });
+      C.set(b2, { x: -uw + ((s * 11 * u) % uw), y: (1 - C.IN(pi)) * 4 * u, o: Math.min(1, pi * 3) * 0.8 * a });
+      G.forEach((g) => {
+        const p = C.prog(t, g.at, D(0.32)), e = C.IN(p), spd = [3.5, 6, 10][g.z] * u;
+        const sx = Math.max(0.2, Math.abs(Math.cos(g.ph + t * 2.6)));
+        g.e.style.transform = `translate3d(${(Math.sin(g.ph + t * 1.7) * 1.2 * u).toFixed(2)}px, ${(-t * spd).toFixed(2)}px, 0) scale(${((1.7 - 0.7 * e) * sx).toFixed(4)}, ${(1.7 - 0.7 * e).toFixed(4)})`;
+        g.e.style.opacity = (Math.min(1, p * 3) * [0.45, 0.75, 1][g.z] * a).toFixed(3);
+        g.e.style.filter = g.z === 0 ? `blur(${(0.35 * u).toFixed(2)}px)` : (g.z === 2 && p < 1 ? `blur(${((1 - e) * u).toFixed(2)}px)` : 'none');
+      });
+    },
+    cues() { C.cue(0, 'whoosh_soft', -18); C.cue(0.12, 'pop_bubble', -24, { pitch: 2 }); C.cue(0.36, 'pop_bubble', -25, { pitch: 4 }); },
+  });
+})();
+</script>

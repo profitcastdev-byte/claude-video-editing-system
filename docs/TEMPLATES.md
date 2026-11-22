@@ -273,6 +273,44 @@ Layout:
 - the `chin` position sits under the chin (`chin_gap`, `chin_min_gap`) and above the safe-zone bottom (`pad_bottom`);
 - RTL text never crashes. Without libraqm it is drawn in visual order, unshaped.
 
+## House templates (one ad look: calendar, rows, report, bars, hero number, currency drift, dial, radar, contact form)
+
+One full ad look made reusable: fill the params, the look comes from the style. Each move exists twice: drawn (PIL,
+`templates/house.py`) and as an HTML motion piece (`m_<name>`, `motion/pieces/<name>/`, richer motion: blur, tilt, sheen,
+ring pulses). Both lay out for **9:16 only** (positions are canvas px at 1080×1920).
+
+| drawn | motion piece | kind | params (drawn; the piece's are in the motion table below) |
+|---|---|---|---|
+| `calendar_card` | `m_calendar_card` | roto | `at`, `eyebrow`, `eyebrow_at`, `fill_at`, `booked`, `stagger`, `out_at` |
+| `month_rows` | `m_month_rows` | cutaway | `eyebrow`, `eyebrow_at`, `items` ([{num, text, at, mark_at, icon}]), `y`, `row_h`, `gap` |
+| `report_card` | `m_report_card` | cutaway | `eyebrow`, `title`, `sub`, `at`, `icon`, `rows` ([{text, at, fill, state, state_at}]), `pill`, `pill_at`, `y` |
+| `bars_card` | `m_bars_card` | roto | `at`, `eyebrow`, `eyebrow_y`, `values`, `stagger`, `y`, `height`, `out_at` |
+| `rupee_drift` | `m_rupee_drift` | roto | `at`, `text`, `glyph`, `y`, `size`, `count`, `out_at` |
+| `guarantee_dial` | `m_guarantee_dial` | roto | `at`, `ticks`, `dur`, `r`, `eyebrow`, `eyebrow_y`, `out_at` |
+| `radar` | `m_radar` | roto | `at`, `label`, `label_at`, `blips`, `out_at` |
+| `contact_form` + `contact_form_end` | `m_contact_form` + `m_contact_form_end` | cutaway / end | `eyebrow`, `title`, `at`, `fields` ([{icon, text, at}]), `button`, `button_at`, `press_at`, `done`, `status`, `status_at`, `logo`, `logo_at`, `logo_w`, `y` |
+| `big_stat` | `m_big_stat` | chest (piece: cutaway/overlay) | `value`, `suffix`, `at`, `count`, `label`, `label_at`, `y`, `size` |
+
+```yaml
+cutaways:
+- {id: c1, template: m_month_rows, start: 3.3, end: 8.95, in: whip,
+   params: {at: 3.3, eyebrow: "EVERY MONTH, YOU GET", y: 640,
+            items: [{num: "5–8", text: "New packages", at: 3.43, mark_at: 4.36}, {num: "4–6", text: "Repeat visits", at: 5.23, mark_at: 7.3}]}}
+- {id: c2, template: m_big_stat, start: 21.8, end: 27.0, in: zoom_through,
+   params: {value: 5.76, prefix: "₹", suffix: "L", decimals: 2, grouping: none, count_at: 22.05, count_s: 1.6, label: "REVENUE", label_at: 24.3}}
+roto:
+- {segment: c02_0, template: m_calendar_card, params: {at: 0.93, eyebrow: "EVERY SINGLE MONTH", eyebrow_at: 1.5, fill_at: 1.79}}
+- {segment: c16_0, template: m_guarantee_dial, params: {at: 30.8, cx: 612, cy: 900, r: 430}}
+- {segment: c17_0, template: radar, params: {at: 33.6, label: "YOUR CLINIC"}}          # drawn: rings follow the face track
+chest:
+- {segment: c11_0, template: big_stat, params: {at: 20.9, value: 100, suffix: "%", label: "REFUND"}}
+end_card:
+  template: m_contact_form_end
+  duration: 1.5
+  params: {logo: Brand/logo-white.png, eyebrow: "CLICK THE LINK BELOW", title: "Contact us", fields: [{text: "Your name"}],
+           button: "TALK TO OUR TEAM", done: "REQUEST SENT"}
+```
+
 ## Motion pieces (`m_*`, HTML rendered by headless Chromium)
 
 Senior-grade motion design: HTML/CSS compositions in `engine/cves/motion/pieces/`, rendered to RGBA frames once and cached (authoring contract, runtime and CSS variables: [MOTION.md](MOTION.md)). They lay out in `u` units (1 % of the shorter canvas side) inside the safe zone, so the same params work at 9:16, 1:1 and 16:9. Preview any piece: `cves motion preview <piece> --size 1080x1920 --out sheet.png`.
@@ -283,16 +321,21 @@ Senior-grade motion design: HTML/CSS compositions in `engine/cves/motion/pieces/
 
 | template | kinds | hero | what it does | params (`!` = required) |
 |---|---|---|---|---|
+| `m_bars_card` | roto |  | Faint grid lines draw across, bars grow up from the baseline on a stagger with the last one lit and glowing, then a trend line draws over their tops with a glowing head. | `eyebrow`, `eyebrow_at`, `eyebrow_y`, `values`, `y`, `height`, `stagger` |
 | `m_before_after` | cutaway/overlay |  | A framed picture opens on the "before", a slider handle sweeps across wiping in the "after", overshoots past the middle and settles on the split, with BEFORE / AFTER chips riding each side. | `before`, `after`, `before_text`, `after_text`, `before_label`, `after_label`, `split_at`, `sweep_at` |
+| `m_big_stat` | cutaway/overlay | yes | The number crashes in from oversize out of a blur, its digits step per frame on an expo count, it lands with a glow flash, a ring burst and sparks, then holds breathing while its label, unit and pill rise in on their own words. | `value`!, `from`, `prefix`, `suffix`, `decimals`, `grouping`, `count_at`, `count_s`, `label`, `label_at`, `unit`, `unit_at`, `pill`, `pill_at`, `burst`, `land_sound`, `layout`, `y`, `size` |
+| `m_calendar_card` | roto |  | A month grid tilts up out of perspective behind the head, its days cascade in diagonally from oversize, then booked days flip over to the accent face and a tick draws on each. | `eyebrow`, `eyebrow_at`, `fill_at`, `booked`, `stagger`, `top`, `eyebrow_y`, `seed` |
 | `m_callout` | overlay/cutaway |  | A pin drops onto a point with a squash and two sonar rings, a leader line draws out from it and a glass label card slides off the end of the line. | `label`!, `sub`, `x`, `y`, `side`, `icon` |
 | `m_chart_bars` | cutaway |  | Bars grow from a baseline on a stagger with their values counting above them; the highlighted bar is in the accent, the rest stay quiet. | `title`, `bars`!, `prefix`, `suffix`, `decimals`, `highlight` |
 | `m_checklist_tick` | cutaway/overlay |  | Rows settle in as an empty checklist, then each square box is ticked in turn with a drawn stroke, done rows strike through (or light up) and a progress counter climbs to the total. | `items`!, `title`, `strike`, `counter`, `stagger` |
 | `m_comment_pop` | overlay/cutaway |  | A social comment bubble springs up from its avatar corner, the handle and text settle in, then the heart pops filled and the like count ticks up. | `handle`!, `text`!, `likes`, `verified`, `time`, `avatar`, `position` |
 | `m_compare` | cutaway |  | Two cards build side by side (stacked on a tall canvas), the "before" muted with crosses, the "after" lit in the accent with checks, a VS chip pops on the seam. | `left_title`, `right_title`, `left`!, `right`!, `vs` |
+| `m_contact_form` + `m_contact_form_end` | cutaway/end | yes | The logo focus-pulls in, the form card tilts up, each field lights and types itself with a blinking caret, the accent button lands from oversize, a cursor glides in large, parks and presses it, a ripple rings out and the button turns into a drawn tick. | `logo`, `eyebrow`, `title`, `fields`, `icon_a`, `icon_b`, `icon_c`, `button`!, `button_at`, `cursor_at`, `press_at`, `done`, `status`, `status_at`, `sound_at`, `y`, `seed` |
 | `m_countdown` | cutaway/overlay | yes | Each number rolls out of a mask as the next rolls in while an accent ring drains once per number, then the end word lands; clock mode ticks HH:MM:SS (only changing digits roll) over a draining bar. | `mode`, `from`, `to`, `step_s`, `end_text`, `seconds_left`, `label`, `caption` |
 | `m_cta` + `m_cta_end` | cutaway/overlay/end | yes | A headline settles, an accent button springs in, a cursor glides to it on a curve and clicks; the button presses, a ripple rings out and the label confirms. | `text`!, `title`, `sub`, `done`, `cursor` |
 | `m_follow_card` + `m_follow_card_end` | cutaway/overlay/end | yes | A profile card rises in (avatar or monogram, name, handle, chip), a cursor clicks Follow, the button flips to its done state with a drawn tick and a bell rings with a badge. | `name`!, `handle`, `button`, `done`, `logo`, `platform`, `bell`, `cursor` |
 | `m_glass_card` | cutaway/overlay |  | A frosted card focus-pulls in (blur to sharp, slight scale), a sheen sweeps across, then icon, tag, title and body build inside it. | `title`!, `body`, `eyebrow`, `icon`, `chip`, `align` |
+| `m_guarantee_dial` | roto |  | A ring of day ticks lights clockwise round the head behind a glowing sweep head, the outer ring draws on with it, a pulse rings out when the circle closes and the ticks keep breathing. | `cx`, `cy`, `r`, `ticks`, `sweep_s` |
 | `m_highlight_words` + `m_highlight_words_roto` | cutaway/overlay/roto |  | A sentence settles in, then marker strokes sweep behind the key words one after another and the words knock out of the marker. | `text`!, `style`, `highlight_at`, `plate` |
 | `m_karaoke` + `m_karaoke_roto` | overlay/cutaway/roto |  | The line settles in dim and each word lights on its own time with a small lift; a pill (or underline) glides from word to word and re-forms on the next line. | `text`, `words` ([{word, at}]), `wps`, `style`, `align`, `position` |
 | `m_kinetic_title` + `m_kinetic_title_roto` | cutaway/overlay/roto | yes | Headline words rise out of masks on a tight stagger, accent words get an underline sweep, eyebrow and sub settle in around them. | `text`!, `eyebrow`, `sub`, `align`, `scale`, `underline` |
@@ -300,12 +343,16 @@ Senior-grade motion design: HTML/CSS compositions in `engine/cves/motion/pieces/
 | `m_logo_sting` + `m_logo_sting_end` | cutaway/overlay/end | yes | An accent pill outline draws itself around the mark and breathes out, the logo (or wordmark) focus-pulls in with a light sweep across it, the tagline tracks in underneath. | `logo`, `text`, `tagline`, `ring` |
 | `m_lower_third` | overlay/cutaway |  | An accent bar grows, a solid plate wipes open from it, the name rises inside and the role tracks in; it wipes back out before the shot ends. | `name`!, `role`, `align`, `position` |
 | `m_map_route` | cutaway/overlay |  | A stylised street map (drawn from the style's tones, no tiles) pushes in while the start pin lands, a glowing route draws with a travelling head, the destination pin drops and the place label and ETA chip rise. | `to`!, `from`, `eta`, `points`, `seed`, `draw_s` |
+| `m_month_rows` | cutaway |  | Rows slide in from the left with velocity blur, each range rolls up out of a mask, the tick lands from oversize with a ring pulse, the row edge lights in the accent and a sheen sweeps across it. | `eyebrow`, `eyebrow_at`, `items`!, `icon`, `y` |
 | `m_notification_stack` | overlay/cutaway |  | Phone-style notification banners slide down one after another; each new one lands on top while the older ones compress behind it into a dimmer, smaller stack. | `items`!, `time`, `position`, `stagger` |
 | `m_price_tag` | cutaway/overlay | yes | The old price settles and an accent line strikes it through, the new price lands with weight under it, a starburst badge spins in and settles, an optional deadline chip slides in. | `price`!, `old_price`, `currency`, `badge`, `label`, `note` |
 | `m_progress` | cutaway/overlay |  | A track draws in, the fill runs to the value with a glowing head and a counting percentage, milestone dots light as the fill passes them. | `label`, `value`, `milestones`, `show_value`, `fill_s` |
 | `m_quote` | cutaway/overlay |  | An oversized accent quotation mark settles, the quote fades up word by word in the serif, a rule draws and the attribution slides in. | `quote`!, `author`, `role`, `serif` |
 | `m_quote_portrait` | cutaway/overlay |  | A portrait (or an initials monogram) opens out of a circle or arch mask with a slow push-in while an accent ring draws round it; the quote fades up word by word, then a rule, the name and role slide in. | `quote`!, `author`, `role`, `portrait`, `shape`, `serif` |
+| `m_radar` | roto |  | Three rings open out round the head on a stagger, a lit sweep turns, and each blip pings with a ripple the moment the sweep passes it. | `cx`, `cy`, `radii`, `speed`, `blips`, `label`, `label_at` |
 | `m_rating_stars` | cutaway/overlay |  | The score counts up in big type while five stars fill left to right (the last one fractionally), then the review count and its source settle in underneath. | `score`!, `count`, `source`, `decimals`, `label` |
+| `m_report_card` | cutaway |  | A report card tilts up into place, its rows slide in, each bar fills with a glowing head, then a cross stamps down from oversize on each row with a ring flash. | `eyebrow`, `title`, `sub`, `icon`, `rows`!, `y` |
+| `m_rupee_drift` | roto |  | A heavy marquee band eases into a scroll behind the head with an outlined echo running the other way, while currency glyphs spin like coins and drift up in three depth layers. | `text`, `glyph`, `count`, `y`, `size`, `seed` |
 | `m_spec_callouts` | overlay/cutaway |  | Points light up with a pulse, an elbow leader line draws out and a glass spec card slides off its end; each side's cards share a column that clears every point. | `callouts`! ([{x, y, title, value, side, at}]), `image`, `stagger` |
 | `m_split_reveal` + `m_split_reveal_roto` | cutaway/overlay/roto | yes | A word slams in, splits horizontally along its middle, the halves slide apart and a second word rises out of the gap in the accent colour. | `text`!, `reveal`!, `eyebrow`, `split_at` |
 | `m_stat_counter` | cutaway/overlay | yes | One big number counts up on an expo curve with a soft accent glow, its suffix lands with the final digit, a meter fills underneath and the label and caption frame it. | `value`!, `from`, `prefix`, `suffix`, `decimals`, `grouping`, `label`, `caption`, `max`, `count_s` |

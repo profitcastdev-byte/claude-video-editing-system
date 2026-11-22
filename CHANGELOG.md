@@ -3,6 +3,21 @@
 All notable changes to CVES. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [SemVer](https://semver.org/). Every behaviour or tool change gets an entry (see CONTRIBUTING.md).
 
+## [Unreleased]
+
+### Added
+- **House templates** (docs/TEMPLATES.md "House templates"): one full ad look as built-ins, so the next ad fills params instead
+  of hand-writing graphics. Drawn: `calendar_card`, `month_rows`, `report_card`, `bars_card`, `rupee_drift`, `guarantee_dial`,
+  `radar`, `contact_form` / `contact_form_end`, `big_stat` (`templates/house.py`). Motion pieces with the same moves:
+  `m_calendar_card`, `m_month_rows`, `m_report_card`, `m_bars_card`, `m_rupee_drift`, `m_guarantee_dial`, `m_radar`,
+  `m_contact_form` / `m_contact_form_end`, `m_big_stat`. 9:16 layout only.
+
+### Fixed
+- `cves plan` (and every command after the project opens in `cli.py`: status, ingest, select, review-plan, ...) loads
+  `PROJECT/Brand/templates` and `PROJECT/Brand/motion`: plan called project templates and pieces "unknown template" unless
+  `CVES_TEMPLATES` pointed at them. A project template that fails to import, or a piece with a bad `meta.yaml`, is skipped
+  with a warning instead of stopping the command.
+
 ## [0.6.0] - 2026-11-22
 
 CVES is a tool: it does what the user asks, nothing more.

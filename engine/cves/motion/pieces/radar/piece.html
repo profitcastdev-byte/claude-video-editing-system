@@ -1,0 +1,38 @@
+<div id="st"><div id="sweep"></div></div><div class="chip" id="lb"></div>
+<style>
+  #st { position: absolute; inset: 0; }
+  .rg { position: absolute; border-radius: 50%; border: calc(var(--u) * 0.35) solid rgb(var(--accent-rgb) / 0.42); }
+  #sweep { position: absolute; border-radius: 50%;
+           background: conic-gradient(from 0deg, transparent 0deg 290deg, rgb(var(--accent-rgb) / 0.04) 290deg, rgb(var(--accent-rgb) / 0.42) 358deg, rgb(var(--accent-rgb) / 0.9) 359.5deg, transparent 360deg); }
+  .bp { position: absolute; width: calc(var(--u) * 2.6); height: calc(var(--u) * 2.6); margin: calc(var(--u) * -1.3); border-radius: 50%; background: var(--accent);
+        box-shadow: 0 0 calc(var(--u) * 2) rgb(var(--accent-rgb) / 0.8); }
+  .rp { position: absolute; width: calc(var(--u) * 2.6); height: calc(var(--u) * 2.6); margin: calc(var(--u) * -1.3); border-radius: 50%; border: calc(var(--u) * 0.3) solid var(--accent); }
+  #lb { position: absolute; transform-origin: 50% 50%; background: rgb(var(--card-rgb) / 0.85); }
+</style>
+<script>
+(() => {
+  const C = CVES, D = C.D; let st, sw, rings = [], B = [], lb, cx, cy, Rs;
+  C.piece({
+    setup(P, ctx) {
+      st = document.getElementById('st'); sw = document.getElementById('sweep'); lb = document.getElementById('lb');
+      cx = P.cx ?? ctx.w / 2; cy = P.cy ?? 820; Rs = P.radii || [300, 440, 580];
+      Rs.forEach((r) => { const e = C.el('i', 'rg', st); Object.assign(e.style, { left: (cx - r) + 'px', top: (cy - r) + 'px', width: 2 * r + 'px', height: 2 * r + 'px' }); rings.push(e); });
+      const R3 = Rs[Rs.length - 1]; Object.assign(sw.style, { left: (cx - R3) + 'px', top: (cy - R3) + 'px', width: 2 * R3 + 'px', height: 2 * R3 + 'px' });
+      (P.blips || []).forEach(([ang, ri]) => { const r = Rs[ri] || Rs[0], a = (ang - 90) * Math.PI / 180, x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+        const rp = C.el('i', 'rp', st), bp = C.el('i', 'bp', st); [rp, bp].forEach((e) => { e.style.left = x + 'px'; e.style.top = y + 'px'; });
+        const sp = P.speed || 150, start = -60, hit = (((ang - start) % 360) + 360) % 360 / sp; B.push({ bp, rp, hit }); });
+      if (P.label) { lb.textContent = C.plain(P.label); lb.dataset.text = lb.textContent; lb.style.left = (cx - lb.offsetWidth / 2) + 'px'; lb.style.top = (cy - R3 - lb.offsetHeight / 2) + 'px'; } else lb.remove();
+    },
+    seek(t, P, ctx) {
+      const ex = C.exitP(t), a = 1 - ex, sp = P.speed || 150;
+      rings.forEach((r, i) => { const p = C.prog(t, i * D(0.08), D(0.45)), e = C.IN(p); C.set(r, { s: 0.7 + 0.3 * e, o: Math.min(1, p * 2.5) * a }); });
+      const ps = C.prog(t, D(0.1), D(0.3)); sw.style.transform = `rotate(${(-60 + t * sp).toFixed(2)}deg)`; sw.style.opacity = (ps * a).toFixed(3);
+      B.forEach((b) => { const p = C.prog(t, b.hit, D(0.25)); C.set(b.bp, { s: p <= 0 ? 0.001 : C.easings.outBack(p), o: Math.min(1, p * 3) * a });
+        const pr = C.prog(t, b.hit, D(0.6)); C.set(b.rp, { s: 1 + 3.2 * C.IN(pr), o: pr > 0 && pr < 1 ? 0.9 * (1 - pr) * a : 0 }); });
+      if (lb.isConnected) { const pl = C.prog(t, P.label_at ?? 0, D(0.3)); C.set(lb, { s: 1.35 - 0.35 * C.IN(pl), o: Math.min(1, pl * 3) * a }); }
+    },
+    cues(P) { C.cue(0, 'swipe', -20); const sp = P.speed || 150;
+      (P.blips || []).slice(0, 3).map(([ang]) => (((ang + 60) % 360) + 360) % 360 / sp).sort((x, y) => x - y).forEach((h, i) => C.cue(h, 'ding', -27 - i, { pitch: 5 + 2 * i })); },
+  });
+})();
+</script>
