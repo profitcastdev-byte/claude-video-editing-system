@@ -1,1 +1,3 @@
 Material Icons (Google, Apache License 2.0): call, search, link, chat, star, event, place
+Material Symbols Rounded, filled (Google, Apache License 2.0), added 2026-11-22: spa, face, face_retouching_natural, content_cut, medical_services, healing, local_hospital, calendar_month, event_available, schedule, payments, currency_rupee, trending_up, bar_chart, insights, verified, groups, person, notifications, campaign, ads_click, thumb_up, shield, check_circle, cancel, phone_in_talk, storefront, mail, rocket_launch, target
+Source: https://github.com/google/material-design-icons (symbols/web/<name>/materialsymbolsrounded/<name>_fill1_48px.svg), recoloured white; 512 px PNGs rendered with rsvg-convert.
